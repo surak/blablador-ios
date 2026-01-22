@@ -1,0 +1,223 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 60;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		9B2A76A6E3E0A1B20000000E /* BlabladorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000006 /* BlabladorApp.swift */; };
+		9B2A76A6E3E0A1B20000000F /* WebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000007 /* WebView.swift */; };
+		9B2A76A6E3E0A1B200000010 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000008 /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		9B2A76A6E3E0A1B200000006 /* BlabladorApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlabladorApp.swift; sourceTree = "<group>"; };
+		9B2A76A6E3E0A1B200000007 /* WebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebView.swift; sourceTree = "<group>"; };
+		9B2A76A6E3E0A1B200000008 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		9B2A76A6E3E0A1B200000009 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		9B2A76A6E3E0A1B20000000A /* Blablador.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Blablador.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		9B2A76A6E3E0A1B20000000D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		9B2A76A6E3E0A1B200000003 = {
+			isa = PBXGroup;
+			children = (
+				9B2A76A6E3E0A1B200000005 /* Blablador */,
+				9B2A76A6E3E0A1B200000004 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		9B2A76A6E3E0A1B200000004 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				9B2A76A6E3E0A1B20000000A /* Blablador.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		9B2A76A6E3E0A1B200000005 /* Blablador */ = {
+			isa = PBXGroup;
+			children = (
+				9B2A76A6E3E0A1B200000006 /* BlabladorApp.swift */,
+				9B2A76A6E3E0A1B200000007 /* WebView.swift */,
+				9B2A76A6E3E0A1B200000008 /* Assets.xcassets */,
+				9B2A76A6E3E0A1B200000009 /* Info.plist */,
+			);
+			path = Blablador;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		9B2A76A6E3E0A1B200000002 /* Blablador */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9B2A76A6E3E0A1B200000013 /* Build configuration list for PBXNativeTarget "Blablador" */;
+			buildPhases = (
+				9B2A76A6E3E0A1B20000000B /* Sources */,
+				9B2A76A6E3E0A1B20000000C /* Resources */,
+				9B2A76A6E3E0A1B20000000D /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Blablador;
+			productName = Blablador;
+			productReference = 9B2A76A6E3E0A1B20000000A /* Blablador.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		9B2A76A6E3E0A1B200000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastSwiftUpdateCheck = 1520;
+				LastUpgradeCheck = 1520;
+				TargetAttributes = {
+					9B2A76A6E3E0A1B200000002 = {
+						CreatedOnToolsVersion = 15.2;
+					};
+				};
+			};
+			buildConfigurationList = 9B2A76A6E3E0A1B200000016 /* Build configuration list for PBXProject "Blablador" */;
+			compatibilityVersion = "Xcode 15.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+			);
+			mainGroup = 9B2A76A6E3E0A1B200000003;
+			productRefGroup = 9B2A76A6E3E0A1B200000004 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				9B2A76A6E3E0A1B200000002 /* Blablador */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		9B2A76A6E3E0A1B20000000C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9B2A76A6E3E0A1B200000010 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		9B2A76A6E3E0A1B20000000B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9B2A76A6E3E0A1B20000000E /* BlabladorApp.swift in Sources */,
+				9B2A76A6E3E0A1B20000000F /* WebView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		9B2A76A6E3E0A1B200000011 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 4Q84Z7RZ3Z;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Blablador/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "de.fz-juelich.blablador";
+				PRODUCT_NAME = Blablador;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		9B2A76A6E3E0A1B200000012 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 4Q84Z7RZ3Z;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Blablador/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "de.fz-juelich.blablador";
+				PRODUCT_NAME = Blablador;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_OPTIMIZATION_LEVEL = "-Owholemodule";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		9B2A76A6E3E0A1B200000014 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				PRODUCT_NAME = Blablador;
+			};
+			name = Debug;
+		};
+		9B2A76A6E3E0A1B200000015 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				PRODUCT_NAME = Blablador;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		9B2A76A6E3E0A1B200000013 /* Build configuration list for PBXNativeTarget "Blablador" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9B2A76A6E3E0A1B200000011 /* Debug */,
+				9B2A76A6E3E0A1B200000012 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		9B2A76A6E3E0A1B200000016 /* Build configuration list for PBXProject "Blablador" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9B2A76A6E3E0A1B200000014 /* Debug */,
+				9B2A76A6E3E0A1B200000015 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 9B2A76A6E3E0A1B200000001 /* Project object */;
+}
