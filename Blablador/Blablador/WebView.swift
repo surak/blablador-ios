@@ -27,11 +27,21 @@ final class WebViewStore: NSObject, ObservableObject {
         configuration.websiteDataStore = .default()
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = true
 
+#if os(iOS)
+        if #available(iOS 16.0, *) {
+            configuration.preferences.isElementFullscreenEnabled = true
+        }
+#endif
+
         webView = WKWebView(frame: .zero, configuration: configuration)
         super.init()
 
         webView.navigationDelegate = self
         webView.allowsBackForwardNavigationGestures = true
+
+#if os(macOS)
+        webView.setValue(true, forKey: "autofillEnabled")
+#endif
 
         if let startURL = WebConstants.startURL {
             webView.load(URLRequest(url: startURL))

@@ -3,233 +3,431 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 60;
+	objectVersion = 77;
 	objects = {
 
 /* Begin PBXBuildFile section */
-		9B2A76A6E3E0A1B20000000E /* BlabladorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000006 /* BlabladorApp.swift */; };
-		9B2A76A6E3E0A1B20000000F /* WebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000007 /* WebView.swift */; };
-		9B2A76A6E3E0A1B200000023 /* SiriCommandCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000021 /* SiriCommandCenter.swift */; };
-		9B2A76A6E3E0A1B200000024 /* SiriIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000022 /* SiriIntents.swift */; };
-		9B2A76A6E3E0A1B200000010 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000008 /* Assets.xcassets */; };
+		1834B8786F96AE778DA23236 /* SiriIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AD5CA4C5B7966BD1042ACFF /* SiriIntents.swift */; };
+		2BF0822D7983948A1D516EC6 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 0E75524F380F335DD9BCFA1E /* Assets.xcassets */; };
+		4B4CBD360487FE48B14EEF01 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 0E75524F380F335DD9BCFA1E /* Assets.xcassets */; };
+		506D0A387CE98FD7AB340573 /* WebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A267C1FAFC2FECD842A0F850 /* WebView.swift */; };
+		66B917CC98E2A7DA9ACEA775 /* BlabladorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78E3CE237182A954CFD465EB /* BlabladorApp.swift */; };
+		7E6761BBE06FBC9F163A6D33 /* WebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A267C1FAFC2FECD842A0F850 /* WebView.swift */; };
+		8F2BC1EC563E5435C2A389C8 /* SiriCommandCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDA89429B2DB8EBD588F5EC8 /* SiriCommandCenter.swift */; };
+		B726D58E12A2105056247F7D /* BlabladorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78E3CE237182A954CFD465EB /* BlabladorApp.swift */; };
+		D38C3E155FD395C4BB5CB7E7 /* SiriCommandCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDA89429B2DB8EBD588F5EC8 /* SiriCommandCenter.swift */; };
+		F8181A7F09D66EBF06526DD0 /* SiriIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AD5CA4C5B7966BD1042ACFF /* SiriIntents.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		9B2A76A6E3E0A1B200000006 /* BlabladorApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlabladorApp.swift; sourceTree = "<group>"; };
-		9B2A76A6E3E0A1B200000007 /* WebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebView.swift; sourceTree = "<group>"; };
-		9B2A76A6E3E0A1B200000021 /* SiriCommandCenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SiriCommandCenter.swift; sourceTree = "<group>"; };
-		9B2A76A6E3E0A1B200000022 /* SiriIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SiriIntents.swift; sourceTree = "<group>"; };
-		9B2A76A6E3E0A1B200000008 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		9B2A76A6E3E0A1B200000009 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		9B2A76A6E3E0A1B20000000A /* Blablador.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Blablador.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		0DDE0B0F1E841AEF3831DE85 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		0E75524F380F335DD9BCFA1E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		2B81D9E2E879AEEC3419DFE3 /* Blablador.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Blablador.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		6CDCB7534724DF3303AFDE73 /* Blablador.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Blablador.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		78E3CE237182A954CFD465EB /* BlabladorApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlabladorApp.swift; sourceTree = "<group>"; };
+		7AD5CA4C5B7966BD1042ACFF /* SiriIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SiriIntents.swift; sourceTree = "<group>"; };
+		A267C1FAFC2FECD842A0F850 /* WebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebView.swift; sourceTree = "<group>"; };
+		BDA89429B2DB8EBD588F5EC8 /* SiriCommandCenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SiriCommandCenter.swift; sourceTree = "<group>"; };
+		FD78FA4BD8C3160C210D18DC /* Blablador.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Blablador.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
-/* Begin PBXFrameworksBuildPhase section */
-		9B2A76A6E3E0A1B20000000D /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXFrameworksBuildPhase section */
-
 /* Begin PBXGroup section */
-		9B2A76A6E3E0A1B200000003 = {
+		2E2982920B63585EBD756246 /* Blablador */ = {
 			isa = PBXGroup;
 			children = (
-				9B2A76A6E3E0A1B200000005 /* Blablador */,
-				9B2A76A6E3E0A1B200000004 /* Products */,
+				0E75524F380F335DD9BCFA1E /* Assets.xcassets */,
+				FD78FA4BD8C3160C210D18DC /* Blablador.entitlements */,
+				78E3CE237182A954CFD465EB /* BlabladorApp.swift */,
+				0DDE0B0F1E841AEF3831DE85 /* Info.plist */,
+				BDA89429B2DB8EBD588F5EC8 /* SiriCommandCenter.swift */,
+				7AD5CA4C5B7966BD1042ACFF /* SiriIntents.swift */,
+				A267C1FAFC2FECD842A0F850 /* WebView.swift */,
 			);
+			path = Blablador;
 			sourceTree = "<group>";
 		};
-		9B2A76A6E3E0A1B200000004 /* Products */ = {
+		52EBD40184B69800BA609E32 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				9B2A76A6E3E0A1B20000000A /* Blablador.app */,
+				2B81D9E2E879AEEC3419DFE3 /* Blablador.app */,
+				6CDCB7534724DF3303AFDE73 /* Blablador.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
 		};
-		9B2A76A6E3E0A1B200000005 /* Blablador */ = {
+		5D90BE1FA2DC6307F5112D7C = {
 			isa = PBXGroup;
 			children = (
-				9B2A76A6E3E0A1B200000006 /* BlabladorApp.swift */,
-				9B2A76A6E3E0A1B200000007 /* WebView.swift */,
-				9B2A76A6E3E0A1B200000021 /* SiriCommandCenter.swift */,
-				9B2A76A6E3E0A1B200000022 /* SiriIntents.swift */,
-				9B2A76A6E3E0A1B200000008 /* Assets.xcassets */,
-				9B2A76A6E3E0A1B200000009 /* Info.plist */,
+				2E2982920B63585EBD756246 /* Blablador */,
+				52EBD40184B69800BA609E32 /* Products */,
 			);
-			path = Blablador;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		9B2A76A6E3E0A1B200000002 /* Blablador */ = {
+		6E72CAD83D089AAC25BCCB93 /* Blablador_macOS */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 9B2A76A6E3E0A1B200000013 /* Build configuration list for PBXNativeTarget "Blablador" */;
+			buildConfigurationList = 60214E04989EE1B56C9B594B /* Build configuration list for PBXNativeTarget "Blablador_macOS" */;
 			buildPhases = (
-				9B2A76A6E3E0A1B20000000B /* Sources */,
-				9B2A76A6E3E0A1B20000000C /* Resources */,
-				9B2A76A6E3E0A1B20000000D /* Frameworks */,
+				DF3A52466C4DBCA99396980A /* Sources */,
+				63410D623A23F656113DC1F4 /* Resources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 			);
-			name = Blablador;
-			productName = Blablador;
-			productReference = 9B2A76A6E3E0A1B20000000A /* Blablador.app */;
+			name = Blablador_macOS;
+			packageProductDependencies = (
+			);
+			productName = Blablador_macOS;
+			productReference = 6CDCB7534724DF3303AFDE73 /* Blablador.app */;
+			productType = "com.apple.product-type.application";
+		};
+		9568275851DB49FD8DBD78E0 /* Blablador_iOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9A4BA3972ABBCBBE41353758 /* Build configuration list for PBXNativeTarget "Blablador_iOS" */;
+			buildPhases = (
+				7077107F49D87CFFF2B8DAAF /* Sources */,
+				0B64B41B73C886C47BDA9EB1 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Blablador_iOS;
+			packageProductDependencies = (
+			);
+			productName = Blablador_iOS;
+			productReference = 2B81D9E2E879AEEC3419DFE3 /* Blablador.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		9B2A76A6E3E0A1B200000001 /* Project object */ = {
+		D914F5E7C96A9B39D3152092 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
-				LastSwiftUpdateCheck = 1520;
-				LastUpgradeCheck = 1520;
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1500;
 				TargetAttributes = {
-					9B2A76A6E3E0A1B200000002 = {
-						CreatedOnToolsVersion = 15.2;
+					6E72CAD83D089AAC25BCCB93 = {
+						DevelopmentTeam = 4Q84Z7RZ3Z;
+						ProvisioningStyle = Automatic;
+					};
+					9568275851DB49FD8DBD78E0 = {
+						DevelopmentTeam = 4Q84Z7RZ3Z;
+						ProvisioningStyle = Automatic;
 					};
 				};
 			};
-			buildConfigurationList = 9B2A76A6E3E0A1B200000016 /* Build configuration list for PBXProject "Blablador" */;
-			compatibilityVersion = "Xcode 15.0";
+			buildConfigurationList = C9B43A1566F5737DA7C5339A /* Build configuration list for PBXProject "Blablador" */;
+			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
+				Base,
 				en,
 			);
-			mainGroup = 9B2A76A6E3E0A1B200000003;
-			productRefGroup = 9B2A76A6E3E0A1B200000004 /* Products */;
+			mainGroup = 5D90BE1FA2DC6307F5112D7C;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				9B2A76A6E3E0A1B200000002 /* Blablador */,
+				9568275851DB49FD8DBD78E0 /* Blablador_iOS */,
+				6E72CAD83D089AAC25BCCB93 /* Blablador_macOS */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		9B2A76A6E3E0A1B20000000C /* Resources */ = {
+		0B64B41B73C886C47BDA9EB1 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				9B2A76A6E3E0A1B200000010 /* Assets.xcassets in Resources */,
+				4B4CBD360487FE48B14EEF01 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		63410D623A23F656113DC1F4 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2BF0822D7983948A1D516EC6 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		9B2A76A6E3E0A1B20000000B /* Sources */ = {
+		7077107F49D87CFFF2B8DAAF /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				9B2A76A6E3E0A1B20000000E /* BlabladorApp.swift in Sources */,
-				9B2A76A6E3E0A1B20000000F /* WebView.swift in Sources */,
-				9B2A76A6E3E0A1B200000023 /* SiriCommandCenter.swift in Sources */,
-				9B2A76A6E3E0A1B200000024 /* SiriIntents.swift in Sources */,
+				B726D58E12A2105056247F7D /* BlabladorApp.swift in Sources */,
+				D38C3E155FD395C4BB5CB7E7 /* SiriCommandCenter.swift in Sources */,
+				1834B8786F96AE778DA23236 /* SiriIntents.swift in Sources */,
+				506D0A387CE98FD7AB340573 /* WebView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		DF3A52466C4DBCA99396980A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				66B917CC98E2A7DA9ACEA775 /* BlabladorApp.swift in Sources */,
+				8F2BC1EC563E5435C2A389C8 /* SiriCommandCenter.swift in Sources */,
+				F8181A7F09D66EBF06526DD0 /* SiriIntents.swift in Sources */,
+				7E6761BBE06FBC9F163A6D33 /* WebView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
-		9B2A76A6E3E0A1B200000011 /* Debug */ = {
+		1EE899572A88589D7B9E4D6A /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 4Q84Z7RZ3Z;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = Blablador/Info.plist;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "de.fz-juelich.blablador";
-				PRODUCT_NAME = Blablador;
-				SDKROOT = iphoneos;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
 		};
-		9B2A76A6E3E0A1B200000012 /* Release */ = {
+		278D838279A5FA0A71B8B5E3 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Blablador/Blablador.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 4Q84Z7RZ3Z;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Blablador/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 1.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = "de.fz-juelich.blablador";
 				PRODUCT_NAME = Blablador;
 				SDKROOT = iphoneos;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_OPTIMIZATION_LEVEL = "-Owholemodule";
-				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
 		};
-		9B2A76A6E3E0A1B200000014 /* Debug */ = {
+		2DC80A7642C9C398B86C57F6 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Blablador/Blablador.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = "";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Blablador/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "de.fz-juelich.blablador";
 				PRODUCT_NAME = Blablador;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
 		};
-		9B2A76A6E3E0A1B200000015 /* Release */ = {
+		8D0409B11481B4A5D442B9FA /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Blablador/Blablador.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = "";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Blablador/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "de.fz-juelich.blablador";
 				PRODUCT_NAME = Blablador;
+				SDKROOT = macosx;
+				SWIFT_OPTIMIZATION_LEVEL = "-Owholemodule";
+			};
+			name = Release;
+		};
+		D4588F603E6FC6B908D09D95 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Blablador/Blablador.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Blablador/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "de.fz-juelich.blablador";
+				PRODUCT_NAME = Blablador;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		F889C838FB37BAFA6F7ABB93 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 4Q84Z7RZ3Z;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
 			};
 			name = Release;
 		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		9B2A76A6E3E0A1B200000013 /* Build configuration list for PBXNativeTarget "Blablador" */ = {
+		60214E04989EE1B56C9B594B /* Build configuration list for PBXNativeTarget "Blablador_macOS" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				9B2A76A6E3E0A1B200000011 /* Debug */,
-				9B2A76A6E3E0A1B200000012 /* Release */,
+				D4588F603E6FC6B908D09D95 /* Debug */,
+				8D0409B11481B4A5D442B9FA /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
-		9B2A76A6E3E0A1B200000016 /* Build configuration list for PBXProject "Blablador" */ = {
+		9A4BA3972ABBCBBE41353758 /* Build configuration list for PBXNativeTarget "Blablador_iOS" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				9B2A76A6E3E0A1B200000014 /* Debug */,
-				9B2A76A6E3E0A1B200000015 /* Release */,
+				2DC80A7642C9C398B86C57F6 /* Debug */,
+				278D838279A5FA0A71B8B5E3 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		C9B43A1566F5737DA7C5339A /* Build configuration list for PBXProject "Blablador" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1EE899572A88589D7B9E4D6A /* Debug */,
+				F889C838FB37BAFA6F7ABB93 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
 	};
-	rootObject = 9B2A76A6E3E0A1B200000001 /* Project object */;
+	rootObject = D914F5E7C96A9B39D3152092 /* Project object */;
 }
