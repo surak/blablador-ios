@@ -1,6 +1,11 @@
 import SwiftUI
 import WebKit
+
+#if os(iOS)
+import UIKit
+#elseif os(macOS)
 import AppKit
+#endif
 
 private enum WebConstants {
     static let startURL = URL(string: "https://staging.helmholtz-blablador.fz-juelich.de")
@@ -18,7 +23,7 @@ final class WebViewStore: NSObject, ObservableObject {
         let preferences = WKWebpagePreferences()
         preferences.allowsContentJavaScript = true
         configuration.defaultWebpagePreferences = preferences
-        
+
         configuration.websiteDataStore = .default()
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = true
 
@@ -87,6 +92,17 @@ extension WebViewStore: WKNavigationDelegate {
     }
 }
 
+#if os(iOS)
+struct WebView: UIViewRepresentable {
+    let webView: WKWebView
+
+    func makeUIView(context: Context) -> WKWebView {
+        webView
+    }
+
+    func updateUIView(_ uiView: WKWebView, context: Context) {}
+}
+#elseif os(macOS)
 struct WebView: NSViewRepresentable {
     let webView: WKWebView
 
@@ -96,40 +112,52 @@ struct WebView: NSViewRepresentable {
 
     func updateNSView(_ nsView: WKWebView, context: Context) {}
 }
+#endif
 
 struct WebContainerView: View {
     @StateObject private var store = WebViewStore()
 
     var body: some View {
         NavigationStack {
-            WebView(webView: store.webView)
-                .frame(minWidth: 800, minHeight: 600)
-                .toolbar {
-                    ToolbarItemGroup(placement: .automatic) {
-                        Button(action: { store.goBack() }) {
-                            Label("Back", systemImage: "arrow.left")
-                        }
-                        .disabled(!store.canGoBack)
-                        Button(action: { store.goForward() }) {
-                            Label("Forward", systemImage: "arrow.right")
-                        }
-                        .disabled(!store.canGoForward)
-                        Button(action: { store.reload() }) {
-                            Label("Reload", systemImage: "arrow.clockwise")
-                        }
-                        Button(action: openPasswordsForCurrentSite) {
-                            Label("Open Passwords", systemImage: "key.fill")
-                        }
-                        Button(action: openInSafari) {
-                            Label("Open in Safari", systemImage: "safari")
-                        }
-                        Button(action: shareCurrentURL) {
-                            Label("Share", systemImage: "square.and.arrow.up")
-                        }
+            Group {
+#if os(macOS)
+                WebView(webView: store.webView)
+                    .frame(minWidth: 800, minHeight: 600)
+#else
+                WebView(webView: store.webView)
+                    .ignoresSafeArea()
+#endif
+            }
+            .toolbar {
+                ToolbarItemGroup(placement: .automatic) {
+                    Button(action: { store.goBack() }) {
+                        Label("Back", systemImage: "arrow.left")
+                    }
+                    .disabled(!store.canGoBack)
+                    Button(action: { store.goForward() }) {
+                        Label("Forward", systemImage: "arrow.right")
+                    }
+                    .disabled(!store.canGoForward)
+                    Button(action: { store.reload() }) {
+                        Label("Reload", systemImage: "arrow.clockwise")
+                    }
+#if os(macOS)
+                    Button(action: openPasswordsForCurrentSite) {
+                        Label("Open Passwords", systemImage: "key.fill")
+                    }
+                    Button(action: openInSafari) {
+                        Label("Open in Safari", systemImage: "safari")
+                    }
+#endif
+                    Button(action: shareCurrentURL) {
+                        Label("Share", systemImage: "square.and.arrow.up")
                     }
                 }
+            }
         }
     }
+
+#if os(macOS)
     private func openInSafari() {
         if let url = store.currentURL ?? WebConstants.startURL {
             NSWorkspace.shared.open(url)
@@ -160,10 +188,23 @@ struct WebContainerView: View {
             }
         }
     }
+#endif
 
     private func shareCurrentURL() {
         guard let url = store.currentURL else { return }
+#if os(iOS)
+        let controller = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+        controller.popoverPresentationController?.sourceView = store.webView
+
+        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let rootViewController = scene.windows.first?.rootViewController else {
+            return
+        }
+
+        rootViewController.present(controller, animated: true)
+#elseif os(macOS)
         let sharingService = NSSharingServicePicker(items: [url])
         sharingService.show(relativeTo: .zero, of: store.webView, preferredEdge: .minY)
+#endif
     }
 }
