@@ -39,10 +39,6 @@ final class WebViewStore: NSObject, ObservableObject {
         webView.navigationDelegate = self
         webView.allowsBackForwardNavigationGestures = true
 
-#if os(macOS)
-        webView.setValue(true, forKey: "autofillEnabled")
-#endif
-
         if let startURL = WebConstants.startURL {
             webView.load(URLRequest(url: startURL))
         }
