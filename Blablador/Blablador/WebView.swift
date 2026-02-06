@@ -1,6 +1,6 @@
 import SwiftUI
 import WebKit
-import UIKit
+import AppKit
 
 private enum WebConstants {
     static let startURL = URL(string: "https://staging.helmholtz-blablador.fz-juelich.de")
@@ -18,6 +18,9 @@ final class WebViewStore: NSObject, ObservableObject {
         let preferences = WKWebpagePreferences()
         preferences.allowsContentJavaScript = true
         configuration.defaultWebpagePreferences = preferences
+        
+        configuration.websiteDataStore = .default()
+        configuration.preferences.javaScriptCanOpenWindowsAutomatically = true
 
         webView = WKWebView(frame: .zero, configuration: configuration)
         super.init()
@@ -41,6 +44,7 @@ final class WebViewStore: NSObject, ObservableObject {
     func reload() {
         webView.reload()
     }
+
 }
 
 extension WebViewStore: WKNavigationDelegate {
@@ -64,6 +68,16 @@ extension WebViewStore: WKNavigationDelegate {
         decisionHandler(.allow)
     }
 
+    func webView(_ webView: WKWebView, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodHTTPBasic ||
+           challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodHTTPDigest {
+            let credential = URLCredential(user: "", password: "", persistence: .none)
+            completionHandler(.useCredential, credential)
+        } else {
+            completionHandler(.performDefaultHandling, nil)
+        }
+    }
+
     private func updateState(from webView: WKWebView) {
         DispatchQueue.main.async {
             self.canGoBack = webView.canGoBack
@@ -73,14 +87,14 @@ extension WebViewStore: WKNavigationDelegate {
     }
 }
 
-struct WebView: UIViewRepresentable {
+struct WebView: NSViewRepresentable {
     let webView: WKWebView
 
-    func makeUIView(context: Context) -> WKWebView {
+    func makeNSView(context: Context) -> WKWebView {
         webView
     }
 
-    func updateUIView(_ uiView: WKWebView, context: Context) {}
+    func updateNSView(_ nsView: WKWebView, context: Context) {}
 }
 
 struct WebContainerView: View {
@@ -89,44 +103,67 @@ struct WebContainerView: View {
     var body: some View {
         NavigationStack {
             WebView(webView: store.webView)
-                .ignoresSafeArea()
+                .frame(minWidth: 800, minHeight: 600)
                 .toolbar {
-                    ToolbarItemGroup(placement: .bottomBar) {
-                        Button(action: store.goBack) {
-                            Image(systemName: "chevron.left")
+                    ToolbarItemGroup(placement: .automatic) {
+                        Button(action: { store.goBack() }) {
+                            Label("Back", systemImage: "arrow.left")
                         }
                         .disabled(!store.canGoBack)
-
-                        Button(action: store.goForward) {
-                            Image(systemName: "chevron.right")
+                        Button(action: { store.goForward() }) {
+                            Label("Forward", systemImage: "arrow.right")
                         }
                         .disabled(!store.canGoForward)
-
-                        Spacer()
-
-                        Button(action: store.reload) {
-                            Image(systemName: "arrow.clockwise")
+                        Button(action: { store.reload() }) {
+                            Label("Reload", systemImage: "arrow.clockwise")
                         }
-
+                        Button(action: openPasswordsForCurrentSite) {
+                            Label("Open Passwords", systemImage: "key.fill")
+                        }
+                        Button(action: openInSafari) {
+                            Label("Open in Safari", systemImage: "safari")
+                        }
                         Button(action: shareCurrentURL) {
-                            Image(systemName: "square.and.arrow.up")
+                            Label("Share", systemImage: "square.and.arrow.up")
                         }
-                        .disabled(store.currentURL == nil)
                     }
                 }
+        }
+    }
+    private func openInSafari() {
+        if let url = store.currentURL ?? WebConstants.startURL {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    private func openPasswordsForCurrentSite() {
+        if let host = (store.currentURL ?? WebConstants.startURL)?.host {
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            pasteboard.setString(host, forType: .string)
+        }
+
+        let passwordsAppURL = URL(fileURLWithPath: "/System/Applications/Passwords.app")
+        if FileManager.default.fileExists(atPath: passwordsAppURL.path) {
+            let configuration = NSWorkspace.OpenConfiguration()
+            NSWorkspace.shared.openApplication(at: passwordsAppURL, configuration: configuration)
+        } else if let settingsURL = URL(string: "x-apple.systempreferences:com.apple.Passwords") {
+            NSWorkspace.shared.open(settingsURL)
+        } else if let settingsURL = URL(string: "x-apple.systempreferences:") {
+            NSWorkspace.shared.open(settingsURL)
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            NSApplication.shared.activate(ignoringOtherApps: true)
+            if let url = store.currentURL ?? WebConstants.startURL {
+                store.webView.load(URLRequest(url: url))
+            }
         }
     }
 
     private func shareCurrentURL() {
         guard let url = store.currentURL else { return }
-        let controller = UIActivityViewController(activityItems: [url], applicationActivities: nil)
-        controller.popoverPresentationController?.sourceView = store.webView
-
-        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let rootViewController = scene.windows.first?.rootViewController else {
-            return
-        }
-
-        rootViewController.present(controller, animated: true)
+        let sharingService = NSSharingServicePicker(items: [url])
+        sharingService.show(relativeTo: .zero, of: store.webView, preferredEdge: .minY)
     }
 }

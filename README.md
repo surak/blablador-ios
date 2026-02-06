@@ -1,6 +1,6 @@
-# Blablador iOS App
+# Blablador macOS App
 
-A native iOS application that provides a simple web view wrapper for the Helmholtz Blablador web application.
+A native macOS application that provides a simple web view wrapper for the Helmholtz Blablador web application.
 
 ## Overview
 
@@ -16,7 +16,7 @@ Blablador is a SwiftUI-based iOS app that provides an enhanced mobile experience
 
 ## Requirements
 
-- iOS 17.0+
+- macOS 14.0+
 - Xcode 15.0+
 - Swift 5.9+
 
@@ -24,7 +24,7 @@ Blablador is a SwiftUI-based iOS app that provides an enhanced mobile experience
 
 1. Clone the repository
 2. Open `Blablador/Blablador.xcodeproj` in Xcode
-3. Select your target device (iPhone/iPad simulator or physical device)
+3. Select the My Mac run destination
 4. Build and run (⌘R)
 
 ## Project Structure
@@ -65,7 +65,7 @@ To change the target URL, modify the `startURL` value to point to your desired e
 ### Development Build
 
 ```bash
-xcodebuild -project Blablador/Blablador.xcodeproj -scheme Blablador -sdk iphonesimulator -configuration Debug
+xcodebuild -project Blablador/Blablador.xcodeproj -scheme Blablador -sdk macosx -configuration Debug
 ```
 
 ### Release Build

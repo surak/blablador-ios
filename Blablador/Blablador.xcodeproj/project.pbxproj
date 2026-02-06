@@ -9,12 +9,16 @@
 /* Begin PBXBuildFile section */
 		9B2A76A6E3E0A1B20000000E /* BlabladorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000006 /* BlabladorApp.swift */; };
 		9B2A76A6E3E0A1B20000000F /* WebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000007 /* WebView.swift */; };
+		9B2A76A6E3E0A1B200000023 /* SiriCommandCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000021 /* SiriCommandCenter.swift */; };
+		9B2A76A6E3E0A1B200000024 /* SiriIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000022 /* SiriIntents.swift */; };
 		9B2A76A6E3E0A1B200000010 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000008 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		9B2A76A6E3E0A1B200000006 /* BlabladorApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlabladorApp.swift; sourceTree = "<group>"; };
 		9B2A76A6E3E0A1B200000007 /* WebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebView.swift; sourceTree = "<group>"; };
+		9B2A76A6E3E0A1B200000021 /* SiriCommandCenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SiriCommandCenter.swift; sourceTree = "<group>"; };
+		9B2A76A6E3E0A1B200000022 /* SiriIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SiriIntents.swift; sourceTree = "<group>"; };
 		9B2A76A6E3E0A1B200000008 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		9B2A76A6E3E0A1B200000009 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		9B2A76A6E3E0A1B20000000A /* Blablador.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Blablador.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -52,6 +56,8 @@
 			children = (
 				9B2A76A6E3E0A1B200000006 /* BlabladorApp.swift */,
 				9B2A76A6E3E0A1B200000007 /* WebView.swift */,
+				9B2A76A6E3E0A1B200000021 /* SiriCommandCenter.swift */,
+				9B2A76A6E3E0A1B200000022 /* SiriIntents.swift */,
 				9B2A76A6E3E0A1B200000008 /* Assets.xcassets */,
 				9B2A76A6E3E0A1B200000009 /* Info.plist */,
 			);
@@ -127,6 +133,8 @@
 			files = (
 				9B2A76A6E3E0A1B20000000E /* BlabladorApp.swift in Sources */,
 				9B2A76A6E3E0A1B20000000F /* WebView.swift in Sources */,
+				9B2A76A6E3E0A1B200000023 /* SiriCommandCenter.swift in Sources */,
+				9B2A76A6E3E0A1B200000024 /* SiriIntents.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -136,43 +144,47 @@
 		9B2A76A6E3E0A1B200000011 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 4Q84Z7RZ3Z;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Blablador/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "de.fz-juelich.blablador";
 				PRODUCT_NAME = Blablador;
-				SDKROOT = iphoneos;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = macosx;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
 		};
 		9B2A76A6E3E0A1B200000012 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 4Q84Z7RZ3Z;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Blablador/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "de.fz-juelich.blablador";
 				PRODUCT_NAME = Blablador;
-				SDKROOT = iphoneos;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = macosx;
 				SWIFT_OPTIMIZATION_LEVEL = "-Owholemodule";
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
 		};
