@@ -118,43 +118,39 @@ struct WebContainerView: View {
     @StateObject private var store = WebViewStore()
 
     var body: some View {
+#if os(macOS)
         NavigationStack {
-            Group {
-#if os(macOS)
-                WebView(webView: store.webView)
-                    .frame(minWidth: 800, minHeight: 600)
-#else
-                WebView(webView: store.webView)
-                    .ignoresSafeArea()
-#endif
-            }
-            .toolbar {
-                ToolbarItemGroup(placement: .automatic) {
-                    Button(action: { store.goBack() }) {
-                        Label("Back", systemImage: "arrow.left")
-                    }
-                    .disabled(!store.canGoBack)
-                    Button(action: { store.goForward() }) {
-                        Label("Forward", systemImage: "arrow.right")
-                    }
-                    .disabled(!store.canGoForward)
-                    Button(action: { store.reload() }) {
-                        Label("Reload", systemImage: "arrow.clockwise")
-                    }
-#if os(macOS)
-                    Button(action: openPasswordsForCurrentSite) {
-                        Label("Open Passwords", systemImage: "key.fill")
-                    }
-                    Button(action: openInSafari) {
-                        Label("Open in Safari", systemImage: "safari")
-                    }
-#endif
-                    Button(action: shareCurrentURL) {
-                        Label("Share", systemImage: "square.and.arrow.up")
+            WebView(webView: store.webView)
+                .frame(minWidth: 800, minHeight: 600)
+                .toolbar {
+                    ToolbarItemGroup(placement: .automatic) {
+                        Button(action: { store.goBack() }) {
+                            Label("Back", systemImage: "arrow.left")
+                        }
+                        .disabled(!store.canGoBack)
+                        Button(action: { store.goForward() }) {
+                            Label("Forward", systemImage: "arrow.right")
+                        }
+                        .disabled(!store.canGoForward)
+                        Button(action: { store.reload() }) {
+                            Label("Reload", systemImage: "arrow.clockwise")
+                        }
+                        Button(action: openPasswordsForCurrentSite) {
+                            Label("Open Passwords", systemImage: "key.fill")
+                        }
+                        Button(action: openInSafari) {
+                            Label("Open in Safari", systemImage: "safari")
+                        }
+                        Button(action: shareCurrentURL) {
+                            Label("Share", systemImage: "square.and.arrow.up")
+                        }
                     }
                 }
-            }
         }
+#else
+        WebView(webView: store.webView)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+#endif
     }
 
 #if os(macOS)
