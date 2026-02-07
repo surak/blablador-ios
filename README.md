@@ -1,10 +1,10 @@
 # Blablador macOS App
 
-A native macOS application that provides a simple web view wrapper for the Helmholtz Blablador web application.
+A native macOS/iOS/iPadOS application that provides a simple web view wrapper for the Helmholtz Blablador web application.
 
 ## Overview
 
-Blablador is a SwiftUI-based iOS app that provides an enhanced mobile experience for accessing the Blablador platform. It features a full-screen web view with navigation controls and sharing capabilities.
+Blablador is a SwiftUI-based macOS/iOS/iPadOS app that provides an enhanced mobile experience for accessing the Blablador platform. It features a full-screen web view with navigation controls and sharing capabilities.
 
 ## Features
 
