@@ -27,6 +27,8 @@ struct BlabladorAPI {
     static let imageEditModel = "alias-image"
     static let speechModel = "alias-voice-drama3"
     static let transcriptionModel = "faster-whisper-large-v3"
+    static let embeddingModel = "alias-qwen3-4b-embeddings"
+    static let rerankModel = "alias-qwen3-4b-reranker"
 
     var apiKey: String
 
@@ -83,6 +85,35 @@ struct BlabladorAPI {
         body.append(Data("\r\n--\(boundary)--\r\n".utf8))
         request.httpBody = body
         return try await imageResponse(for: request)
+    }
+
+    func embeddings(_ texts: [String], model: String = BlabladorAPI.embeddingModel) async throws -> [[Float]] {
+        struct Response: Decodable {
+            struct Item: Decodable { let index: Int; let embedding: [Float] }
+            let data: [Item]
+        }
+        var request = try request(path: "embeddings")
+        request.httpMethod = "POST"
+        request.timeoutInterval = 120
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["model": model, "input": texts])
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try Self.validate(response, body: String(data: data.prefix(500), encoding: .utf8) ?? "")
+        return try JSONDecoder().decode(Response.self, from: data).data.sorted { $0.index < $1.index }.map(\.embedding)
+    }
+
+    /// Returns document indices, most relevant first.
+    func rerank(query: String, documents: [String]) async throws -> [Int] {
+        struct Response: Decodable {
+            struct Item: Decodable { let index: Int; let relevance_score: Double }
+            let results: [Item]
+        }
+        var request = try request(path: "rerank")
+        request.httpMethod = "POST"
+        request.timeoutInterval = 60
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["model": Self.rerankModel, "query": query, "documents": documents])
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try Self.validate(response, body: String(data: data.prefix(500), encoding: .utf8) ?? "")
+        return try JSONDecoder().decode(Response.self, from: data).results.sorted { $0.relevance_score > $1.relevance_score }.map(\.index)
     }
 
     /// Speaks `text` with Drama 3, either with a built-in voice or cloned from a reference recording.

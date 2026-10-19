@@ -51,7 +51,7 @@ struct MessageView: View {
                 AvatarView(isActive: isLast && isStreaming)
                 VStack(alignment: .leading, spacing: 10) {
                     if let status = message.status {
-                        Label(status, systemImage: status.hasPrefix("Search") ? "globe" : status.contains("image") ? "paintbrush.pointed" : status.hasPrefix("Speaking") ? "waveform" : "ellipsis")
+                        Label(status, systemImage: status.hasPrefix("Search") ? "globe" : status.contains("image") ? "paintbrush.pointed" : status.hasPrefix("Speaking") ? "waveform" : status.contains("nowledge") ? "books.vertical" : "ellipsis")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .symbolEffect(.pulse)
@@ -69,6 +69,9 @@ struct MessageView: View {
                             .foregroundStyle(.red)
                     } else {
                         MarkdownText(text: message.content)
+                    }
+                    if !message.citations.isEmpty {
+                        CitationsView(citations: message.citations)
                     }
                     if !message.sources.isEmpty {
                         SourcesView(sources: message.sources)

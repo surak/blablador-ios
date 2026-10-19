@@ -19,10 +19,12 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     var documents: [DocumentAttachment] = []
     /// Speech generated with Drama 3, as file names in AudioStore.
     var audio: [String] = []
+    /// Knowledge base excerpts the reply was based on.
+    var citations: [KnowledgeCitation] = []
     /// Transient status shown while tools run, e.g. "Searching the web…"
     var status: String?
 
-    private enum CodingKeys: String, CodingKey { case id, role, content, date, isError, sources, images, documents, audio }
+    private enum CodingKeys: String, CodingKey { case id, role, content, date, isError, sources, images, documents, audio, citations }
 
     init(role: ChatRole, content: String, images: [String] = [], documents: [DocumentAttachment] = []) {
         self.role = role
@@ -42,6 +44,7 @@ struct ChatMessage: Identifiable, Codable, Equatable {
         images = try c.decodeIfPresent([String].self, forKey: .images) ?? []
         documents = try c.decodeIfPresent([DocumentAttachment].self, forKey: .documents) ?? []
         audio = try c.decodeIfPresent([String].self, forKey: .audio) ?? []
+        citations = try c.decodeIfPresent([KnowledgeCitation].self, forKey: .citations) ?? []
     }
 }
 
@@ -51,6 +54,8 @@ struct Conversation: Identifiable, Codable, Equatable {
     var model: String
     var messages: [ChatMessage] = []
     var updatedAt = Date()
+    /// Knowledge bases searched for every message in this chat.
+    var knowledge: [UUID]?
 
     static func new(model: String) -> Conversation {
         Conversation(title: "New chat", model: model)

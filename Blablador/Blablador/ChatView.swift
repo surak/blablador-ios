@@ -329,6 +329,7 @@ private struct ComposerView: View {
     @State private var showPhotoPicker = false
     @State private var showCamera = false
     @State private var showFileImporter = false
+    @State private var showKnowledge = false
     @State private var readingPDFs = 0
     @State private var pdfError: String?
 
@@ -350,6 +351,9 @@ private struct ComposerView: View {
             }
             if !documents.isEmpty || readingPDFs > 0 {
                 documentStrip
+            }
+            if !store.activeKnowledge.isEmpty {
+                ActiveKnowledgeStrip()
             }
             if imageMode {
                 imageModeChip
@@ -453,6 +457,20 @@ private struct ComposerView: View {
                 }
             }
         }
+        .sheet(isPresented: $showKnowledge) {
+            NavigationStack {
+                KnowledgeListView()
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { showKnowledge = false }
+                        }
+                    }
+            }
+            .environmentObject(store)
+#if os(macOS)
+            .frame(minWidth: 480, minHeight: 480)
+#endif
+        }
         .alert("Couldn't read PDF", isPresented: Binding(get: { pdfError != nil }, set: { if !$0 { pdfError = nil } })) {
             Button("OK") {}
         } message: {
@@ -481,6 +499,7 @@ private struct ComposerView: View {
             Button { showFileImporter = true } label: {
                 Label("PDF", systemImage: "doc.richtext")
             }
+            KnowledgeMenu { showKnowledge = true }
             Divider()
             Toggle(isOn: $imageMode) {
                 Label("Create image", systemImage: "paintbrush.pointed")

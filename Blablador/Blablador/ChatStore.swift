@@ -107,6 +107,33 @@ final class ChatStore: ObservableObject {
     func newChat() {
         stop()
         currentID = nil
+        pendingKnowledge = []
+    }
+
+    /// Knowledge bases picked before the first message of a new chat.
+    @Published private var pendingKnowledge: [UUID] = []
+
+    /// Knowledge bases searched for the current chat.
+    var activeKnowledge: [UUID] {
+        get {
+            let ids = currentID == nil ? pendingKnowledge : current?.knowledge ?? []
+            return ids.filter { KnowledgeLibrary.shared.base($0) != nil }
+        }
+        set {
+            if currentID == nil {
+                pendingKnowledge = newValue
+            } else {
+                update { $0.knowledge = newValue }
+            }
+        }
+    }
+
+    func toggleKnowledge(_ id: UUID) {
+        if activeKnowledge.contains(id) {
+            activeKnowledge.removeAll { $0 == id }
+        } else {
+            activeKnowledge.append(id)
+        }
     }
 
     func select(_ conversation: Conversation) {
@@ -141,7 +168,9 @@ final class ChatStore: ObservableObject {
 
         if currentID == nil {
             let title = !trimmed.isEmpty ? Self.title(for: trimmed) : documents.first?.name ?? "Image"
-            let conversation = Conversation(title: title, model: selectedModel)
+            var conversation = Conversation(title: title, model: selectedModel)
+            conversation.knowledge = pendingKnowledge
+            pendingKnowledge = []
             conversations.insert(conversation, at: 0)
             currentID = conversation.id
         }
@@ -277,6 +306,8 @@ final class ChatStore: ObservableObject {
 
         let reply = ChatMessage(role: .assistant, content: "")
         let model = selectedModel
+        let knowledge = activeKnowledge
+        let question = conversation.messages.last { $0.role == .user }?.content ?? ""
         update {
             $0.model = model
             $0.messages.append(reply)
@@ -289,6 +320,20 @@ final class ChatStore: ObservableObject {
         if VoiceLibrary.shared.toolsEnabled { tools.append(SpeechTools.generate) }
         streamTask = Task {
             do {
+                var wire = wire
+                if !knowledge.isEmpty, !question.isEmpty {
+                    updateMessage(reply.id) { $0.status = "Searching knowledge…" }
+                    do {
+                        let citations = try await KnowledgeLibrary.shared.search(question, in: knowledge, api: api)
+                        if !citations.isEmpty {
+                            updateMessage(reply.id) { $0.citations = citations }
+                            let system = (wire[0]["content"] as? String ?? "") + "\n\n" + KnowledgeLibrary.context(for: citations)
+                            wire[0]["content"] = system.trimmingCharacters(in: .whitespacesAndNewlines)
+                        }
+                    } catch {
+                        updateMessage(reply.id) { $0.status = "Knowledge search failed, answering without it…" }
+                    }
+                }
                 try await runTurn(model: model, messages: wire, tools: tools, replyID: reply.id)
             } catch is CancellationError {
             } catch let error as URLError where error.code == .cancelled {

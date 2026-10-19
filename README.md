@@ -13,6 +13,7 @@ Blablador is a SwiftUI-based macOS/iOS/iPadOS app that provides an enhanced mobi
 - **Web search**: Cited results from Blablador's search engine
 - **Photos and camera**: Ask vision-capable models about pictures
 - **PDFs**: Attach PDFs with **+ → PDF**. Text is extracted on the device with PDFKit; scanned pages without a text layer are read with Apple's Vision OCR. The text is sent to the model along with your question, so it works with every model.
+- **Knowledge bases**: Collections of PDFs and text files that stay available, like Open WebUI's knowledge. Create them in Settings → Knowledge bases (or **+ → Knowledge → Manage knowledge…**) and switch them on per chat with **+ → Knowledge**. Text is extracted on the device (with OCR for scans), embedded with `alias-qwen3-4b-embeddings` and stored locally; for each question the best passages are found, re-ranked with `alias-qwen3-4b-reranker` and given to the model, which cites them as [K1], [K2]. Tap a citation to read the passage.
 - **Speech and voice cloning**: Turn on **+ → Speak** to have text spoken with Drama 3 (`alias-voice-drama3`), or ask the assistant to say something. Pick a feeling, pace and whisper in Settings → Voice, and add pauses, laughs, whispers and other expressions from the Expressions menu. Clone a voice with **Clone a voice…** in Settings → Voice or in the Speak chip's voice menu, from a recording, an audio or video file, or a direct link to one (10–30 seconds; YouTube pages are not supported). The sample is transcribed with Whisper.
 - **Images**: Create images with FLUX.2-dev or Qwen-Image 2.1, edit them with Qwen-Image
 - **History**: Searchable chats stored on the device; API key kept in the Keychain
@@ -40,6 +41,8 @@ Blablador/
 │   ├── ChatStore.swift        # Conversations, persistence, sending/streaming
 │   ├── ChatModels.swift       # Messages, conversations, models
 │   ├── PDFExtractor.swift     # PDF text extraction (PDFKit + Vision OCR)
+│   ├── KnowledgeBase.swift    # Knowledge bases: chunking, embeddings, retrieval
+│   ├── KnowledgeViews.swift   # Knowledge management, citations
 │   ├── SpeechRecognizer.swift # Dictation and read-aloud
 │   ├── VoiceLibrary.swift     # Drama 3 voices, cloning samples, speech settings
 │   ├── VoiceViews.swift       # Speech player, voice settings and cloning UI

@@ -63,6 +63,12 @@ struct SettingsView: View {
                     Text("Used for new images. Editing photos always uses Qwen-Image 2.1, the model that supports editing.")
                 }
 
+                Section {
+                    NavigationLink("Knowledge bases") { KnowledgeListView() }
+                } footer: {
+                    Text("PDF and text collections that chats can answer from.")
+                }
+
                 VoiceSettingsSection()
 
                 Section {
