@@ -624,18 +624,20 @@ private struct ComposerView: View {
             CameraPicker { data in attachments.append(data) }
                 .ignoresSafeArea()
         }
+#else
+        .sheet(isPresented: $showCamera) {
+            CameraPicker { data in attachments.append(ImageStore.jpeg(from: data, maxPixelSize: 2048, quality: 0.9) ?? data) }
+        }
 #endif
     }
 
     private var addMenu: some View {
         Menu {
-#if os(iOS)
             if CameraPicker.isAvailable {
                 Button { showCamera = true } label: {
                     Label("Camera", systemImage: "camera")
                 }
             }
-#endif
             Button { showPhotoPicker = true } label: {
                 Label("Photos", systemImage: "photo.on.rectangle")
             }
