@@ -1,3 +1,5 @@
+import ImageIO
+import PhotosUI
 import SwiftUI
 
 struct ChatView: View {
@@ -7,6 +9,8 @@ struct ChatView: View {
     @ObservedObject private var siri = SiriCommandCenter.shared
 
     @State private var draft = ""
+    @State private var attachments: [Data] = []
+    @State private var imageMode = false
     @State private var showHistory = false
     @State private var showSettings = false
     @FocusState private var inputFocused: Bool
@@ -21,7 +25,7 @@ struct ChatView: View {
                         store.send(prompt)
                     }
                 }
-                ComposerView(draft: $draft, speech: speech, focused: $inputFocused, onSend: send)
+                ComposerView(draft: $draft, attachments: $attachments, imageMode: $imageMode, speech: speech, focused: $inputFocused, onSend: send)
             }
             .background(Theme.background)
             .toolbar { toolbar }
@@ -69,6 +73,7 @@ struct ChatView: View {
             Button {
                 store.newChat()
                 draft = ""
+                attachments = []
             } label: {
                 Label("New chat", systemImage: "square.and.pencil")
             }
@@ -132,8 +137,10 @@ struct ChatView: View {
     private func send() {
         if speech.isRecording { speech.stop() }
         let text = draft
+        let images = attachments
         draft = ""
-        store.send(text)
+        attachments = []
+        store.send(text, attachments: images, createImage: imageMode)
     }
 
     private func handleSiri(_ command: String?) {
@@ -238,73 +245,83 @@ private struct WelcomeView: View {
 
 private struct ComposerView: View {
     @Binding var draft: String
+    @Binding var attachments: [Data]
+    @Binding var imageMode: Bool
     @ObservedObject var speech: SpeechRecognizer
     var focused: FocusState<Bool>.Binding
     let onSend: () -> Void
 
     @EnvironmentObject private var store: ChatStore
+    @State private var photoItems: [PhotosPickerItem] = []
+    @State private var showPhotoPicker = false
+    @State private var showCamera = false
 
     private var canSend: Bool {
-        !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty
+    }
+
+    private var placeholder: String {
+        if speech.isRecording { return "Listening…" }
+        if imageMode { return attachments.isEmpty ? "Describe an image" : "Describe the change" }
+        return "Ask Blablador"
     }
 
     var body: some View {
-        HStack(alignment: .bottom, spacing: 8) {
-            Button {
-                store.webSearchEnabled.toggle()
-            } label: {
-                Image(systemName: "globe")
-                    .font(.title3)
-                    .frame(width: 36, height: 40)
-                    .foregroundStyle(store.webSearchEnabled ? AnyShapeStyle(Theme.gradient) : AnyShapeStyle(.secondary))
+        VStack(alignment: .leading, spacing: 8) {
+            if !attachments.isEmpty {
+                attachmentStrip
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(store.webSearchEnabled ? "Web search on" : "Web search off")
-
-            TextField(speech.isRecording ? "Listening…" : "Ask Blablador", text: $draft, axis: .vertical)
-                .textFieldStyle(.plain)
-                .lineLimit(1...6)
-                .focused(focused)
-                .padding(.vertical, 10)
-                .padding(.leading, 6)
-                .onSubmit { if canSend { onSend() } }
-
-            Button {
-                speech.toggle()
-            } label: {
-                Image(systemName: speech.isRecording ? "waveform" : "mic")
-                    .symbolEffect(.variableColor.iterative, isActive: speech.isRecording)
-                    .font(.title3)
-                    .frame(width: 40, height: 40)
-                    .foregroundStyle(speech.isRecording ? AnyShapeStyle(Theme.gradient) : AnyShapeStyle(.primary))
+            if imageMode {
+                imageModeChip
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(speech.isRecording ? "Stop dictation" : "Dictate")
+            HStack(alignment: .bottom, spacing: 4) {
+                addMenu
 
-            if store.isStreaming {
-                Button(action: store.stop) {
-                    Image(systemName: "stop.fill")
-                        .font(.body)
+                TextField(placeholder, text: $draft, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .lineLimit(1...6)
+                    .focused(focused)
+                    .padding(.vertical, 10)
+                    .padding(.leading, 4)
+                    .onSubmit { if canSend { onSend() } }
+
+                Button {
+                    speech.toggle()
+                } label: {
+                    Image(systemName: speech.isRecording ? "waveform" : "mic")
+                        .symbolEffect(.variableColor.iterative, isActive: speech.isRecording)
+                        .font(.title3)
                         .frame(width: 40, height: 40)
-                        .foregroundStyle(Theme.background)
-                        .background(.primary, in: Circle())
+                        .foregroundStyle(speech.isRecording ? AnyShapeStyle(Theme.gradient) : AnyShapeStyle(.primary))
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Stop generating")
-            } else if canSend {
-                Button(action: onSend) {
-                    Image(systemName: "arrow.up")
-                        .font(.body.weight(.semibold))
-                        .frame(width: 40, height: 40)
-                        .foregroundStyle(.white)
-                        .background(Theme.gradient, in: Circle())
+                .accessibilityLabel(speech.isRecording ? "Stop dictation" : "Dictate")
+
+                if store.isStreaming {
+                    Button(action: store.stop) {
+                        Image(systemName: "stop.fill")
+                            .font(.body)
+                            .frame(width: 40, height: 40)
+                            .foregroundStyle(Theme.background)
+                            .background(.primary, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Stop generating")
+                } else if canSend {
+                    Button(action: onSend) {
+                        Image(systemName: imageMode ? "paintbrush.pointed.fill" : "arrow.up")
+                            .font(.body.weight(.semibold))
+                            .frame(width: 40, height: 40)
+                            .foregroundStyle(.white)
+                            .background(Theme.gradient, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(imageMode ? "Create image" : "Send")
+                    .transition(.scale.combined(with: .opacity))
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Send")
-                .transition(.scale.combined(with: .opacity))
             }
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 8)
         .padding(.vertical, 6)
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 28))
         .overlay {
@@ -313,10 +330,128 @@ private struct ComposerView: View {
                 .animation(.easeOut(duration: 0.1), value: speech.audioLevel)
         }
         .animation(.spring(duration: 0.25), value: canSend)
+        .animation(.spring(duration: 0.25), value: attachments.count)
         .padding(.horizontal)
         .padding(.bottom, 8)
         .padding(.top, 4)
         .frame(maxWidth: 800)
         .frame(maxWidth: .infinity)
+        .photosPicker(isPresented: $showPhotoPicker, selection: $photoItems, maxSelectionCount: 4, matching: .images)
+        .onChange(of: photoItems) { _, items in
+            guard !items.isEmpty else { return }
+            Task {
+                for item in items {
+                    if let data = try? await item.loadTransferable(type: Data.self) {
+                        attachments.append(ImageStore.jpeg(from: data, maxPixelSize: 2048, quality: 0.9) ?? data)
+                    }
+                }
+                photoItems = []
+            }
+        }
+#if os(iOS)
+        .fullScreenCover(isPresented: $showCamera) {
+            CameraPicker { data in attachments.append(data) }
+                .ignoresSafeArea()
+        }
+#endif
+    }
+
+    private var addMenu: some View {
+        Menu {
+#if os(iOS)
+            if CameraPicker.isAvailable {
+                Button { showCamera = true } label: {
+                    Label("Camera", systemImage: "camera")
+                }
+            }
+#endif
+            Button { showPhotoPicker = true } label: {
+                Label("Photos", systemImage: "photo.on.rectangle")
+            }
+            Divider()
+            Toggle(isOn: $imageMode) {
+                Label("Create image", systemImage: "paintbrush.pointed")
+            }
+            Toggle(isOn: Binding(
+                get: { store.webSearchEnabled },
+                set: { store.webSearchEnabled = $0 }
+            )) {
+                Label("Web search", systemImage: "globe")
+            }
+        } label: {
+            Image(systemName: "plus")
+                .font(.title3)
+                .frame(width: 40, height: 40)
+                .foregroundStyle(.primary)
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .accessibilityLabel("Add")
+    }
+
+    private var imageModeChip: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "paintbrush.pointed.fill")
+            Text(attachments.isEmpty ? "Image · \(store.imageModelName)" : "Edit image · Qwen-Image")
+            Button {
+                imageMode = false
+            } label: {
+                Image(systemName: "xmark")
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Leave image mode")
+        }
+        .font(.caption.weight(.medium))
+        .foregroundStyle(.white)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(Theme.gradient, in: Capsule())
+        .padding(.leading, 8)
+        .padding(.top, 4)
+    }
+
+    private var attachmentStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(Array(attachments.enumerated()), id: \.offset) { index, data in
+                    ZStack(alignment: .topTrailing) {
+                        AttachmentThumbnail(data: data)
+                            .frame(width: 64, height: 64)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                        Button {
+                            attachments.remove(at: index)
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .symbolRenderingMode(.palette)
+                                .foregroundStyle(.white, .black.opacity(0.6))
+                        }
+                        .buttonStyle(.plain)
+                        .padding(3)
+                        .accessibilityLabel("Remove image")
+                    }
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.top, 6)
+        }
+    }
+}
+
+private struct AttachmentThumbnail: View {
+    let data: Data
+
+    var body: some View {
+        if let source = CGImageSourceCreateWithData(data as CFData, nil),
+           let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+               kCGImageSourceCreateThumbnailFromImageAlways: true,
+               kCGImageSourceCreateThumbnailWithTransform: true,
+               kCGImageSourceThumbnailMaxPixelSize: 200
+           ] as CFDictionary) {
+            Image(decorative: image, scale: 1)
+                .resizable()
+                .scaledToFill()
+        } else {
+            Color.gray
+        }
     }
 }

@@ -19,8 +19,12 @@
 		<key>NSAllowsArbitraryLoads</key>
 		<false/>
 	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>Blablador uses the camera so you can ask about photos you take.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Blablador uses the microphone so you can dictate your questions.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Blablador saves generated images to your photo library.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Blablador converts your speech to text so you can talk to the assistant.</string>
 	<key>UILaunchScreen</key>

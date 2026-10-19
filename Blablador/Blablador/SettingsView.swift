@@ -45,6 +45,25 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Picker("Image model", selection: Binding(
+                        get: { store.imageModel },
+                        set: { store.imageModel = $0 }
+                    )) {
+                        ForEach(BlabladorAPI.imageModels, id: \.id) { model in
+                            Text(model.name).tag(model.id)
+                        }
+                    }
+                    Toggle("Let the assistant create images", isOn: Binding(
+                        get: { store.imageToolsEnabled },
+                        set: { store.imageToolsEnabled = $0 }
+                    ))
+                } header: {
+                    Text("Images")
+                } footer: {
+                    Text("Used for new images. Editing photos always uses Qwen-Image 2.1, the model that supports editing.")
+                }
+
+                Section {
                     Toggle("Web search", isOn: Binding(
                         get: { store.webSearchEnabled },
                         set: { store.webSearchEnabled = $0 }

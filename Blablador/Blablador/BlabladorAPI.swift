@@ -18,6 +18,14 @@ struct BlabladorAPI {
     static let baseURL = URL(string: "https://api.blablador.fz-juelich.de/v1")!
     static let defaultModel = "deepseek-v4.1-flash-at-hzdr"
 
+    /// Image models available on Blablador. Only Qwen-Image can edit images.
+    static let imageModels: [(id: String, name: String)] = [
+        ("alias-flux2", "FLUX.2-dev"),
+        ("alias-image", "Qwen-Image 2.1")
+    ]
+    static let defaultImageModel = "alias-flux2"
+    static let imageEditModel = "alias-image"
+
     var apiKey: String
 
     private func request(path: String) throws -> URLRequest {
@@ -33,6 +41,49 @@ struct BlabladorAPI {
         let (data, response) = try await URLSession.shared.data(for: request(path: "models"))
         try Self.validate(response, body: String(data: data, encoding: .utf8) ?? "")
         return try JSONDecoder().decode(Response.self, from: data).data
+    }
+
+    func generateImage(model: String, prompt: String) async throws -> Data {
+        var request = try request(path: "images/generations")
+        request.httpMethod = "POST"
+        request.timeoutInterval = 300
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["model": model, "prompt": prompt, "n": 1, "size": "1024x1024"])
+        return try await imageResponse(for: request)
+    }
+
+    func editImage(prompt: String, image: Data) async throws -> Data {
+        let boundary = "Boundary-\(UUID().uuidString)"
+        var request = try request(path: "images/edits")
+        request.httpMethod = "POST"
+        request.timeoutInterval = 300
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+
+        var body = Data()
+        func field(_ name: String, _ value: String) {
+            body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(name)\"\r\n\r\n\(value)\r\n".utf8))
+        }
+        field("model", Self.imageEditModel)
+        field("prompt", prompt)
+        let isPNG = image.starts(with: [0x89, 0x50, 0x4E, 0x47])
+        body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"image\"; filename=\"image.\(isPNG ? "png" : "jpg")\"\r\nContent-Type: image/\(isPNG ? "png" : "jpeg")\r\n\r\n".utf8))
+        body.append(image)
+        body.append(Data("\r\n--\(boundary)--\r\n".utf8))
+        request.httpBody = body
+        return try await imageResponse(for: request)
+    }
+
+    private func imageResponse(for request: URLRequest) async throws -> Data {
+        struct Response: Decodable {
+            struct Item: Decodable { let b64_json: String? }
+            let data: [Item]
+        }
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try Self.validate(response, body: String(data: data, encoding: .utf8)?.prefix(500).description ?? "")
+        guard let encoded = try JSONDecoder().decode(Response.self, from: data).data.first?.b64_json,
+              let image = Data(base64Encoded: encoded) else {
+            throw BlabladorAPIError.http(status: 200, body: "No image in response.")
+        }
+        return image
     }
 
     enum StreamEvent {

@@ -28,6 +28,18 @@ final class ChatStore: ObservableObject {
         willSet { objectWillChange.send() }
     }
 
+    @AppStorage("imageModel") var imageModel: String = BlabladorAPI.defaultImageModel {
+        willSet { objectWillChange.send() }
+    }
+
+    @AppStorage("imageToolsEnabled") var imageToolsEnabled = true {
+        willSet { objectWillChange.send() }
+    }
+
+    var imageModelName: String {
+        BlabladorAPI.imageModels.first { $0.id == imageModel }?.name ?? imageModel
+    }
+
     private static let maxToolRounds = 4
 
     private var streamTask: Task<Void, Never>?
@@ -90,29 +102,88 @@ final class ChatStore: ObservableObject {
 
     func delete(_ conversation: Conversation) {
         if conversation.id == currentID { newChat() }
+        ImageStore.delete(conversation.messages.flatMap(\.images))
         conversations.removeAll { $0.id == conversation.id }
         persist()
     }
 
     func deleteAll() {
         newChat()
+        ImageStore.delete(conversations.flatMap { $0.messages.flatMap(\.images) })
         conversations.removeAll()
         persist()
     }
 
     // MARK: - Messaging
 
-    func send(_ text: String) {
+    /// Sends a chat message. With `createImage`, the text is used directly as an image prompt.
+    func send(_ text: String, attachments: [Data] = [], createImage: Bool = false) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !isStreaming else { return }
+        guard !trimmed.isEmpty || !attachments.isEmpty, !isStreaming else { return }
 
         if currentID == nil {
-            let conversation = Conversation(title: Self.title(for: trimmed), model: selectedModel)
+            let title = trimmed.isEmpty ? "Image" : Self.title(for: trimmed)
+            let conversation = Conversation(title: title, model: selectedModel)
             conversations.insert(conversation, at: 0)
             currentID = conversation.id
         }
-        update { $0.messages.append(ChatMessage(role: .user, content: trimmed)) }
-        respond()
+        let images = attachments.map(ImageStore.save)
+        update { $0.messages.append(ChatMessage(role: .user, content: trimmed, images: images)) }
+
+        if createImage {
+            makeImage(prompt: trimmed, editing: images.last)
+        } else {
+            respond()
+        }
+    }
+
+    /// Image mode: generate a new image, or edit the attached one with Qwen-Image.
+    private func makeImage(prompt: String, editing source: String?) {
+        let reply = ChatMessage(role: .assistant, content: "")
+        update { $0.messages.append(reply) }
+        isStreaming = true
+        streamTask = Task {
+            do {
+                let image = try await runImageTool(
+                    name: source == nil ? "generate_image" : "edit_image",
+                    prompt: prompt.isEmpty ? "Improve this image" : prompt,
+                    source: source,
+                    replyID: reply.id
+                )
+                updateMessage(reply.id) { $0.images.append(image) }
+            } catch is CancellationError {
+            } catch let error as URLError where error.code == .cancelled {
+            } catch {
+                updateMessage(reply.id) {
+                    $0.content = error.localizedDescription
+                    $0.isError = true
+                }
+            }
+            updateMessage(reply.id) { $0.status = nil }
+            isStreaming = false
+            persist()
+        }
+    }
+
+    /// Runs an image tool and returns the stored file name.
+    private func runImageTool(name: String, prompt: String, source: String?, replyID: UUID) async throws -> String {
+        let data: Data
+        if name == "edit_image" {
+            guard let source, let original = ImageStore.data(for: source) else {
+                throw BlabladorAPIError.http(status: 400, body: "There is no image to edit.")
+            }
+            updateMessage(replyID) { $0.status = "Editing image with \(BlabladorAPI.imageModels.first { $0.id == BlabladorAPI.imageEditModel }?.name ?? "Qwen-Image")…" }
+            data = try await api.editImage(prompt: prompt, image: ImageStore.jpeg(from: original, maxPixelSize: 1024) ?? original)
+        } else {
+            updateMessage(replyID) { $0.status = "Creating image with \(imageModelName)…" }
+            data = try await api.generateImage(model: imageModel, prompt: prompt)
+        }
+        return ImageStore.save(data)
+    }
+
+    /// Most recent image in the current conversation, used as the source for edits.
+    private var latestImage: String? {
+        current?.messages.last { !$0.images.isEmpty }?.images.last
     }
 
     /// Drops the last assistant reply and asks again.
@@ -137,13 +208,17 @@ final class ChatStore: ObservableObject {
 
         var wire: [[String: Any]] = []
         var system = systemPrompt
+        let today = Date().formatted(date: .complete, time: .omitted)
+        system += "\n\nToday is \(today)."
         if webSearchEnabled {
-            let today = Date().formatted(date: .complete, time: .omitted)
-            system += "\n\nToday is \(today). You can use the web_search tool for current or uncertain information. Cite sources inline as [1], [2] matching the search results."
+            system += " You can use the web_search tool for current or uncertain information. Cite sources inline as [1], [2] matching the search results."
+        }
+        if imageToolsEnabled {
+            system += " You can create images with generate_image and modify the latest image in the chat with edit_image. Never describe an image as created unless the tool succeeded."
         }
         system = system.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !system.isEmpty { wire.append(["role": "system", "content": system]) }
-        wire += conversation.messages.filter { !$0.isError }.map { ["role": $0.role.rawValue, "content": $0.content] }
+        wire.append(["role": "system", "content": system])
+        wire += conversation.messages.filter { !$0.isError }.map(Self.wireMessage)
 
         let reply = ChatMessage(role: .assistant, content: "")
         let model = selectedModel
@@ -153,12 +228,19 @@ final class ChatStore: ObservableObject {
         }
 
         isStreaming = true
-        let tools = webSearchEnabled ? [WebSearch.tool] : []
+        var tools: [[String: Any]] = []
+        if webSearchEnabled { tools.append(WebSearch.tool) }
+        if imageToolsEnabled { tools += [ImageTools.generate, ImageTools.edit] }
         streamTask = Task {
             do {
                 try await runTurn(model: model, messages: wire, tools: tools, replyID: reply.id)
             } catch is CancellationError {
             } catch let error as URLError where error.code == .cancelled {
+            } catch BlabladorAPIError.http(let status, let body) where status == 400 && body.localizedCaseInsensitiveContains("image") {
+                updateMessage(reply.id) {
+                    $0.content = "\(RemoteModel(id: model).displayName) can't read images. Pick a vision model such as DeepSeek-V4.1-Flash or Qwen3.8-27B."
+                    $0.isError = true
+                }
             } catch {
                 updateMessage(reply.id) {
                     $0.content = error.localizedDescription
@@ -167,7 +249,7 @@ final class ChatStore: ObservableObject {
             }
             updateMessage(reply.id) { message in
                 message.status = nil
-                if message.content.isEmpty, !Task.isCancelled {
+                if message.content.isEmpty, message.images.isEmpty, !Task.isCancelled {
                     message.content = "No response from the model."
                     message.isError = true
                 }
@@ -183,47 +265,72 @@ final class ChatStore: ObservableObject {
         var tools = tools
 
         for round in 0...Self.maxToolRounds {
-            // Offer tools only while rounds remain, so the model has to answer eventually.
-            let offered = round < Self.maxToolRounds ? tools : []
+            let isFinalRound = round == Self.maxToolRounds
+            if isFinalRound {
+                // Keep the tools declared (removing them makes DeepSeek print raw tool markup),
+                // but tell the model to answer with what it has.
+                messages.append(["role": "user", "content": "Stop using tools now and write the final answer using the results above."])
+            }
+            let prefix = current?.messages.first { $0.id == replyID }?.content ?? ""
             var text = ""
             var calls: [BlabladorAPI.ToolCall] = []
             do {
-                for try await event in api.streamChat(model: model, messages: messages, tools: offered) {
+                for try await event in api.streamChat(model: model, messages: messages, tools: tools) {
                     switch event {
                     case let .content(delta):
                         text += delta
+                        let visible = Self.stripToolMarkup(text)
                         updateMessage(replyID) {
                             $0.status = nil
-                            $0.content += delta
+                            $0.content = prefix + visible
                         }
                     case let .toolCalls(toolCalls):
                         calls = toolCalls
                     }
                 }
-            } catch BlabladorAPIError.http(let status, _) where status == 400 && !offered.isEmpty && round == 0 {
+            } catch BlabladorAPIError.http(let status, let body) where status == 400 && !tools.isEmpty && round == 0 && !body.localizedCaseInsensitiveContains("image") {
                 // Model without tool support: answer without web search.
                 tools = []
                 continue
             }
 
+            if isFinalRound || (calls.isEmpty && Self.containsToolMarkup(text)) {
+                // Model still wants to search; nothing more to run.
+                if Self.stripToolMarkup(text).isEmpty {
+                    updateMessage(replyID) { $0.content = prefix }
+                }
+                return
+            }
             guard !calls.isEmpty else { return }
 
             var assistant: [String: Any] = ["role": "assistant", "tool_calls": calls.map(\.wire)]
             assistant["content"] = text.isEmpty ? NSNull() : text
             messages.append(assistant)
-            if !text.isEmpty {
-                updateMessage(replyID) { $0.content += "\n\n" }
-            }
+            // Preambles like "Let me look that up" are status, not part of the answer.
+            updateMessage(replyID) { $0.content = prefix }
 
             for call in calls {
                 let arguments = (try? JSONSerialization.jsonObject(with: Data(call.arguments.utf8))) as? [String: Any]
                 let query = arguments?["query"] as? String ?? ""
-                updateMessage(replyID) { $0.status = "Searching “\(query)”" }
+                let prompt = arguments?["prompt"] as? String ?? ""
 
                 let output: String
-                if call.name == "web_search", !query.isEmpty {
+                if call.name == "generate_image" || call.name == "edit_image", !prompt.isEmpty {
                     do {
-                        let results = try await WebSearch.search(query)
+                        let image = try await runImageTool(name: call.name, prompt: prompt, source: latestImage, replyID: replyID)
+                        updateMessage(replyID) { $0.images.append(image) }
+                        output = "The image was created and is shown to the user. Do not include it or a link in your answer; just briefly comment on it."
+                    } catch {
+                        output = "Image tool failed: \(error.localizedDescription)"
+                    }
+                } else if call.name == "web_search", !query.isEmpty {
+                    updateMessage(replyID) { $0.status = "Searching “\(query)”" }
+                    do {
+                        let results = try await WebSearch.search(
+                            query,
+                            category: arguments?["category"] as? String,
+                            timeRange: arguments?["time_range"] as? String
+                        )
                         var numbered: [(number: Int, result: SearchResult)] = []
                         updateMessage(replyID) { message in
                             for result in results {
@@ -244,8 +351,40 @@ final class ChatStore: ObservableObject {
                 }
                 messages.append(["role": "tool", "tool_call_id": call.id, "content": output])
             }
-            updateMessage(replyID) { $0.status = "Reading results…" }
+            updateMessage(replyID) { $0.status = "Thinking…" }
         }
+    }
+
+    /// User attachments are sent as base64 images; generated images are only mentioned in text.
+    private static func wireMessage(_ message: ChatMessage) -> [String: Any] {
+        guard message.role == .user, !message.images.isEmpty else {
+            var content = message.content
+            if message.role == .assistant, !message.images.isEmpty {
+                content = "[Generated image]\n" + content
+            }
+            return ["role": message.role.rawValue, "content": content]
+        }
+        var parts: [[String: Any]] = []
+        if !message.content.isEmpty {
+            parts.append(["type": "text", "text": message.content])
+        }
+        for name in message.images {
+            guard let data = ImageStore.data(for: name), let jpeg = ImageStore.jpeg(from: data) else { continue }
+            parts.append(["type": "image_url", "image_url": ["url": "data:image/jpeg;base64," + jpeg.base64EncodedString()]])
+        }
+        return ["role": "user", "content": parts]
+    }
+
+    private static let toolMarkupPattern = #"<[｜|]\s*DSML\s*[｜|][\s\S]*$"#
+
+    private static func containsToolMarkup(_ text: String) -> Bool {
+        text.range(of: toolMarkupPattern, options: .regularExpression) != nil
+    }
+
+    /// Removes raw tool-call markup some models emit as text instead of structured tool calls.
+    private static func stripToolMarkup(_ text: String) -> String {
+        text.replacingOccurrences(of: toolMarkupPattern, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func update(_ change: (inout Conversation) -> Void) {

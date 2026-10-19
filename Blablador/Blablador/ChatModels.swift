@@ -13,14 +13,17 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     var date = Date()
     var isError = false
     var sources: [SearchResult] = []
+    /// File names in ImageStore: attachments on user messages, generated images on replies.
+    var images: [String] = []
     /// Transient status shown while tools run, e.g. "Searching the web…"
     var status: String?
 
-    private enum CodingKeys: String, CodingKey { case id, role, content, date, isError, sources }
+    private enum CodingKeys: String, CodingKey { case id, role, content, date, isError, sources, images }
 
-    init(role: ChatRole, content: String) {
+    init(role: ChatRole, content: String, images: [String] = []) {
         self.role = role
         self.content = content
+        self.images = images
     }
 
     init(from decoder: Decoder) throws {
@@ -31,6 +34,7 @@ struct ChatMessage: Identifiable, Codable, Equatable {
         date = try c.decode(Date.self, forKey: .date)
         isError = try c.decode(Bool.self, forKey: .isError)
         sources = try c.decodeIfPresent([SearchResult].self, forKey: .sources) ?? []
+        images = try c.decodeIfPresent([String].self, forKey: .images) ?? []
     }
 }
 
