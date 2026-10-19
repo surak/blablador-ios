@@ -93,6 +93,18 @@ xcodebuild -project Blablador/Blablador.xcodeproj -scheme Blablador -sdk macosx 
 xcodebuild -project Blablador/Blablador.xcodeproj -scheme Blablador -sdk iphoneos -configuration Release
 ```
 
+### Mac installer (DMG)
+
+```bash
+xcodebuild -project Blablador/Blablador.xcodeproj -scheme Blablador -sdk macosx -configuration Release \
+  -destination 'generic/platform=macOS' ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO -derivedDataPath build/dd build
+scripts/make-dmg.sh build/dd/Build/Products/Release/Blablador.app Blablador-macOS.dmg
+```
+
+`make-dmg.sh` draws the installer background (`scripts/dmg/background.swift`) and lays out the window with
+[dmgbuild](https://github.com/dmgbuild/dmgbuild) (`scripts/dmg/settings.py`): app and Applications side by side with an
+arrow, the first-launch command, and the app icon on the mounted volume. dmgbuild is installed into a temporary venv if missing.
+
 ## License
 
 Copyright (c) 2025 Helmholtz-Zentrum Jülich
