@@ -4,7 +4,7 @@ This file contains instructions for AI agents working on this iOS project.
 
 ## Project Overview
 
-Blablador is a SwiftUI-based iOS application that wraps the Helmholtz Blablador web application in a native iOS experience. The app uses WKWebView to render the web content and provides navigation controls, refresh functionality, and URL sharing.
+Blablador is a native SwiftUI chat client for the Helmholtz Blablador OpenAI-compatible API (`https://api.blablador.fz-juelich.de/v1`). It streams chat completions, supports on-device voice dictation, read-aloud, chat history and model selection (default `deepseek-v4.1-flash-at-hzdr`).
 
 ## Code Style Guidelines
 
@@ -17,9 +17,15 @@ Blablador is a SwiftUI-based iOS application that wraps the Helmholtz Blablador 
 
 ## File Structure
 
-- `BlabladorApp.swift`: Main app entry point, contains the App struct and root scene configuration
-- `WebView.swift`: WebView implementation with navigation controls and state management
-- `Info.plist`: App configuration (display name, version info, etc.)
+- `BlabladorApp.swift`: App entry point, owns the `ChatStore`
+- `ChatModels.swift`: `ChatMessage`, `Conversation`, `RemoteModel`
+- `BlabladorAPI.swift`: `/models` and streaming `/chat/completions` client
+- `ChatStore.swift`: Conversations, persistence, model selection, sending/streaming
+- `KeychainHelper.swift`: API key storage
+- `SpeechRecognizer.swift`: Dictation (Speech framework) and read-aloud (AVSpeechSynthesizer)
+- `ChatView.swift`, `MessageView.swift`, `HistoryView.swift`, `SettingsView.swift`, `Theme.swift`: UI
+- `SiriIntents.swift`, `SiriCommandCenter.swift`: "Ask Blablador" Siri shortcut, which starts a new chat
+- `Info.plist`: App configuration, microphone/speech permission strings
 
 ## Testing
 
@@ -30,42 +36,15 @@ Before making changes:
 
 ## Common Tasks
 
-### Changing the Default URL
-
-Edit `WebConstants.startURL` in `WebView.swift`:
-
-```swift
-private enum WebConstants {
-    static let startURL = URL(string: "https://your-target-url.com")
-}
-```
-
-### Adding New Toolbar Buttons
-
-Modify the `ToolbarItemGroup` in `WebContainerView.swift`:
-
-```swift
-ToolbarItemGroup(placement: .bottomBar) {
-    // existing buttons...
-    Button(action: yourAction) {
-        Image(systemName: "your.icon")
-    }
-}
-```
-
-### Modifying WebView Behavior
-
-The `WKWebViewConfiguration` in `WebViewStore` init method can be customized to:
-- Enable/disable JavaScript
-- Set custom user agents
-- Configure cookies
-- Add message handlers
+- Change the default model: `BlabladorAPI.defaultModel` in `BlabladorAPI.swift`
+- Change the API endpoint: `BlabladorAPI.baseURL`
+- New Swift files must also be added to `Blablador.xcodeproj/project.pbxproj` (or regenerate with `xcodegen`)
 
 ## Dependencies
 
 - SwiftUI
-- WebKit
-- UIKit (for UIActivityViewController on iOS)
+- Speech, AVFoundation
+- Security (Keychain)
 
 ## Build Configuration
 
@@ -76,7 +55,4 @@ The `WKWebViewConfiguration` in `WebViewStore` init method can be customized to:
 
 ## Notes
 
-- The app uses a WebView wrapper approach rather than a fully native implementation
-- Navigation gestures are enabled by default
-- JavaScript is enabled for the web application
-- The app uses iOS 17+ NavigationStack instead of NavigationView
+- The API key is entered by the user in Settings and stored in the Keychain; never hardcode it.

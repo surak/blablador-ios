@@ -8,20 +8,40 @@
 
 /* Begin PBXBuildFile section */
 		9B2A76A6E3E0A1B20000000E /* BlabladorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000006 /* BlabladorApp.swift */; };
-		9B2A76A6E3E0A1B20000000F /* WebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000007 /* WebView.swift */; };
+		9B2A76A6E3E0A1B200000010 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000008 /* Assets.xcassets */; };
 		9B2A76A6E3E0A1B200000023 /* SiriCommandCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000021 /* SiriCommandCenter.swift */; };
 		9B2A76A6E3E0A1B200000024 /* SiriIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000022 /* SiriIntents.swift */; };
-		9B2A76A6E3E0A1B200000010 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000008 /* Assets.xcassets */; };
+		9B2A76A6E3E0A1B200000060 /* ChatModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000040 /* ChatModels.swift */; };
+		9B2A76A6E3E0A1B200000061 /* BlabladorAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000041 /* BlabladorAPI.swift */; };
+		9B2A76A6E3E0A1B200000062 /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000042 /* KeychainHelper.swift */; };
+		9B2A76A6E3E0A1B200000063 /* ChatStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000043 /* ChatStore.swift */; };
+		9B2A76A6E3E0A1B200000064 /* SpeechRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000044 /* SpeechRecognizer.swift */; };
+		9B2A76A6E3E0A1B200000065 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000045 /* Theme.swift */; };
+		9B2A76A6E3E0A1B200000066 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000046 /* ChatView.swift */; };
+		9B2A76A6E3E0A1B200000067 /* MessageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000047 /* MessageView.swift */; };
+		9B2A76A6E3E0A1B200000068 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000048 /* HistoryView.swift */; };
+		9B2A76A6E3E0A1B200000069 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000049 /* SettingsView.swift */; };
+		9B2A76A6E3E0A1B20000006A /* WebSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B20000004A /* WebSearch.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		9B2A76A6E3E0A1B200000006 /* BlabladorApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlabladorApp.swift; sourceTree = "<group>"; };
-		9B2A76A6E3E0A1B200000007 /* WebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebView.swift; sourceTree = "<group>"; };
-		9B2A76A6E3E0A1B200000021 /* SiriCommandCenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SiriCommandCenter.swift; sourceTree = "<group>"; };
-		9B2A76A6E3E0A1B200000022 /* SiriIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SiriIntents.swift; sourceTree = "<group>"; };
 		9B2A76A6E3E0A1B200000008 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		9B2A76A6E3E0A1B200000009 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		9B2A76A6E3E0A1B20000000A /* Blablador.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Blablador.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9B2A76A6E3E0A1B200000021 /* SiriCommandCenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SiriCommandCenter.swift; sourceTree = "<group>"; };
+		9B2A76A6E3E0A1B200000022 /* SiriIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SiriIntents.swift; sourceTree = "<group>"; };
+		9B2A76A6E3E0A1B200000040 /* ChatModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatModels.swift; sourceTree = "<group>"; };
+		9B2A76A6E3E0A1B200000041 /* BlabladorAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlabladorAPI.swift; sourceTree = "<group>"; };
+		9B2A76A6E3E0A1B200000042 /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
+		9B2A76A6E3E0A1B200000043 /* ChatStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatStore.swift; sourceTree = "<group>"; };
+		9B2A76A6E3E0A1B200000044 /* SpeechRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechRecognizer.swift; sourceTree = "<group>"; };
+		9B2A76A6E3E0A1B200000045 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		9B2A76A6E3E0A1B200000046 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
+		9B2A76A6E3E0A1B200000047 /* MessageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageView.swift; sourceTree = "<group>"; };
+		9B2A76A6E3E0A1B200000048 /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
+		9B2A76A6E3E0A1B200000049 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		9B2A76A6E3E0A1B20000004A /* WebSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSearch.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -55,7 +75,17 @@
 			isa = PBXGroup;
 			children = (
 				9B2A76A6E3E0A1B200000006 /* BlabladorApp.swift */,
-				9B2A76A6E3E0A1B200000007 /* WebView.swift */,
+				9B2A76A6E3E0A1B20000004A /* WebSearch.swift */,
+				9B2A76A6E3E0A1B200000040 /* ChatModels.swift */,
+				9B2A76A6E3E0A1B200000041 /* BlabladorAPI.swift */,
+				9B2A76A6E3E0A1B200000042 /* KeychainHelper.swift */,
+				9B2A76A6E3E0A1B200000043 /* ChatStore.swift */,
+				9B2A76A6E3E0A1B200000044 /* SpeechRecognizer.swift */,
+				9B2A76A6E3E0A1B200000045 /* Theme.swift */,
+				9B2A76A6E3E0A1B200000046 /* ChatView.swift */,
+				9B2A76A6E3E0A1B200000047 /* MessageView.swift */,
+				9B2A76A6E3E0A1B200000048 /* HistoryView.swift */,
+				9B2A76A6E3E0A1B200000049 /* SettingsView.swift */,
 				9B2A76A6E3E0A1B200000021 /* SiriCommandCenter.swift */,
 				9B2A76A6E3E0A1B200000022 /* SiriIntents.swift */,
 				9B2A76A6E3E0A1B200000008 /* Assets.xcassets */,
@@ -132,7 +162,17 @@
 			buildActionMask = 2147483647;
 			files = (
 				9B2A76A6E3E0A1B20000000E /* BlabladorApp.swift in Sources */,
-				9B2A76A6E3E0A1B20000000F /* WebView.swift in Sources */,
+				9B2A76A6E3E0A1B20000006A /* WebSearch.swift in Sources */,
+				9B2A76A6E3E0A1B200000060 /* ChatModels.swift in Sources */,
+				9B2A76A6E3E0A1B200000061 /* BlabladorAPI.swift in Sources */,
+				9B2A76A6E3E0A1B200000062 /* KeychainHelper.swift in Sources */,
+				9B2A76A6E3E0A1B200000063 /* ChatStore.swift in Sources */,
+				9B2A76A6E3E0A1B200000064 /* SpeechRecognizer.swift in Sources */,
+				9B2A76A6E3E0A1B200000065 /* Theme.swift in Sources */,
+				9B2A76A6E3E0A1B200000066 /* ChatView.swift in Sources */,
+				9B2A76A6E3E0A1B200000067 /* MessageView.swift in Sources */,
+				9B2A76A6E3E0A1B200000068 /* HistoryView.swift in Sources */,
+				9B2A76A6E3E0A1B200000069 /* SettingsView.swift in Sources */,
 				9B2A76A6E3E0A1B200000023 /* SiriCommandCenter.swift in Sources */,
 				9B2A76A6E3E0A1B200000024 /* SiriIntents.swift in Sources */,
 			);
@@ -147,19 +187,25 @@
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_IDENTITY = "-";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 4Q84Z7RZ3Z;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Blablador/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.6;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "de.fz-juelich.blablador";
 				PRODUCT_NAME = Blablador;
 				SDKROOT = macosx;
-				SUPPORTED_PLATFORMS = "macosx";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
 				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -169,20 +215,26 @@
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_IDENTITY = "-";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 4Q84Z7RZ3Z;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Blablador/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.6;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "de.fz-juelich.blablador";
 				PRODUCT_NAME = Blablador;
 				SDKROOT = macosx;
-				SUPPORTED_PLATFORMS = "macosx";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
 				SWIFT_OPTIMIZATION_LEVEL = "-Owholemodule";
 				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
