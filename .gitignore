@@ -4,3 +4,4 @@ build-device/
 xcuserdata/
 *.xcworkspace/xcuserdata/
 *.xcuserstate
+.DS_Store
