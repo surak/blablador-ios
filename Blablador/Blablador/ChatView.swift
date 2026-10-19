@@ -1,6 +1,7 @@
 import ImageIO
 import PhotosUI
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ChatView: View {
     @EnvironmentObject private var store: ChatStore
@@ -10,6 +11,7 @@ struct ChatView: View {
 
     @State private var draft = ""
     @State private var attachments: [Data] = []
+    @State private var documents: [DocumentAttachment] = []
     @State private var imageMode = false
     @State private var showHistory = false
     @State private var showSettings = false
@@ -73,7 +75,7 @@ struct ChatView: View {
                     store.send(prompt)
                 }
             }
-            ComposerView(draft: $draft, attachments: $attachments, imageMode: $imageMode, speech: speech, focused: $inputFocused, onSend: send)
+            ComposerView(draft: $draft, attachments: $attachments, documents: $documents, imageMode: $imageMode, speech: speech, focused: $inputFocused, onSend: send)
         }
         .background(Theme.background)
         .toolbar { toolbar }
@@ -172,9 +174,11 @@ struct ChatView: View {
         inputFocused = false
         let text = draft
         let images = attachments
+        let pdfs = documents
         draft = ""
         attachments = []
-        store.send(text, attachments: images, createImage: imageMode)
+        documents = []
+        store.send(text, attachments: images, documents: pdfs, createImage: imageMode)
     }
 
     private func handleSiri(_ command: String?) {
@@ -207,15 +211,8 @@ private struct ModelMenu: View {
         } label: {
 #if os(macOS)
             // The window title already shows "Blablador"; use a native pop-up for the model.
-            Label {
-                Text(store.selectedModelName)
-            } icon: {
-                Image("Avatar")
-                    .resizable()
-                    .interpolation(.high)
-                    .frame(width: 16, height: 16)
-            }
-            .labelStyle(.titleAndIcon)
+            // No avatar: macOS 26 toolbars ignore the image frame and draw it full size.
+            Text(store.selectedModelName)
 #else
             VStack(spacing: 0) {
                 HStack(spacing: 6) {
@@ -319,6 +316,7 @@ private struct WelcomeView: View {
 private struct ComposerView: View {
     @Binding var draft: String
     @Binding var attachments: [Data]
+    @Binding var documents: [DocumentAttachment]
     @Binding var imageMode: Bool
     @ObservedObject var speech: SpeechRecognizer
     var focused: FocusState<Bool>.Binding
@@ -328,9 +326,12 @@ private struct ComposerView: View {
     @State private var photoItems: [PhotosPickerItem] = []
     @State private var showPhotoPicker = false
     @State private var showCamera = false
+    @State private var showFileImporter = false
+    @State private var readingPDFs = 0
+    @State private var pdfError: String?
 
     private var canSend: Bool {
-        !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty
+        readingPDFs == 0 && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty || !documents.isEmpty)
     }
 
     private var placeholder: String {
@@ -343,6 +344,9 @@ private struct ComposerView: View {
         VStack(alignment: .leading, spacing: 8) {
             if !attachments.isEmpty {
                 attachmentStrip
+            }
+            if !documents.isEmpty || readingPDFs > 0 {
+                documentStrip
             }
             if imageMode {
                 imageModeChip
@@ -404,6 +408,7 @@ private struct ComposerView: View {
         }
         .animation(.spring(duration: 0.25), value: canSend)
         .animation(.spring(duration: 0.25), value: attachments.count)
+        .animation(.spring(duration: 0.25), value: documents.count)
         .padding(.horizontal)
         .padding(.bottom, 8)
         .padding(.top, 4)
@@ -420,6 +425,25 @@ private struct ComposerView: View {
                 }
                 photoItems = []
             }
+        }
+        .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.pdf], allowsMultipleSelection: true) { result in
+            guard case .success(let urls) = result else { return }
+            for url in urls {
+                readingPDFs += 1
+                Task {
+                    defer { readingPDFs -= 1 }
+                    do {
+                        documents.append(try await PDFExtractor.extract(from: url))
+                    } catch {
+                        pdfError = "\(url.lastPathComponent): \(error.localizedDescription)"
+                    }
+                }
+            }
+        }
+        .alert("Couldn't read PDF", isPresented: Binding(get: { pdfError != nil }, set: { if !$0 { pdfError = nil } })) {
+            Button("OK") {}
+        } message: {
+            Text(pdfError ?? "")
         }
 #if os(iOS)
         .fullScreenCover(isPresented: $showCamera) {
@@ -440,6 +464,9 @@ private struct ComposerView: View {
 #endif
             Button { showPhotoPicker = true } label: {
                 Label("Photos", systemImage: "photo.on.rectangle")
+            }
+            Button { showFileImporter = true } label: {
+                Label("PDF", systemImage: "doc.richtext")
             }
             Divider()
             Toggle(isOn: $imageMode) {
@@ -535,6 +562,72 @@ private struct ComposerView: View {
             .padding(.horizontal, 8)
             .padding(.top, 6)
         }
+    }
+}
+
+extension ComposerView {
+    private var documentStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(documents) { document in
+                    DocumentChip(document: document) {
+                        documents.removeAll { $0.id == document.id }
+                    }
+                }
+                if readingPDFs > 0 {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        Text("Reading PDF…")
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.top, 6)
+        }
+    }
+}
+
+/// A PDF attachment: file name, page count and whether OCR was used.
+struct DocumentChip: View {
+    let document: DocumentAttachment
+    var onRemove: (() -> Void)?
+
+    private var detail: String {
+        let pages = document.pageCount == 1 ? "1 page" : "\(document.pageCount) pages"
+        return document.ocrPageCount > 0 ? "\(pages) · OCR" : pages
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "doc.richtext")
+                .font(.title3)
+                .foregroundStyle(Theme.gradient)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(document.name)
+                    .font(.caption.weight(.medium))
+                    .lineLimit(1)
+                Text(detail)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: 180, alignment: .leading)
+            if let onRemove {
+                Button(action: onRemove) {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Remove \(document.name)")
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Theme.background.opacity(0.6), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.secondary.opacity(0.3)))
     }
 }
 

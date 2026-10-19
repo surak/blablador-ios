@@ -132,18 +132,18 @@ final class ChatStore: ObservableObject {
     // MARK: - Messaging
 
     /// Sends a chat message. With `createImage`, the text is used directly as an image prompt.
-    func send(_ text: String, attachments: [Data] = [], createImage: Bool = false) {
+    func send(_ text: String, attachments: [Data] = [], documents: [DocumentAttachment] = [], createImage: Bool = false) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty || !attachments.isEmpty, !isStreaming else { return }
+        guard !trimmed.isEmpty || !attachments.isEmpty || !documents.isEmpty, !isStreaming else { return }
 
         if currentID == nil {
-            let title = trimmed.isEmpty ? "Image" : Self.title(for: trimmed)
+            let title = !trimmed.isEmpty ? Self.title(for: trimmed) : documents.first?.name ?? "Image"
             let conversation = Conversation(title: title, model: selectedModel)
             conversations.insert(conversation, at: 0)
             currentID = conversation.id
         }
         let images = attachments.map(ImageStore.save)
-        update { $0.messages.append(ChatMessage(role: .user, content: trimmed, images: images)) }
+        update { $0.messages.append(ChatMessage(role: .user, content: trimmed, images: images, documents: documents)) }
 
         if createImage {
             makeImage(prompt: trimmed, editing: images.last)
@@ -371,17 +371,23 @@ final class ChatStore: ObservableObject {
     }
 
     /// User attachments are sent as base64 images; generated images are only mentioned in text.
+    /// Attached PDFs are sent as text ahead of the user's message.
     private static func wireMessage(_ message: ChatMessage) -> [String: Any] {
+        var text = message.content
+        if !message.documents.isEmpty {
+            let documents = message.documents.map { "<document name=\"\($0.name)\">\n\($0.text)\n</document>" }
+            text = (documents + [text]).filter { !$0.isEmpty }.joined(separator: "\n\n")
+        }
         guard message.role == .user, !message.images.isEmpty else {
-            var content = message.content
+            var content = text
             if message.role == .assistant, !message.images.isEmpty {
                 content = "[Generated image]\n" + content
             }
             return ["role": message.role.rawValue, "content": content]
         }
         var parts: [[String: Any]] = []
-        if !message.content.isEmpty {
-            parts.append(["type": "text", "text": message.content])
+        if !text.isEmpty {
+            parts.append(["type": "text", "text": text])
         }
         for name in message.images {
             guard let data = ImageStore.data(for: name), let jpeg = ImageStore.jpeg(from: data) else { continue }

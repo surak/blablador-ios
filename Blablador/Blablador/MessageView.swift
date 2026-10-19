@@ -34,6 +34,9 @@ struct MessageView: View {
                             }
                         }
                     }
+                    ForEach(message.documents) { document in
+                        DocumentChip(document: document)
+                    }
                     if !message.content.isEmpty {
                         Text(message.content)
                             .textSelection(.enabled)

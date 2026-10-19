@@ -24,6 +24,7 @@
 		9B2A76A6E3E0A1B20000006A /* WebSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B20000004A /* WebSearch.swift */; };
 		9B2A76A6E3E0A1B20000006B /* ImageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B20000004B /* ImageStore.swift */; };
 		9B2A76A6E3E0A1B20000006C /* CameraPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B20000004C /* CameraPicker.swift */; };
+		9B2A76A6E3E0A1B2000000F1 /* PDFExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B2000000F0 /* PDFExtractor.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -46,6 +47,7 @@
 		9B2A76A6E3E0A1B20000004A /* WebSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSearch.swift; sourceTree = "<group>"; };
 		9B2A76A6E3E0A1B20000004B /* ImageStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageStore.swift; sourceTree = "<group>"; };
 		9B2A76A6E3E0A1B20000004C /* CameraPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraPicker.swift; sourceTree = "<group>"; };
+		9B2A76A6E3E0A1B2000000F0 /* PDFExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFExtractor.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -80,6 +82,7 @@
 			children = (
 				9B2A76A6E3E0A1B200000006 /* BlabladorApp.swift */,
 				9B2A76A6E3E0A1B20000004C /* CameraPicker.swift */,
+				9B2A76A6E3E0A1B2000000F0 /* PDFExtractor.swift */,
 				9B2A76A6E3E0A1B20000004B /* ImageStore.swift */,
 				9B2A76A6E3E0A1B20000004A /* WebSearch.swift */,
 				9B2A76A6E3E0A1B200000040 /* ChatModels.swift */,
@@ -169,6 +172,7 @@
 			files = (
 				9B2A76A6E3E0A1B20000000E /* BlabladorApp.swift in Sources */,
 				9B2A76A6E3E0A1B20000006C /* CameraPicker.swift in Sources */,
+				9B2A76A6E3E0A1B2000000F1 /* PDFExtractor.swift in Sources */,
 				9B2A76A6E3E0A1B20000006B /* ImageStore.swift in Sources */,
 				9B2A76A6E3E0A1B20000006A /* WebSearch.swift in Sources */,
 				9B2A76A6E3E0A1B200000060 /* ChatModels.swift in Sources */,

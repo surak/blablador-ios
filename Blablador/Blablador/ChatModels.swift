@@ -15,15 +15,18 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     var sources: [SearchResult] = []
     /// File names in ImageStore: attachments on user messages, generated images on replies.
     var images: [String] = []
+    /// PDFs attached to user messages, as extracted text.
+    var documents: [DocumentAttachment] = []
     /// Transient status shown while tools run, e.g. "Searching the web…"
     var status: String?
 
-    private enum CodingKeys: String, CodingKey { case id, role, content, date, isError, sources, images }
+    private enum CodingKeys: String, CodingKey { case id, role, content, date, isError, sources, images, documents }
 
-    init(role: ChatRole, content: String, images: [String] = []) {
+    init(role: ChatRole, content: String, images: [String] = [], documents: [DocumentAttachment] = []) {
         self.role = role
         self.content = content
         self.images = images
+        self.documents = documents
     }
 
     init(from decoder: Decoder) throws {
@@ -35,6 +38,7 @@ struct ChatMessage: Identifiable, Codable, Equatable {
         isError = try c.decode(Bool.self, forKey: .isError)
         sources = try c.decodeIfPresent([SearchResult].self, forKey: .sources) ?? []
         images = try c.decodeIfPresent([String].self, forKey: .images) ?? []
+        documents = try c.decodeIfPresent([DocumentAttachment].self, forKey: .documents) ?? []
     }
 }
 
