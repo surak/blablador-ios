@@ -105,8 +105,12 @@ struct MessageView: View {
                     if message.content.isEmpty {
                         if message.status == nil && message.images.isEmpty && message.audio.isEmpty { TypingIndicator() }
                     } else if message.isError {
-                        Label(message.content, systemImage: "exclamationmark.triangle")
-                            .foregroundStyle(.red)
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            Image(systemName: "exclamationmark.triangle")
+                            Text(message.content)
+                                .textSelection(.enabled)
+                        }
+                        .foregroundStyle(.red)
                     } else {
                         MarkdownText(text: message.content)
                     }

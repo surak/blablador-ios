@@ -40,7 +40,13 @@ struct ChatView: View {
                         .navigationSplitViewColumnWidth(min: 220, ideal: 280)
 #endif
                 } detail: {
-                    NavigationStack { chat }
+                    NavigationStack {
+                        chat
+#if os(macOS)
+                            // Names the window and its tab.
+                            .navigationTitle(store.current?.title ?? "New chat")
+#endif
+                    }
                 }
             } else {
                 NavigationStack { chat }

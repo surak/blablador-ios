@@ -22,7 +22,7 @@ struct SettingsView: View {
                     Text("Blablador API")
                 } footer: {
                     if let error = store.modelsError {
-                        Text(error).foregroundStyle(.red)
+                        Text(error).foregroundStyle(.red).textSelection(.enabled)
                     } else if !store.models.isEmpty {
                         Text("Connected – \(store.chatModels.count) chat models available.")
                     }

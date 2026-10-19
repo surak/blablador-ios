@@ -1,9 +1,44 @@
+import Combine
 import Foundation
 import SwiftUI
 
+/// Chat history shared by every window, so each window can show its own conversation.
+@MainActor
+final class ConversationLibrary: ObservableObject {
+    static let shared = ConversationLibrary()
+
+    @Published var conversations: [Conversation] = []
+
+    private static var storageURL: URL {
+        let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory.appendingPathComponent("conversations.json")
+    }
+
+    private init() {
+        if let data = try? Data(contentsOf: Self.storageURL),
+           let saved = try? JSONDecoder().decode([Conversation].self, from: data) {
+            conversations = saved
+        }
+    }
+
+    func persist() {
+        guard let data = try? JSONEncoder().encode(conversations) else { return }
+        try? data.write(to: Self.storageURL, options: .atomic)
+    }
+}
+
+/// State of one window: its open conversation, streaming and settings sheet.
 @MainActor
 final class ChatStore: ObservableObject {
-    @Published var conversations: [Conversation] = []
+    private let library = ConversationLibrary.shared
+    private var libraryObserver: AnyCancellable?
+
+    var conversations: [Conversation] {
+        get { library.conversations }
+        set { library.conversations = newValue }
+    }
+
     @Published var currentID: UUID?
     @Published var models: [RemoteModel] = []
     @Published var isStreaming = false
@@ -14,6 +49,7 @@ final class ChatStore: ObservableObject {
     @Published var apiKey: String {
         didSet {
             KeychainHelper.save(apiKey, for: "apiKey")
+            NotificationCenter.default.post(name: Self.apiKeyChanged, object: nil)
             userName = ""
             Task {
                 await loadModels()
@@ -55,19 +91,19 @@ final class ChatStore: ObservableObject {
 
     private var streamTask: Task<Void, Never>?
 
-    private static var storageURL: URL {
-        let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory.appendingPathComponent("conversations.json")
-    }
-
     init() {
         apiKey = KeychainHelper.read("apiKey") ?? ""
-        if let data = try? Data(contentsOf: Self.storageURL),
-           let saved = try? JSONDecoder().decode([Conversation].self, from: data) {
-            conversations = saved
+        libraryObserver = library.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }
+        // Another window changed the key.
+        NotificationCenter.default.addObserver(forName: Self.apiKeyChanged, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, let key = KeychainHelper.read("apiKey"), key != self.apiKey else { return }
+                self.apiKey = key
+            }
         }
     }
+
+    private static let apiKeyChanged = Notification.Name("BlabladorAPIKeyChanged")
 
     var api: BlabladorAPI { BlabladorAPI(apiKey: apiKey) }
 
@@ -525,8 +561,7 @@ final class ChatStore: ObservableObject {
     }
 
     private func persist() {
-        guard let data = try? JSONEncoder().encode(conversations) else { return }
-        try? data.write(to: Self.storageURL, options: .atomic)
+        library.persist()
     }
 
     private static func title(for text: String) -> String {

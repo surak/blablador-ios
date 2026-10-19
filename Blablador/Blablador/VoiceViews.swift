@@ -319,7 +319,7 @@ struct AddVoiceView: View {
                     }
                 }
                 if let error {
-                    Section { Text(error).foregroundStyle(.red) }
+                    Section { Text(error).foregroundStyle(.red).textSelection(.enabled) }
                 }
             }
             .formStyle(.grouped)
