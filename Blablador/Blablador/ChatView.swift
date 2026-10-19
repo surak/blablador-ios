@@ -14,32 +14,38 @@ struct ChatView: View {
     @State private var showHistory = false
     @State private var showSettings = false
     @FocusState private var inputFocused: Bool
+#if os(iOS)
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    private var usesSidebar: Bool { sizeClass == .regular }
+#else
+    private let usesSidebar = true
+#endif
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                if let conversation = store.current, !conversation.messages.isEmpty {
-                    messageList(conversation)
-                } else {
-                    WelcomeView { prompt in
-                        store.send(prompt)
-                    }
-                }
-                ComposerView(draft: $draft, attachments: $attachments, imageMode: $imageMode, speech: speech, focused: $inputFocused, onSend: send)
-            }
-            .background(Theme.background)
-            .toolbar { toolbar }
-#if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
+        Group {
+            if usesSidebar {
+                // iPad and Mac: permanent, collapsible chat list.
+                NavigationSplitView {
+                    HistoryView {}
+                        .navigationTitle("Chats")
+#if os(macOS)
+                        .navigationSplitViewColumnWidth(min: 220, ideal: 280)
 #endif
+                } detail: {
+                    NavigationStack { chat }
+                }
+            } else {
+                NavigationStack { chat }
+                    .overlay { historyDrawer }
+            }
         }
-        .overlay { historyDrawer }
         .sheet(isPresented: $showSettings) {
             SettingsView()
                 .environmentObject(store)
         }
         .task {
             await store.loadModels()
+            await store.loadUserName()
             if store.apiKey.isEmpty { showSettings = true }
             handleSiri(siri.pendingCommand)
         }
@@ -57,18 +63,45 @@ struct ChatView: View {
         }
     }
 
+    private var chat: some View {
+        VStack(spacing: 0) {
+            if let conversation = store.current, !conversation.messages.isEmpty {
+                messageList(conversation)
+            } else {
+                WelcomeView { prompt in
+                    inputFocused = false
+                    store.send(prompt)
+                }
+            }
+            ComposerView(draft: $draft, attachments: $attachments, imageMode: $imageMode, speech: speech, focused: $inputFocused, onSend: send)
+        }
+        .background(Theme.background)
+        .toolbar { toolbar }
+#if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+#endif
+    }
+
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
-        ToolbarItem(placement: .navigation) {
-            Button {
-                withAnimation(.spring(duration: 0.3)) { showHistory = true }
-            } label: {
-                Label("Chats", systemImage: "line.3.horizontal")
+        if !usesSidebar {
+            ToolbarItem(placement: .navigation) {
+                Button {
+                    withAnimation(.spring(duration: 0.3)) { showHistory = true }
+                } label: {
+                    Label("Chats", systemImage: "line.3.horizontal")
+                }
             }
         }
+#if os(macOS)
+        ToolbarItem(placement: .navigation) {
+            ModelMenu()
+        }
+#else
         ToolbarItem(placement: .principal) {
             ModelMenu()
         }
+#endif
         ToolbarItemGroup(placement: .primaryAction) {
             Button {
                 store.newChat()
@@ -136,6 +169,7 @@ struct ChatView: View {
 
     private func send() {
         if speech.isRecording { speech.stop() }
+        inputFocused = false
         let text = draft
         let images = attachments
         draft = ""
@@ -171,10 +205,30 @@ private struct ModelMenu: View {
                 }
             }
         } label: {
+#if os(macOS)
+            // The window title already shows "Blablador"; use a native pop-up for the model.
+            Label {
+                Text(store.selectedModelName)
+            } icon: {
+                Image("Avatar")
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: 16, height: 16)
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+            }
+            .labelStyle(.titleAndIcon)
+#else
             VStack(spacing: 0) {
-                Text("Blablador")
-                    .font(.headline)
-                    .foregroundStyle(.primary)
+                HStack(spacing: 6) {
+                    Image("Avatar")
+                        .resizable()
+                        .interpolation(.high)
+                        .frame(width: 20, height: 20)
+                        .clipShape(RoundedRectangle(cornerRadius: 5))
+                    Text("Blablador")
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                }
                 HStack(spacing: 2) {
                     Text(store.selectedModelName)
                         .lineLimit(1)
@@ -185,9 +239,16 @@ private struct ModelMenu: View {
                 .foregroundStyle(.secondary)
             }
             .frame(maxWidth: 220)
+#endif
         }
+#if os(macOS)
+        .menuStyle(.button)
+        .fixedSize()
+        .help("Model")
+#else
         .menuStyle(.button)
         .buttonStyle(.plain)
+#endif
     }
 }
 
@@ -201,12 +262,26 @@ private struct WelcomeView: View {
         ("globe.europe.africa", "Plan a weekend trip to Jülich")
     ]
 
+    @EnvironmentObject private var store: ChatStore
+
+    /// "Good morning, Name" based on the device's local time.
+    private var greeting: String {
+        let hour = Calendar.current.component(.hour, from: Date())
+        let salutation = switch hour {
+        case 5..<12: "Good morning"
+        case 12..<18: "Good afternoon"
+        case 18..<22: "Good evening"
+        default: "Hello"
+        }
+        return store.userName.isEmpty ? salutation : "\(salutation), \(store.userName)"
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
                 Spacer(minLength: 40)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Hello there")
+                    Text(greeting)
                         .foregroundStyle(Theme.gradient)
                     Text("How can I help you today?")
                         .foregroundStyle(.secondary.opacity(0.6))

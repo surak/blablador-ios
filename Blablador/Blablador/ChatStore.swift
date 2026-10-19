@@ -12,11 +12,20 @@ final class ChatStore: ObservableObject {
     @Published var apiKey: String {
         didSet {
             KeychainHelper.save(apiKey, for: "apiKey")
-            Task { await loadModels() }
+            userName = ""
+            Task {
+                await loadModels()
+                await loadUserName()
+            }
         }
     }
 
     @AppStorage("selectedModel") var selectedModel: String = BlabladorAPI.defaultModel {
+        willSet { objectWillChange.send() }
+    }
+
+    /// Name used in the welcome greeting.
+    @AppStorage("userName") var userName: String = "" {
         willSet { objectWillChange.send() }
     }
 
@@ -85,6 +94,12 @@ final class ChatStore: ObservableObject {
         } catch {
             modelsError = error.localizedDescription
         }
+    }
+
+    /// Greeting name of the key's owner; left empty when the lookup fails.
+    func loadUserName() async {
+        guard !apiKey.isEmpty, let name = try? await api.userName() else { return }
+        userName = name.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     // MARK: - Conversations

@@ -11,7 +11,7 @@ enum Theme {
     static let surface = Color(uiColor: .secondarySystemBackground)
     static let background = Color(uiColor: .systemBackground)
 #else
-    static let surface = Color(nsColor: .controlBackgroundColor)
+    static let surface = Color.primary.opacity(0.07)
     static let background = Color(nsColor: .windowBackgroundColor)
 #endif
 }

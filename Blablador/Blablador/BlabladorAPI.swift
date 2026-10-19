@@ -36,6 +36,17 @@ struct BlabladorAPI {
         return request
     }
 
+    /// Blablador keys are Helmholtz Codebase (GitLab) tokens, so the owner's name comes from GitLab.
+    func userName() async throws -> String {
+        struct User: Decodable { let name: String }
+        guard !apiKey.isEmpty else { throw BlabladorAPIError.missingAPIKey }
+        var request = URLRequest(url: URL(string: "https://codebase.helmholtz.cloud/api/v4/user")!)
+        request.setValue(apiKey, forHTTPHeaderField: "PRIVATE-TOKEN")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try Self.validate(response, body: "")
+        return try JSONDecoder().decode(User.self, from: data).name
+    }
+
     func models() async throws -> [RemoteModel] {
         struct Response: Decodable { let data: [RemoteModel] }
         let (data, response) = try await URLSession.shared.data(for: request(path: "models"))
