@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 struct SpeechClip: View {
     let name: String
     @ObservedObject private var playback = AudioPlayback.shared
+    @State private var saving = false
 
     var body: some View {
         let playing = playback.playingName == name
@@ -24,16 +25,33 @@ struct SpeechClip: View {
                 .symbolEffect(.variableColor.iterative, isActive: playing)
                 .font(.title2)
                 .foregroundStyle(Theme.gradient)
-            ShareLink(item: AudioStore.url(for: name)) {
+            Button {
+                saving = true
+            } label: {
                 Image(systemName: "square.and.arrow.down")
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
             .accessibilityLabel("Save audio")
+            .fileExporter(isPresented: $saving, document: AudioFile(url: AudioStore.url(for: name)),
+                          contentType: .mp3, defaultFilename: "Blablador speech") { _ in }
         }
         .padding(8)
         .padding(.trailing, 8)
         .background(Theme.surface, in: Capsule())
+    }
+}
+
+/// Generated speech handed to the Save dialog.
+struct AudioFile: FileDocument {
+    static let readableContentTypes: [UTType] = [.mp3]
+    var data: Data
+
+    init(url: URL) { data = (try? Data(contentsOf: url)) ?? Data() }
+    init(configuration: ReadConfiguration) throws { data = configuration.file.regularFileContents ?? Data() }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: data)
     }
 }
 
