@@ -28,6 +28,8 @@ struct BlabladorAPI {
     static let speechModel = "alias-voice-drama3"
     static let transcriptionModel = "faster-whisper-large-v3"
     static let embeddingModel = "alias-qwen3-4b-embeddings"
+    /// Used for a new knowledge base when the default embedding model doesn't respond.
+    static let fallbackEmbeddingModel = "alias-embeddings"
     static let rerankModel = "alias-qwen3-4b-reranker"
 
     var apiKey: String
@@ -94,7 +96,7 @@ struct BlabladorAPI {
         }
         var request = try request(path: "embeddings")
         request.httpMethod = "POST"
-        request.timeoutInterval = 120
+        request.timeoutInterval = 45
         request.httpBody = try JSONSerialization.data(withJSONObject: ["model": model, "input": texts])
         let (data, response) = try await URLSession.shared.data(for: request)
         try Self.validate(response, body: String(data: data.prefix(500), encoding: .utf8) ?? "")

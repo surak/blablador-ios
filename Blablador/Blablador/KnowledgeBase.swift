@@ -106,6 +106,8 @@ final class KnowledgeLibrary: ObservableObject {
                 progress[baseID] = "Reading \(label)…"
                 do {
                     try await index(url, into: baseID, api: api, label: label)
+                } catch where Self.isServerFailure(error) {
+                    lastError = "\(url.lastPathComponent): Blablador's embedding service isn't responding. Try again later."
                 } catch {
                     lastError = "\(url.lastPathComponent): \(error.localizedDescription)"
                 }
@@ -131,15 +133,29 @@ final class KnowledgeLibrary: ObservableObject {
 
         let chunks = pages.flatMap { page in Self.split(page.text).map { Chunk(document: document.id, page: page.page, text: $0) } }
         guard !chunks.isEmpty else { throw PDFExtractor.ExtractionError.empty }
-        let model = base(baseID)?.embeddingModel ?? BlabladorAPI.embeddingModel
+        var model = base(baseID)?.embeddingModel ?? BlabladorAPI.embeddingModel
 
         var vectors: [Float] = []
         var dimension = 0
         let batch = 4
-        for start in stride(from: 0, to: chunks.count, by: batch) {
+        var start = 0
+        while start < chunks.count {
+            defer { start += batch }
             progress[baseID] = "Indexing \(label) · \(Int(Double(start) / Double(chunks.count) * 100))%"
             let texts = chunks[start ..< min(start + batch, chunks.count)].map { "\(document.name)\n\($0.text)" }
-            let embeddings = try await Self.embed(texts, model: model, api: api)
+            let embeddings: [[Float]]
+            do {
+                embeddings = try await Self.embed(texts, model: model, api: api)
+            } catch where Self.isServerFailure(error) && vectors.isEmpty && load(baseID).chunks.isEmpty
+                && model != BlabladorAPI.fallbackEmbeddingModel {
+                // Nothing is indexed with this model yet, so switching models is safe.
+                model = BlabladorAPI.fallbackEmbeddingModel
+                if let index = bases.firstIndex(where: { $0.id == baseID }) {
+                    bases[index].embeddingModel = model
+                    persist()
+                }
+                embeddings = try await Self.embed(texts, model: model, api: api)
+            }
             for embedding in embeddings {
                 dimension = embedding.count
                 vectors += Self.normalized(embedding)
@@ -268,7 +284,13 @@ final class KnowledgeLibrary: ObservableObject {
         }
     }
 
-    /// The network is flaky; retry API calls a few times.
+    /// The embedding service is down or overloaded, as opposed to a dropped connection.
+    private static func isServerFailure(_ error: Error) -> Bool {
+        if case BlabladorAPIError.http(let status, _) = error { return status >= 500 }
+        return (error as? URLError)?.code == .timedOut
+    }
+
+    /// The network is flaky; retry dropped connections a few times, but not a server that doesn't answer.
     private static func retrying<T>(_ operation: () async throws -> T) async throws -> T {
         var attempt = 0
         while true {
@@ -276,7 +298,7 @@ final class KnowledgeLibrary: ObservableObject {
                 return try await operation()
             } catch {
                 attempt += 1
-                if attempt >= 3 || error is CancellationError { throw error }
+                if attempt >= 3 || error is CancellationError || isServerFailure(error) { throw error }
                 try await Task.sleep(for: .seconds(Double(attempt)))
             }
         }

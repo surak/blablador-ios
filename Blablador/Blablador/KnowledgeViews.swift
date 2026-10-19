@@ -267,3 +267,50 @@ struct CitationsView: View {
 
     private struct Shown: Identifiable { let id: Int }
 }
+
+/// Knowledge bases matching a "#name" typed in the composer.
+struct KnowledgeSuggestions: View {
+    let query: String
+    let onPick: (KnowledgeBase) -> Void
+    @ObservedObject private var library = KnowledgeLibrary.shared
+
+    private var matches: [KnowledgeBase] {
+        let words = query.lowercased()
+        return library.bases.filter { words.isEmpty || $0.name.lowercased().contains(words) }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            if matches.isEmpty {
+                Text(library.bases.isEmpty ? "No knowledge bases yet. Create one with the books button at the top."
+                                           : "No knowledge base matches “\(query)”.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(8)
+            }
+            ForEach(matches.prefix(6)) { base in
+                Button {
+                    onPick(base)
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "books.vertical")
+                            .foregroundStyle(Theme.gradient)
+                        Text(base.name)
+                        Spacer()
+                        Text(base.documents.count == 1 ? "1 document" : "\(base.documents.count) documents")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(4)
+        .background(Theme.background.opacity(0.6), in: RoundedRectangle(cornerRadius: 14))
+        .padding(.horizontal, 8)
+        .padding(.top, 6)
+    }
+}

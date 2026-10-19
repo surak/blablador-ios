@@ -416,6 +416,14 @@ private struct ComposerView: View {
     @State private var readingPDFs = 0
     @State private var pdfError: String?
 
+    /// A "#name" being typed at the end of the draft.
+    private static let knowledgeReference = #"(^|\s)#[^\s#]*$"#
+
+    private var knowledgeQuery: String? {
+        guard let range = draft.range(of: Self.knowledgeReference, options: .regularExpression) else { return nil }
+        return String(draft[range].drop { $0 != "#" }.dropFirst())
+    }
+
     private var canSend: Bool {
         readingPDFs == 0 && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty || !documents.isEmpty)
     }
@@ -437,6 +445,15 @@ private struct ComposerView: View {
             }
             if !store.activeKnowledge.isEmpty {
                 ActiveKnowledgeStrip()
+            }
+            if let query = knowledgeQuery {
+                KnowledgeSuggestions(query: query) { base in
+                    // Replace the typed #reference with the chip.
+                    if let range = draft.range(of: Self.knowledgeReference, options: .regularExpression) {
+                        draft.replaceSubrange(range, with: draft[range].first == "#" ? "" : " ")
+                    }
+                    if !store.activeKnowledge.contains(base.id) { store.toggleKnowledge(base.id) }
+                }
             }
             if imageMode {
                 imageModeChip
