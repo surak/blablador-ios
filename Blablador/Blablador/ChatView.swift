@@ -240,7 +240,17 @@ struct ChatView: View {
             .onChange(of: conversation.messages.last?.content) { _, _ in
                 proxy.scrollTo("bottom", anchor: .bottom)
             }
+            .environment(\.editImage, ImageEditAction(edit: editImage))
         }
+    }
+
+    /// Puts an image from the chat into the composer in edit mode.
+    private func editImage(_ name: String) {
+        guard let data = ImageStore.data(for: name) else { return }
+        attachments = [data]
+        speechMode = false
+        imageMode = true
+        inputFocused = true
     }
 
     @ViewBuilder
@@ -423,6 +433,7 @@ private struct ComposerView: View {
     @State private var showFileImporter = false
     @State private var showKnowledge = false
     @State private var showOCRPicker = false
+    @State private var showDecision = false
     @State private var ocrItems: [PhotosPickerItem] = []
     @State private var readingPDFs = 0
     @State private var pdfError: String?
@@ -554,6 +565,9 @@ private struct ComposerView: View {
                 photoItems = []
             }
         }
+        .sheet(isPresented: $showDecision) {
+            DecisionView().environmentObject(store)
+        }
         .photosPicker(isPresented: $showOCRPicker, selection: $ocrItems, maxSelectionCount: 10, matching: .images)
         .onChange(of: ocrItems) { _, items in
             guard !items.isEmpty else { return }
@@ -632,9 +646,12 @@ private struct ComposerView: View {
                 Label("Text from photo", systemImage: "text.viewfinder")
             }
             KnowledgeMenu { showKnowledge = true }
+            Button { showDecision = true } label: {
+                Label("Decide…", systemImage: "arrow.triangle.branch")
+            }
             Divider()
             Toggle(isOn: $imageMode) {
-                Label("Create image", systemImage: "paintbrush.pointed")
+                Label("Create or edit image", systemImage: "paintbrush.pointed")
             }
             Toggle(isOn: $speechMode) {
                 Label("Speak", systemImage: "waveform")

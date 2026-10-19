@@ -3,6 +3,46 @@ import SwiftUI
 import UIKit
 #endif
 
+/// Lets images in the chat start an edit in the composer.
+struct ImageEditAction {
+    var edit: ((String) -> Void)?
+}
+
+private struct ImageEditKey: EnvironmentKey {
+    static let defaultValue = ImageEditAction()
+}
+
+extension EnvironmentValues {
+    var editImage: ImageEditAction {
+        get { self[ImageEditKey.self] }
+        set { self[ImageEditKey.self] = newValue }
+    }
+}
+
+/// Small "Edit" button laid over an image.
+private struct EditImageButton: View {
+    let name: String
+    @Environment(\.editImage) private var editImage
+
+    var body: some View {
+        if let edit = editImage.edit {
+            Button {
+                edit(name)
+            } label: {
+                Label("Edit", systemImage: "paintbrush.pointed.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(.black.opacity(0.55), in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .padding(8)
+            .accessibilityLabel("Edit image")
+        }
+    }
+}
+
 struct MessageView: View {
     let message: ChatMessage
     let isLast: Bool
@@ -151,6 +191,7 @@ private struct ImageThumbnail: View {
     let name: String
     let size: CGFloat
     @State private var showViewer = false
+    @Environment(\.editImage) private var editImage
 
     var body: some View {
         StoredImage(name: name, maxPixelSize: 600)
@@ -159,20 +200,23 @@ private struct ImageThumbnail: View {
             .clipShape(RoundedRectangle(cornerRadius: 16))
             .contentShape(Rectangle())
             .onTapGesture { showViewer = true }
-            .sheet(isPresented: $showViewer) { ImageViewer(name: name) }
+            .overlay(alignment: .bottomTrailing) { EditImageButton(name: name) }
+            .sheet(isPresented: $showViewer) { ImageViewer(name: name).environment(\.editImage, editImage) }
     }
 }
 
 private struct GeneratedImage: View {
     let name: String
     @State private var showViewer = false
+    @Environment(\.editImage) private var editImage
 
     var body: some View {
         StoredImage(name: name)
             .frame(maxWidth: 420)
             .clipShape(RoundedRectangle(cornerRadius: 16))
             .onTapGesture { showViewer = true }
-            .sheet(isPresented: $showViewer) { ImageViewer(name: name) }
+            .overlay(alignment: .bottomTrailing) { EditImageButton(name: name) }
+            .sheet(isPresented: $showViewer) { ImageViewer(name: name).environment(\.editImage, editImage) }
     }
 }
 
@@ -180,6 +224,7 @@ private struct GeneratedImage: View {
 struct ImageViewer: View {
     let name: String
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.editImage) private var editImage
     @State private var saved = false
 
     var body: some View {
@@ -192,6 +237,14 @@ struct ImageViewer: View {
                         Button("Done") { dismiss() }
                     }
                     ToolbarItemGroup(placement: .primaryAction) {
+                        if let edit = editImage.edit {
+                            Button {
+                                dismiss()
+                                edit(name)
+                            } label: {
+                                Label("Edit", systemImage: "paintbrush.pointed")
+                            }
+                        }
 #if os(iOS)
                         Button {
                             if let data = ImageStore.data(for: name), let image = UIImage(data: data) {

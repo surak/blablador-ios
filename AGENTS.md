@@ -23,6 +23,7 @@ Blablador is a native SwiftUI chat client for the Helmholtz Blablador OpenAI-com
 - `ChatStore.swift`: Conversations, persistence, model selection, sending/streaming
 - `KeychainHelper.swift`: API key storage
 - `PDFExtractor.swift`: PDF and photo text extraction (PDFKit; OCR with Vision or Blablador's `alias-ocr` LightOnOCR, chosen in Settings, HTML tables converted to Markdown)
+- `DecisionView.swift`, `DecisionExamples.swift`: Clef decision model (`alias-clef`, `POST /v1/systemone`, question types noul/choice/score). `DecisionExamples.swift` is generated from `../decision-model-frontend/static/app.js` PRESETS with `node scripts/generate-decision-examples.js ../decision-model-frontend/static/app.js`; regenerate rather than edit
 - `KnowledgeBase.swift`, `KnowledgeViews.swift`: knowledge bases (RAG) — chunks and normalized vectors stored per base on device, `/embeddings` with `alias-qwen3-4b-embeddings`, `/rerank` with `alias-qwen3-4b-reranker`, excerpts injected into the system prompt as [K1]…
 - `VoiceLibrary.swift`, `VoiceViews.swift`: Drama 3 speech (`alias-voice-drama3` via `/audio/speech`), voice cloning (reference sample as `references[].audio_path` data URI plus transcript from Whisper), delivery settings
 - `SpeechRecognizer.swift`: Dictation (Speech framework) and read-aloud (AVSpeechSynthesizer)

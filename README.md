@@ -14,8 +14,9 @@ Blablador is a SwiftUI-based macOS/iOS/iPadOS app that provides an enhanced mobi
 - **Photos and camera**: Ask vision-capable models about pictures
 - **PDFs and OCR**: Attach PDFs with **+ → PDF**. Text is extracted on the device with PDFKit; scanned pages without a text layer are read with OCR. **+ → Text from photo** turns photos of documents into text. In Settings → Documents choose the OCR engine: on device (Apple Vision, private and offline) or Blablador's LightOnOCR (`alias-ocr`), which keeps tables and layout; if Blablador fails, the app falls back to on-device OCR. The text is sent to the model along with your question, so it works with every model.
 - **Knowledge bases**: Collections of PDFs and text files that stay available, like Open WebUI's knowledge. Create them in Settings → Knowledge bases (or **+ → Knowledge → Manage knowledge…**) and switch them on per chat with the books button next to the model picker or **+ → Knowledge**, or type `#` and its name in the message; the books button can also create a new one. Text is extracted on the device (with OCR for scans), embedded with `alias-qwen3-4b-embeddings` and stored locally; for each question the best passages are found, re-ranked with `alias-qwen3-4b-reranker` and given to the model, which cites them as [K1], [K2]. Tap a citation to read the passage.
+- **Decisions**: **+ → Decide…** runs the Clef decision model (`alias-clef`, `/v1/systemone`), which answers typed questions — yes/no, choice and score — with probabilities instead of text. Includes the 73 examples from decision-model-frontend in 12 categories (routing, triage and safety, business, documents, science…); edit the situation and see how the decisions change.
 - **Speech and voice cloning**: Turn on **+ → Speak** to have text spoken with Drama 3 (`alias-voice-drama3`), or ask the assistant to say something. Pick a feeling, pace and whisper in Settings → Voice, and add pauses, laughs, whispers and other expressions from the Expressions menu. Clone a voice with **Clone a voice…** in Settings → Voice or in the Speak chip's voice menu, from a recording, an audio or video file, or a direct link to one (10–30 seconds; YouTube pages are not supported). The sample is transcribed with Whisper.
-- **Images**: Create images with FLUX.2-dev or Qwen-Image 2.1, edit them with Qwen-Image
+- **Images**: Create images with FLUX.2-dev or Qwen-Image 2.1 (**+ → Create or edit image**). To edit, tap **Edit** on any image in the chat, or attach a photo and turn on image mode, then describe the change; editing uses Qwen-Image. You can also just ask the assistant to change the latest image.
 - **History**: Searchable chats stored on the device; API key kept in the Keychain
 
 ## Requirements
@@ -41,6 +42,8 @@ Blablador/
 │   ├── ChatStore.swift        # Conversations, persistence, sending/streaming
 │   ├── ChatModels.swift       # Messages, conversations, models
 │   ├── PDFExtractor.swift     # PDF text extraction (PDFKit + Vision OCR)
+│   ├── DecisionView.swift     # Clef decision model screen and API call
+│   ├── DecisionExamples.swift # Examples generated from decision-model-frontend
 │   ├── KnowledgeBase.swift    # Knowledge bases: chunking, embeddings, retrieval
 │   ├── KnowledgeViews.swift   # Knowledge management, citations
 │   ├── SpeechRecognizer.swift # Dictation and read-aloud
