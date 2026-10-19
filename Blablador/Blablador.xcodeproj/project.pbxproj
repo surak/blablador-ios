@@ -25,6 +25,8 @@
 		9B2A76A6E3E0A1B20000006B /* ImageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B20000004B /* ImageStore.swift */; };
 		9B2A76A6E3E0A1B20000006C /* CameraPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B20000004C /* CameraPicker.swift */; };
 		9B2A76A6E3E0A1B2000000F1 /* PDFExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B2000000F0 /* PDFExtractor.swift */; };
+		9B2A76A6E3E0A1B2000000F5 /* VoiceViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B2000000F4 /* VoiceViews.swift */; };
+		9B2A76A6E3E0A1B2000000F3 /* VoiceLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B2000000F2 /* VoiceLibrary.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -48,6 +50,8 @@
 		9B2A76A6E3E0A1B20000004B /* ImageStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageStore.swift; sourceTree = "<group>"; };
 		9B2A76A6E3E0A1B20000004C /* CameraPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraPicker.swift; sourceTree = "<group>"; };
 		9B2A76A6E3E0A1B2000000F0 /* PDFExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFExtractor.swift; sourceTree = "<group>"; };
+		9B2A76A6E3E0A1B2000000F4 /* VoiceViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceViews.swift; sourceTree = "<group>"; };
+		9B2A76A6E3E0A1B2000000F2 /* VoiceLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceLibrary.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -83,6 +87,8 @@
 				9B2A76A6E3E0A1B200000006 /* BlabladorApp.swift */,
 				9B2A76A6E3E0A1B20000004C /* CameraPicker.swift */,
 				9B2A76A6E3E0A1B2000000F0 /* PDFExtractor.swift */,
+				9B2A76A6E3E0A1B2000000F4 /* VoiceViews.swift */,
+				9B2A76A6E3E0A1B2000000F2 /* VoiceLibrary.swift */,
 				9B2A76A6E3E0A1B20000004B /* ImageStore.swift */,
 				9B2A76A6E3E0A1B20000004A /* WebSearch.swift */,
 				9B2A76A6E3E0A1B200000040 /* ChatModels.swift */,
@@ -173,6 +179,8 @@
 				9B2A76A6E3E0A1B20000000E /* BlabladorApp.swift in Sources */,
 				9B2A76A6E3E0A1B20000006C /* CameraPicker.swift in Sources */,
 				9B2A76A6E3E0A1B2000000F1 /* PDFExtractor.swift in Sources */,
+				9B2A76A6E3E0A1B2000000F5 /* VoiceViews.swift in Sources */,
+				9B2A76A6E3E0A1B2000000F3 /* VoiceLibrary.swift in Sources */,
 				9B2A76A6E3E0A1B20000006B /* ImageStore.swift in Sources */,
 				9B2A76A6E3E0A1B20000006A /* WebSearch.swift in Sources */,
 				9B2A76A6E3E0A1B200000060 /* ChatModels.swift in Sources */,
@@ -204,13 +212,13 @@
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = 4Q84Z7RZ3Z;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Blablador/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.6;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.1.0;
+				MARKETING_VERSION = 1.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "de.fz-juelich.blablador";
 				PRODUCT_NAME = Blablador;
 				SDKROOT = macosx;
@@ -232,13 +240,13 @@
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = 4Q84Z7RZ3Z;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Blablador/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.6;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.1.0;
+				MARKETING_VERSION = 1.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "de.fz-juelich.blablador";
 				PRODUCT_NAME = Blablador;
 				SDKROOT = macosx;

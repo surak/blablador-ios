@@ -17,10 +17,12 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     var images: [String] = []
     /// PDFs attached to user messages, as extracted text.
     var documents: [DocumentAttachment] = []
+    /// Speech generated with Drama 3, as file names in AudioStore.
+    var audio: [String] = []
     /// Transient status shown while tools run, e.g. "Searching the web…"
     var status: String?
 
-    private enum CodingKeys: String, CodingKey { case id, role, content, date, isError, sources, images, documents }
+    private enum CodingKeys: String, CodingKey { case id, role, content, date, isError, sources, images, documents, audio }
 
     init(role: ChatRole, content: String, images: [String] = [], documents: [DocumentAttachment] = []) {
         self.role = role
@@ -39,6 +41,7 @@ struct ChatMessage: Identifiable, Codable, Equatable {
         sources = try c.decodeIfPresent([SearchResult].self, forKey: .sources) ?? []
         images = try c.decodeIfPresent([String].self, forKey: .images) ?? []
         documents = try c.decodeIfPresent([DocumentAttachment].self, forKey: .documents) ?? []
+        audio = try c.decodeIfPresent([String].self, forKey: .audio) ?? []
     }
 }
 

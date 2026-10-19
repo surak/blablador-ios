@@ -25,6 +25,8 @@ struct BlabladorAPI {
     ]
     static let defaultImageModel = "alias-flux2"
     static let imageEditModel = "alias-image"
+    static let speechModel = "alias-voice-drama3"
+    static let transcriptionModel = "faster-whisper-large-v3"
 
     var apiKey: String
 
@@ -81,6 +83,42 @@ struct BlabladorAPI {
         body.append(Data("\r\n--\(boundary)--\r\n".utf8))
         request.httpBody = body
         return try await imageResponse(for: request)
+    }
+
+    /// Speaks `text` with Drama 3, either with a built-in voice or cloned from a reference recording.
+    /// Returns MP3 audio.
+    func speech(text: String, voice: Voice) async throws -> Data {
+        var request = try request(path: "audio/speech")
+        request.httpMethod = "POST"
+        request.timeoutInterval = 300
+        var body: [String: Any] = ["model": Self.speechModel, "input": text, "response_format": "mp3"]
+        if let referenceID = voice.referenceID {
+            body["voice"] = referenceID
+        } else if let sample = voice.sampleFile, let audio = VoiceLibrary.sampleData(for: sample) {
+            body["references"] = [["audio_path": "data:audio/mp4;base64," + audio.base64EncodedString(), "text": voice.transcript]]
+        }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try Self.validate(response, body: String(data: data.prefix(500), encoding: .utf8) ?? "")
+        return data
+    }
+
+    /// Transcribes an audio file with Whisper; used for the transcript voice cloning needs.
+    func transcribe(audio: Data, fileName: String = "sample.wav") async throws -> String {
+        struct Response: Decodable { let text: String }
+        let boundary = "Boundary-\(UUID().uuidString)"
+        var request = try request(path: "audio/transcriptions")
+        request.httpMethod = "POST"
+        request.timeoutInterval = 300
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        var body = Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\n\(Self.transcriptionModel)\r\n".utf8)
+        body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"\(fileName)\"\r\nContent-Type: audio/wav\r\n\r\n".utf8))
+        body.append(audio)
+        body.append(Data("\r\n--\(boundary)--\r\n".utf8))
+        request.httpBody = body
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try Self.validate(response, body: String(data: data.prefix(500), encoding: .utf8) ?? "")
+        return try JSONDecoder().decode(Response.self, from: data).text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func imageResponse(for request: URLRequest) async throws -> Data {

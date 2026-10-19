@@ -51,7 +51,7 @@ struct MessageView: View {
                 AvatarView(isActive: isLast && isStreaming)
                 VStack(alignment: .leading, spacing: 10) {
                     if let status = message.status {
-                        Label(status, systemImage: status.hasPrefix("Search") ? "globe" : status.contains("image") ? "paintbrush.pointed" : "ellipsis")
+                        Label(status, systemImage: status.hasPrefix("Search") ? "globe" : status.contains("image") ? "paintbrush.pointed" : status.hasPrefix("Speaking") ? "waveform" : "ellipsis")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .symbolEffect(.pulse)
@@ -59,8 +59,11 @@ struct MessageView: View {
                     ForEach(message.images, id: \.self) { name in
                         GeneratedImage(name: name)
                     }
+                    ForEach(message.audio, id: \.self) { name in
+                        SpeechClip(name: name)
+                    }
                     if message.content.isEmpty {
-                        if message.status == nil && message.images.isEmpty { TypingIndicator() }
+                        if message.status == nil && message.images.isEmpty && message.audio.isEmpty { TypingIndicator() }
                     } else if message.isError {
                         Label(message.content, systemImage: "exclamationmark.triangle")
                             .foregroundStyle(.red)
@@ -70,7 +73,7 @@ struct MessageView: View {
                     if !message.sources.isEmpty {
                         SourcesView(sources: message.sources)
                     }
-                    if !(isLast && isStreaming) && (!message.content.isEmpty || !message.images.isEmpty) {
+                    if !(isLast && isStreaming) && (!message.content.isEmpty || !message.images.isEmpty || !message.audio.isEmpty) {
                         actions
                     }
                 }

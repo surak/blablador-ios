@@ -118,6 +118,7 @@ final class ChatStore: ObservableObject {
     func delete(_ conversation: Conversation) {
         if conversation.id == currentID { newChat() }
         ImageStore.delete(conversation.messages.flatMap(\.images))
+        AudioStore.delete(conversation.messages.flatMap(\.audio))
         conversations.removeAll { $0.id == conversation.id }
         persist()
     }
@@ -125,14 +126,16 @@ final class ChatStore: ObservableObject {
     func deleteAll() {
         newChat()
         ImageStore.delete(conversations.flatMap { $0.messages.flatMap(\.images) })
+        AudioStore.delete(conversations.flatMap { $0.messages.flatMap(\.audio) })
         conversations.removeAll()
         persist()
     }
 
     // MARK: - Messaging
 
-    /// Sends a chat message. With `createImage`, the text is used directly as an image prompt.
-    func send(_ text: String, attachments: [Data] = [], documents: [DocumentAttachment] = [], createImage: Bool = false) {
+    /// Sends a chat message. With `createImage`, the text is used directly as an image prompt;
+    /// with `speak`, it is read aloud with Drama 3.
+    func send(_ text: String, attachments: [Data] = [], documents: [DocumentAttachment] = [], createImage: Bool = false, speak: Bool = false) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty || !attachments.isEmpty || !documents.isEmpty, !isStreaming else { return }
 
@@ -145,7 +148,9 @@ final class ChatStore: ObservableObject {
         let images = attachments.map(ImageStore.save)
         update { $0.messages.append(ChatMessage(role: .user, content: trimmed, images: images, documents: documents)) }
 
-        if createImage {
+        if speak, !trimmed.isEmpty {
+            makeSpeech(script: trimmed)
+        } else if createImage {
             makeImage(prompt: trimmed, editing: images.last)
         } else {
             respond()
@@ -196,6 +201,38 @@ final class ChatStore: ObservableObject {
         return ImageStore.save(data)
     }
 
+    /// Speech mode: speak the user's text with the selected voice and delivery settings.
+    private func makeSpeech(script: String) {
+        let reply = ChatMessage(role: .assistant, content: "")
+        update { $0.messages.append(reply) }
+        isStreaming = true
+        streamTask = Task {
+            do {
+                let audio = try await runSpeechTool(script: script, replyID: reply.id)
+                updateMessage(reply.id) { $0.audio.append(audio) }
+                AudioPlayback.shared.toggle(audio)
+            } catch is CancellationError {
+            } catch let error as URLError where error.code == .cancelled {
+            } catch {
+                updateMessage(reply.id) {
+                    $0.content = error.localizedDescription
+                    $0.isError = true
+                }
+            }
+            updateMessage(reply.id) { $0.status = nil }
+            isStreaming = false
+            persist()
+        }
+    }
+
+    /// Speaks a script with Drama 3 and returns the stored file name.
+    private func runSpeechTool(script: String, replyID: UUID) async throws -> String {
+        let library = VoiceLibrary.shared
+        updateMessage(replyID) { $0.status = "Speaking with \(library.selected.name)…" }
+        let data = try await api.speech(text: library.styled(script), voice: library.selected)
+        return AudioStore.save(data)
+    }
+
     /// Most recent image in the current conversation, used as the source for edits.
     private var latestImage: String? {
         current?.messages.last { !$0.images.isEmpty }?.images.last
@@ -231,6 +268,9 @@ final class ChatStore: ObservableObject {
         if imageToolsEnabled {
             system += " You can create images with generate_image and modify the latest image in the chat with edit_image. Never describe an image as created unless the tool succeeded."
         }
+        if VoiceLibrary.shared.toolsEnabled {
+            system += " You can speak aloud with generate_speech when the user asks you to say, read or voice something. Never claim you spoke unless the tool succeeded."
+        }
         system = system.trimmingCharacters(in: .whitespacesAndNewlines)
         wire.append(["role": "system", "content": system])
         wire += conversation.messages.filter { !$0.isError }.map(Self.wireMessage)
@@ -246,6 +286,7 @@ final class ChatStore: ObservableObject {
         var tools: [[String: Any]] = []
         if webSearchEnabled { tools.append(WebSearch.tool) }
         if imageToolsEnabled { tools += [ImageTools.generate, ImageTools.edit] }
+        if VoiceLibrary.shared.toolsEnabled { tools.append(SpeechTools.generate) }
         streamTask = Task {
             do {
                 try await runTurn(model: model, messages: wire, tools: tools, replyID: reply.id)
@@ -264,7 +305,7 @@ final class ChatStore: ObservableObject {
             }
             updateMessage(reply.id) { message in
                 message.status = nil
-                if message.content.isEmpty, message.images.isEmpty, !Task.isCancelled {
+                if message.content.isEmpty, message.images.isEmpty, message.audio.isEmpty, !Task.isCancelled {
                     message.content = "No response from the model."
                     message.isError = true
                 }
@@ -328,6 +369,7 @@ final class ChatStore: ObservableObject {
                 let arguments = (try? JSONSerialization.jsonObject(with: Data(call.arguments.utf8))) as? [String: Any]
                 let query = arguments?["query"] as? String ?? ""
                 let prompt = arguments?["prompt"] as? String ?? ""
+                let script = arguments?["script"] as? String ?? ""
 
                 let output: String
                 if call.name == "generate_image" || call.name == "edit_image", !prompt.isEmpty {
@@ -337,6 +379,14 @@ final class ChatStore: ObservableObject {
                         output = "The image was created and is shown to the user. Do not include it or a link in your answer; just briefly comment on it."
                     } catch {
                         output = "Image tool failed: \(error.localizedDescription)"
+                    }
+                } else if call.name == "generate_speech", !script.isEmpty {
+                    do {
+                        let audio = try await runSpeechTool(script: script, replyID: replyID)
+                        updateMessage(replyID) { $0.audio.append(audio) }
+                        output = "The speech was created and the user can play it. Don't repeat the script; just briefly comment on it."
+                    } catch {
+                        output = "Speech tool failed: \(error.localizedDescription)"
                     }
                 } else if call.name == "web_search", !query.isEmpty {
                     updateMessage(replyID) { $0.status = "Searching “\(query)”" }
@@ -382,6 +432,9 @@ final class ChatStore: ObservableObject {
             var content = text
             if message.role == .assistant, !message.images.isEmpty {
                 content = "[Generated image]\n" + content
+            }
+            if message.role == .assistant, !message.audio.isEmpty {
+                content = "[Generated speech]\n" + content
             }
             return ["role": message.role.rawValue, "content": content]
         }

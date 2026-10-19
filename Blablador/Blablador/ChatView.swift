@@ -13,6 +13,7 @@ struct ChatView: View {
     @State private var attachments: [Data] = []
     @State private var documents: [DocumentAttachment] = []
     @State private var imageMode = false
+    @State private var speechMode = false
     @State private var showHistory = false
     @State private var showSettings = false
     @FocusState private var inputFocused: Bool
@@ -75,7 +76,7 @@ struct ChatView: View {
                     store.send(prompt)
                 }
             }
-            ComposerView(draft: $draft, attachments: $attachments, documents: $documents, imageMode: $imageMode, speech: speech, focused: $inputFocused, onSend: send)
+            ComposerView(draft: $draft, attachments: $attachments, documents: $documents, imageMode: $imageMode, speechMode: $speechMode, speech: speech, focused: $inputFocused, onSend: send)
         }
         .background(Theme.background)
         .toolbar { toolbar }
@@ -178,7 +179,7 @@ struct ChatView: View {
         draft = ""
         attachments = []
         documents = []
-        store.send(text, attachments: images, documents: pdfs, createImage: imageMode)
+        store.send(text, attachments: images, documents: pdfs, createImage: imageMode, speak: speechMode)
     }
 
     private func handleSiri(_ command: String?) {
@@ -318,6 +319,7 @@ private struct ComposerView: View {
     @Binding var attachments: [Data]
     @Binding var documents: [DocumentAttachment]
     @Binding var imageMode: Bool
+    @Binding var speechMode: Bool
     @ObservedObject var speech: SpeechRecognizer
     var focused: FocusState<Bool>.Binding
     let onSend: () -> Void
@@ -336,6 +338,7 @@ private struct ComposerView: View {
 
     private var placeholder: String {
         if speech.isRecording { return "Listening…" }
+        if speechMode { return "What should be said?" }
         if imageMode { return attachments.isEmpty ? "Describe an image" : "Describe the change" }
         return "Ask Blablador"
     }
@@ -350,6 +353,14 @@ private struct ComposerView: View {
             }
             if imageMode {
                 imageModeChip
+            }
+            if speechMode {
+                HStack(spacing: 8) {
+                    SpeechModeChip { speechMode = false }
+                    SpeechMarkupMenu(draft: $draft)
+                }
+                .padding(.leading, 8)
+                .padding(.top, 4)
             }
             HStack(alignment: .bottom, spacing: 4) {
                 addMenu
@@ -386,14 +397,14 @@ private struct ComposerView: View {
                     .accessibilityLabel("Stop generating")
                 } else if canSend {
                     Button(action: onSend) {
-                        Image(systemName: imageMode ? "paintbrush.pointed.fill" : "arrow.up")
+                        Image(systemName: speechMode ? "waveform" : imageMode ? "paintbrush.pointed.fill" : "arrow.up")
                             .font(.body.weight(.semibold))
                             .frame(width: 40, height: 40)
                             .foregroundStyle(.white)
                             .background(Theme.gradient, in: Circle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(imageMode ? "Create image" : "Send")
+                    .accessibilityLabel(speechMode ? "Speak" : imageMode ? "Create image" : "Send")
                     .transition(.scale.combined(with: .opacity))
                 }
             }
@@ -409,6 +420,8 @@ private struct ComposerView: View {
         .animation(.spring(duration: 0.25), value: canSend)
         .animation(.spring(duration: 0.25), value: attachments.count)
         .animation(.spring(duration: 0.25), value: documents.count)
+        .onChange(of: imageMode) { _, on in if on { speechMode = false } }
+        .onChange(of: speechMode) { _, on in if on { imageMode = false } }
         .padding(.horizontal)
         .padding(.bottom, 8)
         .padding(.top, 4)
@@ -471,6 +484,9 @@ private struct ComposerView: View {
             Divider()
             Toggle(isOn: $imageMode) {
                 Label("Create image", systemImage: "paintbrush.pointed")
+            }
+            Toggle(isOn: $speechMode) {
+                Label("Speak", systemImage: "waveform")
             }
             Toggle(isOn: Binding(
                 get: { store.webSearchEnabled },

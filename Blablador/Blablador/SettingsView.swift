@@ -63,6 +63,8 @@ struct SettingsView: View {
                     Text("Used for new images. Editing photos always uses Qwen-Image 2.1, the model that supports editing.")
                 }
 
+                VoiceSettingsSection()
+
                 Section {
                     Toggle("Web search", isOn: Binding(
                         get: { store.webSearchEnabled },
