@@ -16,6 +16,11 @@ struct ChatView: View {
     @State private var speechMode = false
     @State private var showHistory = false
     @State private var showSettings = false
+    @ObservedObject private var knowledge = KnowledgeLibrary.shared
+    @State private var showKnowledge = false
+    @State private var openedKnowledge: UUID?
+    @State private var namingKnowledge = false
+    @State private var newKnowledgeName = ""
     @FocusState private var inputFocused: Bool
 #if os(iOS)
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -45,6 +50,41 @@ struct ChatView: View {
         .sheet(isPresented: $showSettings) {
             SettingsView()
                 .environmentObject(store)
+        }
+        .sheet(isPresented: $showKnowledge) {
+            NavigationStack {
+                Group {
+                    if let openedKnowledge {
+                        KnowledgeBaseView(baseID: openedKnowledge)
+                    } else {
+                        KnowledgeListView()
+                    }
+                }
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { showKnowledge = false }
+                    }
+                }
+            }
+            .environmentObject(store)
+#if os(macOS)
+            .frame(minWidth: 480, minHeight: 480)
+#endif
+        }
+        .alert("New knowledge base", isPresented: $namingKnowledge) {
+            TextField("Name", text: $newKnowledgeName)
+            Button("Cancel", role: .cancel) {}
+            Button("Create") {
+                let name = newKnowledgeName.trimmingCharacters(in: .whitespaces)
+                guard !name.isEmpty else { return }
+                // Use it right away and open it to add documents.
+                let base = knowledge.create(name: name)
+                store.toggleKnowledge(base.id)
+                openedKnowledge = base.id
+                showKnowledge = true
+            }
+        } message: {
+            Text("Add PDFs and text files next. It is switched on for this chat.")
         }
         .task {
             await store.loadModels()
@@ -100,9 +140,15 @@ struct ChatView: View {
         ToolbarItem(placement: .navigation) {
             ModelMenu()
         }
+        ToolbarItem(placement: .navigation) {
+            knowledgeMenu
+        }
 #else
         ToolbarItem(placement: .principal) {
-            ModelMenu()
+            HStack(spacing: 12) {
+                ModelMenu()
+                knowledgeMenu
+            }
         }
 #endif
         ToolbarItemGroup(placement: .primaryAction) {
@@ -120,6 +166,43 @@ struct ChatView: View {
                 Label("Settings", systemImage: "gearshape")
             }
         }
+    }
+
+    /// Knowledge bases for this chat, plus creating a new one.
+    private var knowledgeMenu: some View {
+        Menu {
+            Section("Use in this chat") {
+                if knowledge.bases.isEmpty {
+                    Text("No knowledge bases yet")
+                }
+                ForEach(knowledge.bases) { base in
+                    Toggle(isOn: Binding(
+                        get: { store.activeKnowledge.contains(base.id) },
+                        set: { _ in store.toggleKnowledge(base.id) }
+                    )) {
+                        Text(base.name)
+                    }
+                }
+            }
+            Divider()
+            Button {
+                newKnowledgeName = ""
+                namingKnowledge = true
+            } label: {
+                Label("New knowledge base…", systemImage: "plus")
+            }
+            Button {
+                openedKnowledge = nil
+                showKnowledge = true
+            } label: {
+                Label("Manage knowledge…", systemImage: "gearshape")
+            }
+        } label: {
+            Label("Knowledge", systemImage: store.activeKnowledge.isEmpty ? "books.vertical" : "books.vertical.fill")
+                .labelStyle(.iconOnly)
+                .foregroundStyle(store.activeKnowledge.isEmpty ? AnyShapeStyle(.primary) : AnyShapeStyle(Theme.gradient))
+        }
+        .accessibilityLabel("Knowledge bases")
     }
 
     private func messageList(_ conversation: Conversation) -> some View {
