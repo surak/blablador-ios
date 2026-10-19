@@ -21,10 +21,12 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     var audio: [String] = []
     /// Knowledge base excerpts the reply was based on.
     var citations: [KnowledgeCitation] = []
+    /// Tool calls made in agent mode.
+    var steps: [AgentStep] = []
     /// Transient status shown while tools run, e.g. "Searching the web…"
     var status: String?
 
-    private enum CodingKeys: String, CodingKey { case id, role, content, date, isError, sources, images, documents, audio, citations }
+    private enum CodingKeys: String, CodingKey { case id, role, content, date, isError, sources, images, documents, audio, citations, steps }
 
     init(role: ChatRole, content: String, images: [String] = [], documents: [DocumentAttachment] = []) {
         self.role = role
@@ -45,6 +47,7 @@ struct ChatMessage: Identifiable, Codable, Equatable {
         documents = try c.decodeIfPresent([DocumentAttachment].self, forKey: .documents) ?? []
         audio = try c.decodeIfPresent([String].self, forKey: .audio) ?? []
         citations = try c.decodeIfPresent([KnowledgeCitation].self, forKey: .citations) ?? []
+        steps = try c.decodeIfPresent([AgentStep].self, forKey: .steps) ?? []
     }
 }
 
@@ -56,6 +59,10 @@ struct Conversation: Identifiable, Codable, Equatable {
     var updatedAt = Date()
     /// Knowledge bases searched for every message in this chat.
     var knowledge: [UUID]?
+    /// Folder the agent works in; nil for a normal chat.
+    var workspace: String?
+    /// The user allowed shell commands for this chat without asking each time.
+    var allowsCommands: Bool?
 
     static func new(model: String) -> Conversation {
         Conversation(title: "New chat", model: model)

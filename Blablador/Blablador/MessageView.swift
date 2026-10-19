@@ -91,7 +91,7 @@ struct MessageView: View {
                 AvatarView(isActive: isLast && isStreaming)
                 VStack(alignment: .leading, spacing: 10) {
                     if let status = message.status {
-                        Label(status, systemImage: status.hasPrefix("Search") ? "globe" : status.contains("image") ? "paintbrush.pointed" : status.hasPrefix("Speaking") ? "waveform" : status.contains("nowledge") ? "books.vertical" : "ellipsis")
+                        Label(status, systemImage: status.hasPrefix("Search") ? "globe" : status.contains("image") ? "paintbrush.pointed" : status.hasPrefix("Speaking") ? "waveform" : status.contains("nowledge") ? "books.vertical" : status.hasPrefix("Running") || status.hasPrefix("Waiting") ? "terminal" : "ellipsis")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .symbolEffect(.pulse)
@@ -102,8 +102,11 @@ struct MessageView: View {
                     ForEach(message.audio, id: \.self) { name in
                         SpeechClip(name: name)
                     }
+                    if !message.steps.isEmpty {
+                        AgentStepsView(steps: message.steps)
+                    }
                     if message.content.isEmpty {
-                        if message.status == nil && message.images.isEmpty && message.audio.isEmpty { TypingIndicator() }
+                        if message.status == nil && message.images.isEmpty && message.audio.isEmpty && message.steps.isEmpty { TypingIndicator() }
                     } else if message.isError {
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
                             Image(systemName: "exclamationmark.triangle")

@@ -128,8 +128,13 @@ struct ChatView: View {
                     store.send(prompt)
                 }
             }
+            if let approval = store.commandApproval {
+                CommandApprovalCard(approval: approval) { store.answerApproval($0) }
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
             ComposerView(draft: $draft, attachments: $attachments, documents: $documents, imageMode: $imageMode, speechMode: $speechMode, speech: speech, focused: $inputFocused, onSend: send)
         }
+        .animation(.spring(duration: 0.25), value: store.commandApproval?.id)
         .background(Theme.background)
         .toolbar { toolbar }
 #if os(iOS)
@@ -471,6 +476,7 @@ private struct ComposerView: View {
             if !documents.isEmpty || readingPDFs > 0 {
                 documentStrip
             }
+            WorkspaceChip()
             if !store.activeKnowledge.isEmpty {
                 ActiveKnowledgeStrip()
             }
@@ -654,6 +660,13 @@ private struct ComposerView: View {
                 Label("Text from photo", systemImage: "text.viewfinder")
             }
             KnowledgeMenu { showKnowledge = true }
+#if os(macOS)
+            Button {
+                if let url = chooseWorkspace() { store.workspace = url }
+            } label: {
+                Label("Agent: work in a folder…", systemImage: "terminal")
+            }
+#endif
             Button { showDecision = true } label: {
                 Label("Decide…", systemImage: "arrow.triangle.branch")
             }

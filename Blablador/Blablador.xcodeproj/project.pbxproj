@@ -25,6 +25,8 @@
 		9B2A76A6E3E0A1B20000006B /* ImageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B20000004B /* ImageStore.swift */; };
 		9B2A76A6E3E0A1B20000006C /* CameraPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B20000004C /* CameraPicker.swift */; };
 		9B2A76A6E3E0A1B2000000F1 /* PDFExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B2000000F0 /* PDFExtractor.swift */; };
+		9B2A76A6E3E0A1B200000103 /* AgentViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000102 /* AgentViews.swift */; };
+		9B2A76A6E3E0A1B200000101 /* AgentTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000100 /* AgentTools.swift */; };
 		9B2A76A6E3E0A1B2000000FD /* DecisionExamples.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B2000000FC /* DecisionExamples.swift */; };
 		9B2A76A6E3E0A1B2000000FB /* DecisionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B2000000FA /* DecisionView.swift */; };
 		9B2A76A6E3E0A1B2000000F9 /* KnowledgeViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B2000000F8 /* KnowledgeViews.swift */; };
@@ -54,6 +56,8 @@
 		9B2A76A6E3E0A1B20000004B /* ImageStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageStore.swift; sourceTree = "<group>"; };
 		9B2A76A6E3E0A1B20000004C /* CameraPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraPicker.swift; sourceTree = "<group>"; };
 		9B2A76A6E3E0A1B2000000F0 /* PDFExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFExtractor.swift; sourceTree = "<group>"; };
+		9B2A76A6E3E0A1B200000102 /* AgentViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentViews.swift; sourceTree = "<group>"; };
+		9B2A76A6E3E0A1B200000100 /* AgentTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentTools.swift; sourceTree = "<group>"; };
 		9B2A76A6E3E0A1B2000000FC /* DecisionExamples.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DecisionExamples.swift; sourceTree = "<group>"; };
 		9B2A76A6E3E0A1B2000000FA /* DecisionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DecisionView.swift; sourceTree = "<group>"; };
 		9B2A76A6E3E0A1B2000000F8 /* KnowledgeViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowledgeViews.swift; sourceTree = "<group>"; };
@@ -95,6 +99,8 @@
 				9B2A76A6E3E0A1B200000006 /* BlabladorApp.swift */,
 				9B2A76A6E3E0A1B20000004C /* CameraPicker.swift */,
 				9B2A76A6E3E0A1B2000000F0 /* PDFExtractor.swift */,
+				9B2A76A6E3E0A1B200000102 /* AgentViews.swift */,
+				9B2A76A6E3E0A1B200000100 /* AgentTools.swift */,
 				9B2A76A6E3E0A1B2000000FC /* DecisionExamples.swift */,
 				9B2A76A6E3E0A1B2000000FA /* DecisionView.swift */,
 				9B2A76A6E3E0A1B2000000F8 /* KnowledgeViews.swift */,
@@ -191,6 +197,8 @@
 				9B2A76A6E3E0A1B20000000E /* BlabladorApp.swift in Sources */,
 				9B2A76A6E3E0A1B20000006C /* CameraPicker.swift in Sources */,
 				9B2A76A6E3E0A1B2000000F1 /* PDFExtractor.swift in Sources */,
+				9B2A76A6E3E0A1B200000103 /* AgentViews.swift in Sources */,
+				9B2A76A6E3E0A1B200000101 /* AgentTools.swift in Sources */,
 				9B2A76A6E3E0A1B2000000FD /* DecisionExamples.swift in Sources */,
 				9B2A76A6E3E0A1B2000000FB /* DecisionView.swift in Sources */,
 				9B2A76A6E3E0A1B2000000F9 /* KnowledgeViews.swift in Sources */,
@@ -228,13 +236,13 @@
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 14;
 				DEVELOPMENT_TEAM = 4Q84Z7RZ3Z;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Blablador/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.6;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.5.2;
+				MARKETING_VERSION = 1.6.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "de.fz-juelich.blablador";
 				PRODUCT_NAME = Blablador;
 				SDKROOT = macosx;
@@ -256,13 +264,13 @@
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 14;
 				DEVELOPMENT_TEAM = 4Q84Z7RZ3Z;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Blablador/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.6;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.5.2;
+				MARKETING_VERSION = 1.6.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "de.fz-juelich.blablador";
 				PRODUCT_NAME = Blablador;
 				SDKROOT = macosx;

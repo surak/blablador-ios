@@ -146,6 +146,7 @@ final class ChatStore: ObservableObject {
         stop()
         currentID = nil
         pendingKnowledge = []
+        pendingWorkspace = nil
     }
 
     /// Knowledge bases picked before the first message of a new chat.
@@ -208,7 +209,9 @@ final class ChatStore: ObservableObject {
             let title = !trimmed.isEmpty ? Self.title(for: trimmed) : documents.first?.name ?? "Image"
             var conversation = Conversation(title: title, model: selectedModel)
             conversation.knowledge = pendingKnowledge
+            conversation.workspace = pendingWorkspace
             pendingKnowledge = []
+            pendingWorkspace = nil
             conversations.insert(conversation, at: 0)
             currentID = conversation.id
         }
@@ -320,6 +323,94 @@ final class ChatStore: ObservableObject {
         streamTask?.cancel()
         streamTask = nil
         isStreaming = false
+        answerApproval(.deny)
+    }
+
+    // MARK: - Agent
+
+    @Published private var pendingWorkspace: String?
+
+    /// Folder the agent works in for the current chat.
+    var workspace: URL? {
+        get {
+            (currentID == nil ? pendingWorkspace : current?.workspace).map { URL(fileURLWithPath: $0, isDirectory: true) }
+        }
+        set {
+            if currentID == nil {
+                pendingWorkspace = newValue?.path
+            } else {
+                update {
+                    $0.workspace = newValue?.path
+                    if newValue == nil { $0.allowsCommands = nil }
+                }
+            }
+        }
+    }
+
+    var allowsCommands: Bool {
+        get { current?.allowsCommands ?? false }
+        set { update { $0.allowsCommands = newValue } }
+    }
+
+    struct CommandApproval: Identifiable {
+        let id = UUID()
+        let command: String
+        let folder: String
+    }
+
+    enum ApprovalChoice { case once, always, deny }
+
+    /// A shell command waiting for the user's OK.
+    @Published private(set) var commandApproval: CommandApproval?
+    private var approvalContinuation: CheckedContinuation<ApprovalChoice, Never>?
+
+    func answerApproval(_ choice: ApprovalChoice) {
+        commandApproval = nil
+        approvalContinuation?.resume(returning: choice)
+        approvalContinuation = nil
+    }
+
+    private func approve(_ command: String, in folder: URL) async -> Bool {
+        if allowsCommands { return true }
+        let choice = await withCheckedContinuation { continuation in
+            approvalContinuation = continuation
+            commandApproval = CommandApproval(command: command, folder: folder.lastPathComponent)
+        }
+        if choice == .always { allowsCommands = true }
+        return choice != .deny
+    }
+
+    /// Runs one agent tool, recording it as a step, and returns the output for the model.
+    private func runAgentTool(_ name: String, _ arguments: [String: Any], in folder: URL, replyID: UUID) async -> String {
+        var step = AgentStep(tool: name, title: AgentTools.title(for: name, arguments))
+        updateMessage(replyID) { $0.steps.append(step) }
+        func finish(_ state: AgentStep.State, _ detail: String) {
+            step.state = state
+            step.detail = String(detail.prefix(8_000))
+            updateMessage(replyID) { message in
+                if let index = message.steps.firstIndex(where: { $0.id == step.id }) { message.steps[index] = step }
+            }
+        }
+        do {
+            if name == "run_command" {
+                let command = arguments["command"] as? String ?? ""
+                updateMessage(replyID) { $0.status = "Waiting for approval…" }
+                guard await approve(command, in: folder) else {
+                    finish(.denied, "Not run.")
+                    return "The user declined to run this command. Ask what to do instead or continue without it."
+                }
+                updateMessage(replyID) { $0.status = "Running \(command.prefix(60))…" }
+                let output = try await AgentTools.runCommand(command, in: folder, timeout: arguments["timeout"] as? Int ?? 120)
+                finish(output.hasSuffix("Exit code: 0") ? .done : .failed, output)
+                return output
+            }
+            let output = try AgentTools.run(name, arguments, in: folder)
+            finish(.done, output)
+            return output
+        } catch {
+            finish(.failed, error.localizedDescription)
+            return "Error: \(error.localizedDescription)"
+        }
     }
 
     private func respond() {
@@ -338,6 +429,8 @@ final class ChatStore: ObservableObject {
         if VoiceLibrary.shared.toolsEnabled {
             system += " You can speak aloud with generate_speech when the user asks you to say, read or voice something. Never claim you spoke unless the tool succeeded."
         }
+        let folder = workspace
+        if let folder { system += "\n\n" + AgentTools.systemPrompt(workspace: folder) }
         system = system.trimmingCharacters(in: .whitespacesAndNewlines)
         wire.append(["role": "system", "content": system])
         wire += conversation.messages.filter { !$0.isError }.map(Self.wireMessage)
@@ -356,6 +449,7 @@ final class ChatStore: ObservableObject {
         if webSearchEnabled { tools.append(WebSearch.tool) }
         if imageToolsEnabled { tools += [ImageTools.generate, ImageTools.edit] }
         if VoiceLibrary.shared.toolsEnabled { tools.append(SpeechTools.generate) }
+        if folder != nil { tools += AgentTools.definitions }
         streamTask = Task {
             do {
                 var wire = wire
@@ -372,7 +466,7 @@ final class ChatStore: ObservableObject {
                         updateMessage(reply.id) { $0.status = "Knowledge search failed, answering without it…" }
                     }
                 }
-                try await runTurn(model: model, messages: wire, tools: tools, replyID: reply.id)
+                try await runTurn(model: model, messages: wire, tools: tools, replyID: reply.id, workspace: folder)
             } catch is CancellationError {
             } catch let error as URLError where error.code == .cancelled {
             } catch BlabladorAPIError.http(let status, let body) where status == 400 && body.localizedCaseInsensitiveContains("image") {
@@ -388,7 +482,7 @@ final class ChatStore: ObservableObject {
             }
             updateMessage(reply.id) { message in
                 message.status = nil
-                if message.content.isEmpty, message.images.isEmpty, message.audio.isEmpty, !Task.isCancelled {
+                if message.content.isEmpty, message.images.isEmpty, message.audio.isEmpty, message.steps.isEmpty, !Task.isCancelled {
                     message.content = "No response from the model."
                     message.isError = true
                 }
@@ -399,12 +493,13 @@ final class ChatStore: ObservableObject {
     }
 
     /// Streams the reply, running web searches whenever the model asks for them.
-    private func runTurn(model: String, messages: [[String: Any]], tools: [[String: Any]], replyID: UUID) async throws {
+    private func runTurn(model: String, messages: [[String: Any]], tools: [[String: Any]], replyID: UUID, workspace: URL? = nil) async throws {
         var messages = messages
         var tools = tools
+        let maxRounds = workspace == nil ? Self.maxToolRounds : AgentTools.maxRounds
 
-        for round in 0...Self.maxToolRounds {
-            let isFinalRound = round == Self.maxToolRounds
+        for round in 0...maxRounds {
+            let isFinalRound = round == maxRounds
             if isFinalRound {
                 // Keep the tools declared (removing them makes DeepSeek print raw tool markup),
                 // but tell the model to answer with what it has.
@@ -445,8 +540,10 @@ final class ChatStore: ObservableObject {
             var assistant: [String: Any] = ["role": "assistant", "tool_calls": calls.map(\.wire)]
             assistant["content"] = text.isEmpty ? NSNull() : text
             messages.append(assistant)
-            // Preambles like "Let me look that up" are status, not part of the answer.
-            updateMessage(replyID) { $0.content = prefix }
+            // Preambles like "Let me look that up" are status, not part of the answer;
+            // an agent's notes between steps are kept.
+            let note = Self.stripToolMarkup(text)
+            updateMessage(replyID) { $0.content = workspace != nil && !note.isEmpty ? prefix + note + "\n\n" : prefix }
 
             for call in calls {
                 let arguments = (try? JSONSerialization.jsonObject(with: Data(call.arguments.utf8))) as? [String: Any]
@@ -471,6 +568,8 @@ final class ChatStore: ObservableObject {
                     } catch {
                         output = "Speech tool failed: \(error.localizedDescription)"
                     }
+                } else if let workspace, AgentTools.names.contains(call.name) {
+                    output = await runAgentTool(call.name, arguments ?? [:], in: workspace, replyID: replyID)
                 } else if call.name == "web_search", !query.isEmpty {
                     updateMessage(replyID) { $0.status = "Searching “\(query)”" }
                     do {
@@ -518,6 +617,10 @@ final class ChatStore: ObservableObject {
             }
             if message.role == .assistant, !message.audio.isEmpty {
                 content = "[Generated speech]\n" + content
+            }
+            if message.role == .assistant, !message.steps.isEmpty {
+                // Earlier tool calls, so follow-ups know what was already done.
+                content = "[Actions taken: " + message.steps.map(\.title).joined(separator: "; ") + "]\n" + content
             }
             return ["role": message.role.rawValue, "content": content]
         }
