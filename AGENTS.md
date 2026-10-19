@@ -4,7 +4,7 @@ This file contains instructions for AI agents working on this iOS project.
 
 ## Project Overview
 
-Blablador is a native SwiftUI chat client for the Helmholtz Blablador OpenAI-compatible API (`https://api.blablador.fz-juelich.de/v1`). It streams chat completions, supports on-device voice dictation, read-aloud, chat history and model selection (default `deepseek-v4.1-flash-at-hzdr`).
+Blablador is a native SwiftUI chat client for the Helmholtz Blablador OpenAI-compatible API (`https://api.blablador.fz-juelich.de/v1`). It streams chat completions, supports on-device voice dictation, read-aloud, on-device PDF reading with OCR, chat history and model selection (default `deepseek-v4.1-flash-at-hzdr`).
 
 ## Code Style Guidelines
 
@@ -22,6 +22,7 @@ Blablador is a native SwiftUI chat client for the Helmholtz Blablador OpenAI-com
 - `BlabladorAPI.swift`: `/models` and streaming `/chat/completions` client
 - `ChatStore.swift`: Conversations, persistence, model selection, sending/streaming
 - `KeychainHelper.swift`: API key storage
+- `PDFExtractor.swift`: PDF text extraction (PDFKit, Vision OCR for scanned pages)
 - `SpeechRecognizer.swift`: Dictation (Speech framework) and read-aloud (AVSpeechSynthesizer)
 - `ChatView.swift`, `MessageView.swift`, `HistoryView.swift`, `SettingsView.swift`, `Theme.swift`: UI
 - `SiriIntents.swift`, `SiriCommandCenter.swift`: "Ask Blablador" Siri shortcut, which starts a new chat

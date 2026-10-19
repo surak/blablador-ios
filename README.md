@@ -8,11 +8,13 @@ Blablador is a SwiftUI-based macOS/iOS/iPadOS app that provides an enhanced mobi
 
 ## Features
 
-- **Full-Screen Web View**: Native rendering of the Blablador web application
-- **Navigation Controls**: Back and forward navigation with gesture support
-- **Refresh**: Easy access to reload the current page
-- **Share**: Share current URLs with other apps
-- **Bottom Toolbar**: Intuitive navigation controls for easy access
+- **Chat**: Streaming replies from all Blablador chat models (default `deepseek-v4.1-flash-at-hzdr`)
+- **Voice**: On-device dictation and read-aloud
+- **Web search**: Cited results from Blablador's search engine
+- **Photos and camera**: Ask vision-capable models about pictures
+- **PDFs**: Attach PDFs with **+ → PDF**. Text is extracted on the device with PDFKit; scanned pages without a text layer are read with Apple's Vision OCR. The text is sent to the model along with your question, so it works with every model.
+- **Images**: Create images with FLUX.2-dev or Qwen-Image 2.1, edit them with Qwen-Image
+- **History**: Searchable chats stored on the device; API key kept in the Keychain
 
 ## Requirements
 
@@ -32,9 +34,14 @@ Blablador is a SwiftUI-based macOS/iOS/iPadOS app that provides an enhanced mobi
 ```
 Blablador/
 ├── Blablador/
-│   ├── BlabladorApp.swift    # App entry point
-│   ├── WebView.swift          # WebView implementation with navigation
-│   └── Info.plist            # App configuration
+│   ├── BlabladorApp.swift     # App entry point
+│   ├── BlabladorAPI.swift     # /models and streaming /chat/completions client
+│   ├── ChatStore.swift        # Conversations, persistence, sending/streaming
+│   ├── ChatModels.swift       # Messages, conversations, models
+│   ├── PDFExtractor.swift     # PDF text extraction (PDFKit + Vision OCR)
+│   ├── SpeechRecognizer.swift # Dictation and read-aloud
+│   ├── *View.swift            # SwiftUI views
+│   └── Info.plist             # App configuration
 └── Blablador.xcodeproj/      # Xcode project files
 ```
 
