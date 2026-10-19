@@ -92,6 +92,15 @@
     }
     code { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
     .note { background: var(--surface); border-left: 4px solid var(--accent-2); border-radius: 12px; padding: 16px 18px; color: var(--muted); font-size: 15px; margin-top: 20px; }
+    .demo { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 40px; }
+    .phone {
+      width: 280px; max-width: 80vw; border-radius: 44px; padding: 10px;
+      background: #000; box-shadow: 0 20px 60px rgba(0,0,0,0.25), 0 0 0 1px var(--border);
+    }
+    .phone video { display: block; width: 100%; border-radius: 34px; }
+    .demo ul { max-width: 380px; margin: 0; padding-left: 20px; color: var(--muted); }
+    .demo li { margin: 8px 0; }
+    .demo li strong { color: var(--text); }
     .platforms { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
 
     footer { padding: 40px 0 56px; color: var(--muted); font-size: 14px; border-top: 1px solid var(--border); margin-top: 24px; }
@@ -128,6 +137,22 @@
       </div>
       <div class="small">Universal app for Apple Silicon and Intel · macOS 14 or later</div>
     </div>
+
+    <section id="demo">
+      <div class="wrap">
+        <h2>See it in action</h2>
+        <div class="demo">
+          <div class="phone">
+            <video src="demo.mp4" poster="demo-poster.jpg" autoplay muted loop playsinline preload="metadata" aria-label="Screen recording of Blablador on iPhone"></video>
+          </div>
+          <ul>
+            <li><strong>Ask about today.</strong> Blablador searches the web, reads the results and answers with numbered sources.</li>
+            <li><strong>Tap +</strong> for web search, image creation, photos or the camera.</li>
+            <li><strong>Send a photo</strong> and ask what it shows.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
 
     <section id="features">
       <div class="wrap">
