@@ -8,6 +8,8 @@ final class ChatStore: ObservableObject {
     @Published var models: [RemoteModel] = []
     @Published var isStreaming = false
     @Published var modelsError: String?
+    /// Set by the Settings… menu command (⌘,) to open the settings sheet.
+    @Published var settingsRequested = false
 
     @Published var apiKey: String {
         didSet {

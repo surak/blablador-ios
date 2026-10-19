@@ -90,6 +90,12 @@ struct ChatView: View {
             await store.loadModels()
             await store.loadUserName()
             if store.apiKey.isEmpty { showSettings = true }
+        }
+        .onChange(of: store.settingsRequested) { _, requested in
+            if requested {
+                showSettings = true
+                store.settingsRequested = false
+            }
             handleSiri(siri.pendingCommand)
         }
         .onChange(of: siri.pendingCommand) { _, command in handleSiri(command) }
@@ -165,6 +171,9 @@ struct ChatView: View {
             } label: {
                 Label("Settings", systemImage: "gearshape")
             }
+#if os(iOS)
+            .keyboardShortcut(",", modifiers: .command)
+#endif
         }
     }
 
@@ -413,6 +422,8 @@ private struct ComposerView: View {
     @State private var showCamera = false
     @State private var showFileImporter = false
     @State private var showKnowledge = false
+    @State private var showOCRPicker = false
+    @State private var ocrItems: [PhotosPickerItem] = []
     @State private var readingPDFs = 0
     @State private var pdfError: String?
 
@@ -543,6 +554,24 @@ private struct ComposerView: View {
                 photoItems = []
             }
         }
+        .photosPicker(isPresented: $showOCRPicker, selection: $ocrItems, maxSelectionCount: 10, matching: .images)
+        .onChange(of: ocrItems) { _, items in
+            guard !items.isEmpty else { return }
+            ocrItems = []
+            readingPDFs += 1
+            Task {
+                defer { readingPDFs -= 1 }
+                for (number, item) in items.enumerated() {
+                    let name = items.count > 1 ? "Photo text \(number + 1)" : "Photo text"
+                    do {
+                        guard let data = try await item.loadTransferable(type: Data.self) else { continue }
+                        documents.append(try await PDFExtractor.extract(photo: data, name: name, api: store.api))
+                    } catch {
+                        pdfError = "\(name): \(error.localizedDescription)"
+                    }
+                }
+            }
+        }
         .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.pdf], allowsMultipleSelection: true) { result in
             guard case .success(let urls) = result else { return }
             for url in urls {
@@ -550,7 +579,7 @@ private struct ComposerView: View {
                 Task {
                     defer { readingPDFs -= 1 }
                     do {
-                        documents.append(try await PDFExtractor.extract(from: url))
+                        documents.append(try await PDFExtractor.extract(from: url, api: store.api))
                     } catch {
                         pdfError = "\(url.lastPathComponent): \(error.localizedDescription)"
                     }
@@ -571,7 +600,7 @@ private struct ComposerView: View {
             .frame(minWidth: 480, minHeight: 480)
 #endif
         }
-        .alert("Couldn't read PDF", isPresented: Binding(get: { pdfError != nil }, set: { if !$0 { pdfError = nil } })) {
+        .alert("Couldn't read text", isPresented: Binding(get: { pdfError != nil }, set: { if !$0 { pdfError = nil } })) {
             Button("OK") {}
         } message: {
             Text(pdfError ?? "")
@@ -598,6 +627,9 @@ private struct ComposerView: View {
             }
             Button { showFileImporter = true } label: {
                 Label("PDF", systemImage: "doc.richtext")
+            }
+            Button { showOCRPicker = true } label: {
+                Label("Text from photo", systemImage: "text.viewfinder")
             }
             KnowledgeMenu { showKnowledge = true }
             Divider()
@@ -712,7 +744,7 @@ extension ComposerView {
                 if readingPDFs > 0 {
                     HStack(spacing: 6) {
                         ProgressView().controlSize(.small)
-                        Text("Reading PDF…")
+                        Text("Reading text…")
                     }
                     .font(.caption)
                     .foregroundStyle(.secondary)

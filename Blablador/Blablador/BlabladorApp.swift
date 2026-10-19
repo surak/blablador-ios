@@ -15,6 +15,14 @@ struct BlabladorApp: App {
                 .frame(minWidth: 700, minHeight: 600)
 #endif
         }
+#if os(macOS)
+        .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings…") { store.settingsRequested = true }
+                    .keyboardShortcut(",", modifiers: .command)
+            }
+        }
+#endif
     }
 }
 

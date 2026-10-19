@@ -120,7 +120,7 @@ final class KnowledgeLibrary: ObservableObject {
         let pages: [(page: Int?, text: String)]
         var document: KnowledgeDocument
         if url.pathExtension.lowercased() == "pdf" {
-            let extracted = try await PDFExtractor.extract(from: url)
+            let extracted = try await PDFExtractor.extract(from: url, api: api)
             pages = Self.pages(of: extracted.text)
             document = KnowledgeDocument(name: extracted.name, pageCount: extracted.pageCount, ocrPageCount: extracted.ocrPageCount)
         } else {

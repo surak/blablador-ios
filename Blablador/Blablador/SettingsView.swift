@@ -5,6 +5,7 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var apiKey = ""
     @State private var confirmDelete = false
+    @AppStorage("ocrEngine") private var ocrEngine: OCREngine = .onDevice
 
     var body: some View {
         NavigationStack {
@@ -61,6 +62,16 @@ struct SettingsView: View {
                     Text("Images")
                 } footer: {
                     Text("Used for new images. Editing photos always uses Qwen-Image 2.1, the model that supports editing.")
+                }
+
+                Section {
+                    Picker("Text recognition", selection: $ocrEngine) {
+                        ForEach(OCREngine.allCases) { Text($0.title).tag($0) }
+                    }
+                } header: {
+                    Text("Documents")
+                } footer: {
+                    Text("Reads scanned PDF pages and text from photos. On device is private and works offline; Blablador's LightOnOCR keeps tables and layout better. If Blablador fails, the app reads on device.")
                 }
 
                 Section {

@@ -28,6 +28,7 @@ struct BlabladorAPI {
     static let speechModel = "alias-voice-drama3"
     static let transcriptionModel = "faster-whisper-large-v3"
     static let embeddingModel = "alias-qwen3-4b-embeddings"
+    static let ocrModel = "alias-ocr"
     /// Used for a new knowledge base when the default embedding model doesn't respond.
     static let fallbackEmbeddingModel = "alias-embeddings"
     static let rerankModel = "alias-qwen3-4b-reranker"
@@ -87,6 +88,27 @@ struct BlabladorAPI {
         body.append(Data("\r\n--\(boundary)--\r\n".utf8))
         request.httpBody = body
         return try await imageResponse(for: request)
+    }
+
+    /// Reads a page image with LightOnOCR; returns Markdown (tables come back as HTML).
+    func ocr(jpeg: Data) async throws -> String {
+        struct Response: Decodable {
+            struct Choice: Decodable {
+                struct Message: Decodable { let content: String? }
+                let message: Message
+            }
+            let choices: [Choice]
+        }
+        var request = try request(path: "chat/completions")
+        request.httpMethod = "POST"
+        request.timeoutInterval = 180
+        let content: [[String: Any]] = [["type": "image_url", "image_url": ["url": "data:image/jpeg;base64," + jpeg.base64EncodedString()]]]
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "model": Self.ocrModel, "messages": [["role": "user", "content": content]], "max_tokens": 4096, "temperature": 0
+        ])
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try Self.validate(response, body: String(data: data.prefix(500), encoding: .utf8) ?? "")
+        return try JSONDecoder().decode(Response.self, from: data).choices.first?.message.content ?? ""
     }
 
     func embeddings(_ texts: [String], model: String = BlabladorAPI.embeddingModel) async throws -> [[Float]] {
