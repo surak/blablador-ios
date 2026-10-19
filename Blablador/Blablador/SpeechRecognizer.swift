@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import NaturalLanguage
 import Speech
 
 /// Live on-device dictation using the system speech recognizer.
@@ -140,13 +141,68 @@ final class SpeechSynthesizer: NSObject, ObservableObject, AVSpeechSynthesizerDe
             return
         }
         synthesizer.stopSpeaking(at: .immediate)
-        let utterance = AVSpeechUtterance(string: message.content)
-        utterance.voice = AVSpeechSynthesisVoice(language: Locale.current.identifier)
+#if os(iOS)
+        // Play through the speaker even with the silent switch on, and at full
+        // volume after dictation left the session in a recording mode.
+        let session = AVAudioSession.sharedInstance()
+        try? session.setCategory(.playback, mode: .spokenAudio, options: [.duckOthers])
+        try? session.setActive(true)
+#endif
+        let text = Self.speakableText(message.content)
+        let utterance = AVSpeechUtterance(string: text)
+        utterance.voice = Self.voice(for: text)
         speakingID = message.id
         synthesizer.speak(utterance)
     }
 
+    /// Best natural voice for the reply's language: premium, then enhanced, then default quality,
+    /// preferring the device's region and skipping novelty and Eloquence voices.
+    private static func voice(for text: String) -> AVSpeechSynthesisVoice? {
+        let recognizer = NLLanguageRecognizer()
+        recognizer.processString(text)
+        let language = recognizer.dominantLanguage?.rawValue
+            ?? String(AVSpeechSynthesisVoice.currentLanguageCode().prefix(2))
+        let region = Locale.current.region?.identifier
+
+        let candidates = AVSpeechSynthesisVoice.speechVoices().filter { voice in
+            voice.language.hasPrefix(language)
+                && !voice.identifier.contains("eloquence")
+                && !voice.identifier.contains("speech.synthesis.voice")
+                && !voice.voiceTraits.contains(.isNoveltyVoice)
+        }
+        func score(_ voice: AVSpeechSynthesisVoice) -> Int {
+            var score = voice.quality.rawValue * 10
+            if let region, voice.language.hasSuffix(region) { score += 5 }
+            if voice.language == AVSpeechSynthesisVoice.currentLanguageCode() { score += 3 }
+            return score
+        }
+        return candidates.max { score($0) < score($1) }
+            ?? AVSpeechSynthesisVoice(language: AVSpeechSynthesisVoice.currentLanguageCode())
+    }
+
+    /// Strips markdown symbols and citation markers so they aren't read out.
+    private static func speakableText(_ markdown: String) -> String {
+        var text = markdown
+        text = text.replacingOccurrences(of: #"```[\s\S]*?```"#, with: " ", options: .regularExpression)
+        text = text.replacingOccurrences(of: #"\[(\d+)\]"#, with: "", options: .regularExpression)
+        text = text.replacingOccurrences(of: #"\[([^\]]+)\]\([^)]+\)"#, with: "$1", options: .regularExpression)
+        text = text.replacingOccurrences(of: #"(?m)^\s*(#{1,6}|[-*+]|\d+\.)\s+"#, with: "", options: .regularExpression)
+        text = text.replacingOccurrences(of: #"[*_`]"#, with: "", options: .regularExpression)
+        return text
+    }
+
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+        Task { @MainActor in self.finish() }
+    }
+
+    private func finish() {
+        speakingID = nil
+#if os(iOS)
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+#endif
+    }
+
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
-        Task { @MainActor in self.speakingID = nil }
+        Task { @MainActor in self.finish() }
     }
 }
