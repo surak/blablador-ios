@@ -135,11 +135,11 @@ final class KnowledgeLibrary: ObservableObject {
 
         var vectors: [Float] = []
         var dimension = 0
-        let batch = 16
+        let batch = 4
         for start in stride(from: 0, to: chunks.count, by: batch) {
             progress[baseID] = "Indexing \(label) · \(Int(Double(start) / Double(chunks.count) * 100))%"
             let texts = chunks[start ..< min(start + batch, chunks.count)].map { "\(document.name)\n\($0.text)" }
-            let embeddings = try await Self.retrying { try await api.embeddings(texts, model: model) }
+            let embeddings = try await Self.embed(texts, model: model, api: api)
             for embedding in embeddings {
                 dimension = embedding.count
                 vectors += Self.normalized(embedding)
@@ -255,6 +255,17 @@ final class KnowledgeLibrary: ObservableObject {
         norm = sqrt(norm)
         guard norm > 0 else { return vector }
         return vector.map { $0 / norm }
+    }
+
+    /// Blablador answers 500 when a request carries too many tokens, so halve the batch until it fits.
+    private static func embed(_ texts: [String], model: String, api: BlabladorAPI) async throws -> [[Float]] {
+        do {
+            return try await retrying { try await api.embeddings(texts, model: model) }
+        } catch BlabladorAPIError.http(let status, _) where status >= 500 && texts.count > 1 {
+            let middle = texts.count / 2
+            return try await embed(Array(texts[..<middle]), model: model, api: api)
+                + embed(Array(texts[middle...]), model: model, api: api)
+        }
     }
 
     /// The network is flaky; retry API calls a few times.
