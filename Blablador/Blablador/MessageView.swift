@@ -260,9 +260,44 @@ private struct TypingIndicator: View {
 struct MarkdownText: View {
     let text: String
 
-    private enum Block: Hashable {
+    private enum Block {
         case text(String)
         case code(language: String, body: String)
+        case table(header: [String], alignments: [HorizontalAlignment], rows: [[String]])
+    }
+
+    private static func cells(_ line: String) -> [String] {
+        var row = line.trimmingCharacters(in: .whitespaces)
+        if row.hasPrefix("|") { row.removeFirst() }
+        if row.hasSuffix("|") && !row.hasSuffix("\\|") { row.removeLast() }
+        // Split on pipes that aren't escaped as \|.
+        var cells: [String] = [], current = "", previous: Character = " "
+        for character in row {
+            if character == "|" && previous != "\\" {
+                cells.append(current)
+                current = ""
+            } else {
+                current.append(character)
+            }
+            previous = character
+        }
+        cells.append(current)
+        return cells.map { $0.replacingOccurrences(of: "\\|", with: "|").trimmingCharacters(in: .whitespaces) }
+    }
+
+    /// `|---|:--:|` style separator line; returns column alignments.
+    private static func separator(_ line: String) -> [HorizontalAlignment]? {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard trimmed.contains("-"), trimmed.contains("|") || trimmed.hasPrefix(":") || trimmed.hasPrefix("-"),
+              trimmed.range(of: #"^\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?$"#, options: .regularExpression) != nil
+        else { return nil }
+        return cells(trimmed).map { cell in
+            switch (cell.hasPrefix(":"), cell.hasSuffix(":")) {
+            case (true, true): .center
+            case (false, true): .trailing
+            default: .leading
+            }
+        }
     }
 
     private var blocks: [Block] {
@@ -278,15 +313,35 @@ struct MarkdownText: View {
             buffer.removeAll()
         }
 
-        for line in text.components(separatedBy: "\n") {
+        let lines = text.components(separatedBy: "\n")
+        var index = 0
+        while index < lines.count {
+            let line = lines[index]
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             if trimmed.hasPrefix("```") {
                 flush()
                 if !inCode { language = String(trimmed.dropFirst(3)) }
                 inCode.toggle()
+            } else if !inCode, trimmed.contains("|"), index + 1 < lines.count,
+                      let alignments = Self.separator(lines[index + 1]) {
+                // Table: header, separator, then rows until a line without a pipe.
+                flush()
+                let header = Self.cells(trimmed)
+                var rows: [[String]] = []
+                index += 2
+                while index < lines.count, lines[index].contains("|"),
+                      !lines[index].trimmingCharacters(in: .whitespaces).isEmpty {
+                    rows.append(Self.cells(lines[index]))
+                    index += 1
+                }
+                let columns = max(header.count, alignments.count)
+                func pad(_ row: [String]) -> [String] { Array((row + Array(repeating: "", count: columns)).prefix(columns)) }
+                result.append(.table(header: pad(header), alignments: Array((alignments + Array(repeating: .leading, count: columns)).prefix(columns)), rows: rows.map(pad)))
+                continue
             } else {
                 buffer.append(line)
             }
+            index += 1
         }
         flush()
         return result
@@ -301,10 +356,48 @@ struct MarkdownText: View {
                     Text(attributed(body))
                 case let .code(language, body):
                     CodeBlock(language: language, code: body)
+                case let .table(header, alignments, rows):
+                    table(header: header, alignments: alignments, rows: rows)
                 }
             }
         }
         .textSelection(.enabled)
+    }
+
+    private func table(header: [String], alignments: [HorizontalAlignment], rows: [[String]]) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
+                GridRow {
+                    ForEach(header.indices, id: \.self) { column in
+                        cell(header[column], alignment: alignments[column]).bold()
+                    }
+                }
+                .background(Theme.surface)
+                ForEach(rows.indices, id: \.self) { row in
+                    Divider().gridCellUnsizedAxes(.horizontal)
+                    GridRow {
+                        ForEach(header.indices, id: \.self) { column in
+                            cell(rows[row][column], alignment: alignments[column])
+                        }
+                    }
+                }
+            }
+            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.secondary.opacity(0.3)))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+    }
+
+    private func cell(_ markdown: String, alignment: HorizontalAlignment) -> some View {
+        // Models put <br> in cells for line breaks.
+        let text = markdown.replacingOccurrences(of: #"<br\s*/?>"#, with: "\n", options: [.regularExpression, .caseInsensitive])
+        return Text(inline(text))
+            .font(.subheadline)
+            .multilineTextAlignment(alignment == .trailing ? .trailing : alignment == .center ? .center : .leading)
+            .frame(minWidth: 40, maxWidth: 320, alignment: Alignment(horizontal: alignment, vertical: .top))
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .gridColumnAlignment(alignment)
     }
 
     private func attributed(_ body: String) -> AttributedString {

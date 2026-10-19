@@ -39,7 +39,9 @@ struct SpeechClip: View {
 
 /// Composer chip shown in speech mode: voice picker and leave button.
 struct SpeechModeChip: View {
+    @EnvironmentObject private var store: ChatStore
     @ObservedObject private var library = VoiceLibrary.shared
+    @State private var cloning = false
     let onClose: () -> Void
 
     var body: some View {
@@ -55,6 +57,10 @@ struct SpeechModeChip: View {
                             Text(voice.name)
                         }
                     }
+                }
+                Divider()
+                Button { cloning = true } label: {
+                    Label("Clone a voice…", systemImage: "person.wave.2")
                 }
             } label: {
                 HStack(spacing: 4) {
@@ -78,6 +84,7 @@ struct SpeechModeChip: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
         .background(Theme.gradient, in: Capsule())
+        .sheet(isPresented: $cloning) { AddVoiceView().environmentObject(store) }
     }
 }
 
@@ -123,7 +130,9 @@ struct SpeechMarkupMenu: View {
 
 /// Settings section for Drama 3 voices and delivery.
 struct VoiceSettingsSection: View {
+    @EnvironmentObject private var store: ChatStore
     @ObservedObject private var library = VoiceLibrary.shared
+    @State private var cloning = false
 
     var body: some View {
         Section {
@@ -132,6 +141,10 @@ struct VoiceSettingsSection: View {
                     Text(voice.isCloned ? "\(voice.name) (cloned)" : voice.name).tag(voice.id)
                 }
             }
+            Button { cloning = true } label: {
+                Label("Clone a voice…", systemImage: "person.wave.2")
+            }
+            .sheet(isPresented: $cloning) { AddVoiceView().environmentObject(store) }
             NavigationLink("Manage voices") { VoicesView() }
             Picker("Feeling", selection: $library.emotion) {
                 ForEach(SpeechEmotion.allCases) { Text($0.title).tag($0) }

@@ -8,12 +8,12 @@ Blablador is a SwiftUI-based macOS/iOS/iPadOS app that provides an enhanced mobi
 
 ## Features
 
-- **Chat**: Streaming replies from all Blablador chat models (default `deepseek-v4.1-flash-at-hzdr`)
+- **Chat**: Streaming replies from all Blablador chat models (default `deepseek-v4.1-flash-at-hzdr`), with Markdown formatting, code blocks and tables
 - **Voice**: On-device dictation and read-aloud
 - **Web search**: Cited results from Blablador's search engine
 - **Photos and camera**: Ask vision-capable models about pictures
 - **PDFs**: Attach PDFs with **+ → PDF**. Text is extracted on the device with PDFKit; scanned pages without a text layer are read with Apple's Vision OCR. The text is sent to the model along with your question, so it works with every model.
-- **Speech and voice cloning**: Turn on **+ → Speak** to have text spoken with Drama 3 (`alias-voice-drama3`), or ask the assistant to say something. Pick a feeling, pace and whisper in Settings → Voice, and add pauses, laughs, whispers and other expressions from the Expressions menu. Clone a voice in Settings → Voice → Manage voices from a recording, an audio or video file, or a direct link to one (10–30 seconds; YouTube pages are not supported). The sample is transcribed with Whisper.
+- **Speech and voice cloning**: Turn on **+ → Speak** to have text spoken with Drama 3 (`alias-voice-drama3`), or ask the assistant to say something. Pick a feeling, pace and whisper in Settings → Voice, and add pauses, laughs, whispers and other expressions from the Expressions menu. Clone a voice with **Clone a voice…** in Settings → Voice or in the Speak chip's voice menu, from a recording, an audio or video file, or a direct link to one (10–30 seconds; YouTube pages are not supported). The sample is transcribed with Whisper.
 - **Images**: Create images with FLUX.2-dev or Qwen-Image 2.1, edit them with Qwen-Image
 - **History**: Searchable chats stored on the device; API key kept in the Keychain
 
