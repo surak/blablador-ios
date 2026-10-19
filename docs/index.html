@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Blablador for Mac, iPhone and iPad</title>
+  <meta name="description" content="Native client for Helmholtz Blablador: chat with open models, voice input, web search, image generation and editing.">
+  <link rel="icon" href="logo.svg" type="image/svg+xml">
+  <style>
+    :root {
+      --bg: #ffffff;
+      --surface: #f3f3f5;
+      --text: #111114;
+      --muted: #5d5d66;
+      --border: #e2e2e7;
+      --accent-1: #4585f5;
+      --accent-2: #9c6bed;
+      --accent-3: #d9668f;
+      --code-bg: #111114;
+      --code-text: #f3f3f5;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #121214;
+        --surface: #1d1d21;
+        --text: #f3f3f5;
+        --muted: #a1a1aa;
+        --border: #2c2c32;
+        --code-bg: #000000;
+      }
+    }
+    * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 17px/1.55 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+    }
+    a { color: var(--accent-1); }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 0 20px; }
+    .gradient {
+      background: linear-gradient(90deg, var(--accent-1), var(--accent-2), var(--accent-3));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+
+    header { padding: 20px 0; }
+    header .wrap { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 19px; color: var(--text); text-decoration: none; }
+    .brand img { width: 30px; height: 30px; }
+    nav a { color: var(--muted); text-decoration: none; margin-left: 20px; font-size: 15px; }
+    nav a:hover { color: var(--text); }
+
+    .hero { text-align: center; padding: 56px 0 40px; }
+    .hero img { width: 120px; height: 120px; }
+    .hero h1 { font-size: clamp(38px, 7vw, 64px); line-height: 1.05; margin: 24px 0 16px; letter-spacing: -0.02em; }
+    .hero p { font-size: clamp(18px, 2.4vw, 21px); color: var(--muted); max-width: 640px; margin: 0 auto 32px; }
+    .buttons { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+    .button {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 13px 24px; border-radius: 999px;
+      font-weight: 600; text-decoration: none; font-size: 16px;
+    }
+    .button.primary { color: #fff; background: linear-gradient(90deg, var(--accent-1), var(--accent-2), var(--accent-3)); }
+    .button.secondary { color: var(--text); background: var(--surface); border: 1px solid var(--border); }
+    .small { color: var(--muted); font-size: 14px; margin-top: 14px; }
+
+    section { padding: 48px 0; }
+    h2 { font-size: clamp(26px, 4vw, 34px); letter-spacing: -0.01em; margin: 0 0 24px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+    .card { background: var(--surface); border-radius: 20px; padding: 22px; }
+    .card .icon { font-size: 26px; line-height: 1; }
+    .card h3 { margin: 12px 0 6px; font-size: 18px; }
+    .card p { margin: 0; color: var(--muted); font-size: 15px; }
+
+    .steps { counter-reset: step; list-style: none; padding: 0; margin: 0; display: grid; gap: 14px; }
+    .steps li { counter-increment: step; position: relative; padding-left: 46px; }
+    .steps li::before {
+      content: counter(step);
+      position: absolute; left: 0; top: 0;
+      width: 30px; height: 30px; border-radius: 50%;
+      display: grid; place-items: center;
+      font-weight: 700; font-size: 15px; color: #fff;
+      background: linear-gradient(135deg, var(--accent-1), var(--accent-3));
+    }
+    pre {
+      background: var(--code-bg); color: var(--code-text);
+      padding: 14px 16px; border-radius: 12px;
+      overflow-x: auto; font-size: 14px; margin: 10px 0 0;
+    }
+    code { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+    .note { background: var(--surface); border-left: 4px solid var(--accent-2); border-radius: 12px; padding: 16px 18px; color: var(--muted); font-size: 15px; margin-top: 20px; }
+    .platforms { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+
+    footer { padding: 40px 0 56px; color: var(--muted); font-size: 14px; border-top: 1px solid var(--border); margin-top: 24px; }
+    footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between; }
+    footer a { color: var(--muted); }
+
+    @media (max-width: 560px) {
+      nav { display: none; }
+      .hero { padding-top: 32px; }
+      .hero img { width: 96px; height: 96px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <a class="brand" href="#"><img src="logo.svg" alt="">Blablador</a>
+      <nav>
+        <a href="#features">Features</a>
+        <a href="#install">Install</a>
+        <a href="https://github.com/surak/blablador-ios">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <div class="wrap hero">
+      <img src="logo.svg" alt="Blablador logo">
+      <h1><span class="gradient">Blablador,</span><br>native on your devices</h1>
+      <p>Chat with the open models of Helmholtz Blablador on Mac, iPhone and iPad. Talk to it, search the web, send photos and create images.</p>
+      <div class="buttons">
+        <a class="button primary" href="https://github.com/surak/blablador-ios/releases/latest">Download for Mac</a>
+        <a class="button secondary" href="https://github.com/surak/blablador-ios">View source</a>
+      </div>
+      <div class="small">Universal app for Apple Silicon and Intel · macOS 14 or later</div>
+    </div>
+
+    <section id="features">
+      <div class="wrap">
+        <h2>Everything Blablador can do</h2>
+        <div class="grid">
+          <div class="card"><div class="icon">💬</div><h3>All Blablador models</h3><p>Streaming replies from every chat model on the server. DeepSeek-V4.1-Flash by default, switch any time.</p></div>
+          <div class="card"><div class="icon">🎙️</div><h3>Voice in, voice out</h3><p>Dictate with on-device speech recognition and have replies read aloud.</p></div>
+          <div class="card"><div class="icon">🌐</div><h3>Web search</h3><p>The model searches the web through Blablador's own search engine when it needs current information, and cites its sources.</p></div>
+          <div class="card"><div class="icon">📷</div><h3>Photos and camera</h3><p>Attach pictures or take a photo and ask about them with vision-capable models.</p></div>
+          <div class="card"><div class="icon">🎨</div><h3>Create and edit images</h3><p>Generate images with FLUX.2-dev or Qwen-Image 2.1, and edit photos with Qwen-Image, just by asking.</p></div>
+          <div class="card"><div class="icon">🗂️</div><h3>Your chats, private</h3><p>Searchable history stored on your device. Your API key stays in the Keychain.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="install">
+      <div class="wrap">
+        <h2>Install on your Mac</h2>
+        <ol class="steps">
+          <li>Download the <strong>.dmg</strong> from the <a href="https://github.com/surak/blablador-ios/releases/latest">latest release</a>, open it and drag Blablador into Applications.</li>
+          <li>
+            This build is not notarized by Apple, so macOS blocks it at first. Open Terminal and run:
+            <pre><code>xattr -dr com.apple.quarantine /Applications/Blablador.app</code></pre>
+          </li>
+          <li>Open Blablador and paste your Blablador API key in Settings. Don't have one? <a href="https://sdlaml.pages.jsc.fz-juelich.de/ai/guides/blablador_api_access/">Get an API key</a>.</li>
+        </ol>
+        <div class="note">On macOS 15 Sequoia and later, right-click → Open no longer bypasses the warning. Use the command above, or try to open the app once and then click <strong>Open Anyway</strong> in System Settings → Privacy &amp; Security.</div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <h2>Platforms</h2>
+        <div class="platforms">
+          <div class="card"><div class="icon">💻</div><h3>Mac</h3><p>Available now as a download. Sidebar with your chats, native toolbar and model picker.</p></div>
+          <div class="card"><div class="icon">📱</div><h3>iPhone and iPad</h3><p>Same app, adapted to each screen. Not yet distributed; build it from the source with Xcode.</p></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <span>Blablador is a service of <a href="https://www.fz-juelich.de">Forschungszentrum Jülich</a> for the Helmholtz community.</span>
+      <span><a href="https://github.com/surak/blablador-ios">Source on GitHub</a></span>
+    </div>
+  </footer>
+</body>
+</html>
