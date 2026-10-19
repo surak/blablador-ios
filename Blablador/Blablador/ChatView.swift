@@ -214,7 +214,6 @@ private struct ModelMenu: View {
                     .resizable()
                     .interpolation(.high)
                     .frame(width: 16, height: 16)
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
             }
             .labelStyle(.titleAndIcon)
 #else
@@ -224,7 +223,6 @@ private struct ModelMenu: View {
                         .resizable()
                         .interpolation(.high)
                         .frame(width: 20, height: 20)
-                        .clipShape(RoundedRectangle(cornerRadius: 5))
                     Text("Blablador")
                         .font(.headline)
                         .foregroundStyle(.primary)
@@ -466,8 +464,36 @@ private struct ComposerView: View {
 
     private var imageModeChip: some View {
         HStack(spacing: 6) {
-            Image(systemName: "paintbrush.pointed.fill")
-            Text(attachments.isEmpty ? "Image · \(store.imageModelName)" : "Edit image · Qwen-Image")
+            if attachments.isEmpty {
+                // Model for new images can be switched right here.
+                Menu {
+                    ForEach(BlabladorAPI.imageModels, id: \.id) { model in
+                        Button {
+                            store.imageModel = model.id
+                        } label: {
+                            if model.id == store.imageModel {
+                                Label(model.name, systemImage: "checkmark")
+                            } else {
+                                Text(model.name)
+                            }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "paintbrush.pointed.fill")
+                        Text(store.imageModelName)
+                        Image(systemName: "chevron.down")
+                            .imageScale(.small)
+                    }
+                }
+                .menuStyle(.button)
+                .buttonStyle(.plain)
+                .fixedSize()
+                .accessibilityLabel("Image model, \(store.imageModelName)")
+            } else {
+                Image(systemName: "paintbrush.pointed.fill")
+                Text("Edit image · Qwen-Image")
+            }
             Button {
                 imageMode = false
             } label: {

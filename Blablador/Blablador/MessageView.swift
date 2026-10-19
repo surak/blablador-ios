@@ -131,7 +131,6 @@ private struct AvatarView: View {
             .resizable()
             .interpolation(.high)
             .frame(width: 28, height: 28)
-            .clipShape(RoundedRectangle(cornerRadius: 7))
             .opacity(isActive && pulse ? 0.45 : 1)
             .animation(isActive ? .easeInOut(duration: 0.7).repeatForever() : .default, value: pulse)
             .onChange(of: isActive, initial: true) { _, active in pulse = active }
