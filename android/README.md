@@ -114,5 +114,7 @@ app/src/main/java/de/fz_juelich/blablador/
 ```
 
 ## Version history
+The Android and Apple apps share one version number and one release.
+
 - **2.1.0**: knowledge bases, Drama 3 speech with voice cloning, Clef decisions
 - **2.0.0**: first native Android app: chat, web search, PDFs and OCR, photos, image creation and editing

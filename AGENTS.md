@@ -9,8 +9,9 @@ Blablador is a native SwiftUI chat client for the Helmholtz Blablador OpenAI-com
 ## Android
 
 The Android app lives in `android/` (Kotlin, Jetpack Compose); see `android/README.md` for building and its structure.
-Keep features in sync between the two apps. Android releases are tagged `android-v<version>` with the APK attached;
-Apple releases are tagged `v<version>`.
+Keep features in sync between the two apps. Both apps share one version number (`MARKETING_VERSION` in the Xcode
+project, `versionName` in `android/app/build.gradle.kts`; bump `versionCode` and `CURRENT_PROJECT_VERSION` too) and one
+release tagged `v<version>` with the Mac DMG and zip, the Android APK and `SHA256SUMS.txt`.
 
 ## Code Style Guidelines
 
