@@ -13,8 +13,8 @@ android {
         applicationId = "de.fz_juelich.blablador"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "2.1.0"
+        versionCode = 4
+        versionName = "2.2.0"
         // Phones are ARM; leaving out x86 keeps ML Kit's native libraries small.
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }

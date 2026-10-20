@@ -120,6 +120,7 @@ struct ChatView: View {
 
     private var chat: some View {
         VStack(spacing: 0) {
+            UpdateBanner()
             if let conversation = store.current, !conversation.messages.isEmpty {
                 messageList(conversation)
             } else {

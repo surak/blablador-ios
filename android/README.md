@@ -20,7 +20,8 @@ It is the Android counterpart of [blablador-ios](https://github.com/surak/blabla
 - **Speech with Drama 3** (+ → Speak): built-in voices, feelings, pace, whisper and an Expressions menu for pauses, laughs and tags;
   the assistant can also speak with the `generate_speech` tool
 - **Voice cloning**: record a sample, pick an audio or video file, or fetch a link; Whisper transcribes it for Drama 3
-- **Decide** (+ → Decide): the Clef decision model (`alias-clef`) with 73 examples; answers with probabilities
+- **Decide** (+ → Decide): the Clef decision model (`alias-clef`); write your own decisions and questions (yes/no, choice, score) and save them, or start from 73 examples; answers with probabilities
+- **Update notice**: when GitHub has a newer release, a banner above the chat links to the new APK
 
 Agent mode is Mac only on iOS and isn't ported.
 
@@ -51,8 +52,10 @@ The decision examples in `app/src/main/assets/decision-examples.json` are genera
   everything to 16 kHz.
 
 ### Decisions (Clef)
-**+ → Decide (Clef)** opens the decision screen: pick one of 73 examples in 12 categories or write a situation and
-questions (yes/no, choice, or score). It calls `POST /v1/systemone` with `alias-clef` and shows each answer with
+**+ → Decide (Clef)** opens the decision screen. Tap the decision name and choose **New decision**, a saved one
+under **My decisions**, or one of 73 examples in 12 categories. Describe the situation (plain text or JSON), then
+**Add question**: yes/no, a choice between options, or a score on levels from lowest to highest. Tap a question to edit
+it. **Save as my decision** keeps it on the phone. It calls `POST /v1/systemone` with `alias-clef` and shows each answer with
 probabilities.
 
 ## Permissions
@@ -99,7 +102,8 @@ app/src/main/java/de/fz_juelich/blablador/
 │   ├── Tools.kt               # Tool definitions (web search, images, generate_speech)
 │   ├── Knowledge.kt           # Knowledge bases: chunking, embeddings, vector store, search, rerank
 │   ├── Voice.kt               # Voices, delivery settings, audio decoding/resampling, recorder, playback
-│   ├── Decision.kt            # Clef questions, examples and answers
+│   ├── Decision.kt            # Clef questions, examples, saved decisions and answers
+│   ├── Updates.kt             # Checks GitHub for a newer release
 │   ├── PdfExtractor.kt        # PDF text (PdfBox), OCR (ML Kit or LightOnOCR)
 │   └── Storage.kt             # Chat history, images, settings, encrypted API key
 └── ui/
@@ -116,5 +120,6 @@ app/src/main/java/de/fz_juelich/blablador/
 ## Version history
 The Android and Apple apps share one version number and one release.
 
+- **2.2.0**: write and save your own decisions; update notice
 - **2.1.0**: knowledge bases, Drama 3 speech with voice cloning, Clef decisions
 - **2.0.0**: first native Android app: chat, web search, PDFs and OCR, photos, image creation and editing

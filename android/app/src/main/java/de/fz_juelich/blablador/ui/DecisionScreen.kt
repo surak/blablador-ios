@@ -20,12 +20,17 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.List
+import androidx.compose.material.icons.outlined.AddCircleOutline
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.RemoveCircleOutline
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.UnfoldMore
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -53,13 +58,14 @@ import de.fz_juelich.blablador.ChatViewModel
 import de.fz_juelich.blablador.data.DecisionAnswer
 import de.fz_juelich.blablador.data.DecisionExample
 import de.fz_juelich.blablador.data.DecisionQuestion
+import de.fz_juelich.blablador.data.SavedDecisions
 import de.fz_juelich.blablador.data.decide
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.util.Locale
 import kotlin.math.roundToInt
 
-/** Pick an example, edit the situation, and see the Clef decision model's answers with probabilities. */
+/** Write a situation and typed questions, or start from an example, and see the Clef decision model's answers with probabilities. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DecisionScreen(vm: ChatViewModel, onClose: () -> Unit) {
@@ -67,21 +73,39 @@ fun DecisionScreen(vm: ChatViewModel, onClose: () -> Unit) {
     val examples = remember { DecisionExample.load(context) }
     val categories = remember(examples) { examples.map { it.category }.distinct() }
     val scope = rememberCoroutineScope()
-    var example by remember { mutableStateOf(examples.firstOrNull()) }
-    var state by remember { mutableStateOf(examples.firstOrNull()?.state.orEmpty()) }
+    var saved by remember { mutableStateOf(SavedDecisions.load(context)) }
+    var decision by remember { mutableStateOf(examples.firstOrNull() ?: DecisionExample.blank()) }
     var answers by remember { mutableStateOf<Map<String, DecisionAnswer>>(emptyMap()) }
     var running by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var choosing by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<DecisionQuestion?>(null) }
+    var adding by remember { mutableStateOf(false) }
+    var naming by remember { mutableStateOf(false) }
     BackHandler(onBack = onClose)
 
+    val isSaved = decision.category == DecisionExample.MY_CATEGORY && saved.any { it.name == decision.name }
+    val canRun = !running && decision.state.isNotBlank() && decision.questions.isNotEmpty() && decision.questions.all { it.isComplete }
+
+    fun select(item: DecisionExample) {
+        decision = item; answers = emptyMap(); error = null; choosing = false
+    }
+
+    fun save(name: String) {
+        val copy = decision.copy(name = name.trim(), category = DecisionExample.MY_CATEGORY, questions = decision.questions.map { it.cleaned() })
+        saved = (saved.filter { it.name != copy.name } + copy).sortedBy { it.name.lowercase() }
+        SavedDecisions.save(context, saved)
+        decision = copy
+    }
+
     fun run() {
-        val current = example ?: return
+        val questions = decision.questions.map { it.cleaned() }
+        decision = decision.copy(questions = questions)
         running = true
         error = null
         scope.launch {
             try {
-                answers = vm.api.decide(state, current.questions)
+                answers = vm.api.decide(decision.state, questions)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -98,35 +122,56 @@ fun DecisionScreen(vm: ChatViewModel, onClose: () -> Unit) {
             navigationIcon = { IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Done") } },
             actions = {
                 if (running) CircularProgressIndicator(Modifier.padding(horizontal = 16.dp).size(20.dp), strokeWidth = 2.dp)
-                else TextButton(onClick = ::run, enabled = example != null && state.isNotBlank()) { Text("Decide", fontWeight = FontWeight.SemiBold) }
+                else TextButton(onClick = ::run, enabled = canRun) { Text("Decide", fontWeight = FontWeight.SemiBold) }
             },
         )
     }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Section("Example", footer = "${examples.size} examples in ${categories.size} categories. The decision model answers typed questions " +
-                "with probabilities instead of text — for routing, triage and classification.") {
+            Section("Decision", footer = "Start a new decision, open one you saved, or try one of ${examples.size} examples. The decision model " +
+                "answers typed questions with probabilities instead of text — for routing, triage and classification.") {
                 Row(Modifier.fillMaxWidth().clickable { choosing = true }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text(example?.name ?: "Choose an example")
-                        example?.let { Text(it.category, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        Text(decision.name)
+                        Text(decision.category, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Icon(Icons.Outlined.UnfoldMore, null)
                 }
-                example?.description?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                decision.description?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
-            Section(if (example?.json == true) "Situation (JSON)" else "Situation", footer = "Edit it to see how the decisions change.") {
-                OutlinedTextField(state, { state = it }, Modifier.fillMaxWidth(), minLines = 3, maxLines = 12,
-                    textStyle = if (example?.json == true) MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace)
+            Section(if (decision.json) "Situation (JSON)" else "Situation", footer = "Plain text or JSON. Edit it to see how the decisions change.") {
+                OutlinedTextField(decision.state, { decision = decision.copy(state = it); answers = emptyMap() }, Modifier.fillMaxWidth(),
+                    minLines = 3, maxLines = 12,
+                    placeholder = { Text("Describe the situation: a message, a record, a request…") },
+                    textStyle = if (decision.json) MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace)
                     else MaterialTheme.typography.bodyLarge)
             }
-            example?.let { current ->
-                Section("Questions") {
-                    current.questions.forEachIndexed { index, question ->
-                        if (index > 0) HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                        QuestionRow(question, answers[question.id])
+            Section("Questions", footer = "Tap a question to edit it. Yes/no gives the probability of yes; choice picks one option; " +
+                "score rates on your levels from lowest to highest.") {
+                decision.questions.forEachIndexed { index, question ->
+                    if (index > 0) HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                    Row(Modifier.fillMaxWidth().clickable { editing = question }, verticalAlignment = Alignment.Top) {
+                        Box(Modifier.weight(1f)) { QuestionRow(question, answers[question.id]) }
+                        IconButton(onClick = {
+                            decision = decision.copy(questions = decision.questions.filter { it.id != question.id })
+                            answers = answers - question.id
+                        }) { Icon(Icons.Outlined.Delete, "Delete question") }
                     }
                 }
+                TextButton(onClick = { adding = true }) {
+                    Icon(Icons.Outlined.AddCircleOutline, null, Modifier.size(18.dp))
+                    Text("Add question", Modifier.padding(start = 8.dp))
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { if (isSaved) save(decision.name) else naming = true }) {
+                    Text(if (isSaved) "Save changes" else "Save as my decision")
+                }
+                if (isSaved) TextButton(onClick = {
+                    saved = saved.filter { it.name != decision.name }
+                    SavedDecisions.save(context, saved)
+                    select(DecisionExample.blank())
+                }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
             }
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         }
@@ -134,22 +179,114 @@ fun DecisionScreen(vm: ChatViewModel, onClose: () -> Unit) {
 
     if (choosing) AlertDialog(
         onDismissRequest = { choosing = false },
-        title = { Text("Examples") },
+        title = { Text("Decisions") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
-                categories.forEach { category ->
+                Text("New decision", Modifier.fillMaxWidth().clickable { select(DecisionExample.blank()) }.padding(vertical = 8.dp),
+                    fontWeight = FontWeight.SemiBold)
+                val groups = (if (saved.isEmpty()) emptyList() else listOf(DecisionExample.MY_CATEGORY to saved)) +
+                    categories.map { category -> category to examples.filter { it.category == category } }
+                groups.forEach { (category, items) ->
                     Text(category, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
-                    examples.filter { it.category == category }.forEach { item ->
-                        Text(item.name, Modifier.fillMaxWidth().clickable {
-                            example = item; state = item.state; answers = emptyMap(); error = null; choosing = false
-                        }.padding(vertical = 8.dp))
+                    items.forEach { item ->
+                        Text(item.name, Modifier.fillMaxWidth().clickable { select(item) }.padding(vertical = 8.dp))
                     }
                 }
             }
         },
         confirmButton = { TextButton(onClick = { choosing = false }) { Text("Cancel") } },
     )
+
+    if (adding) AlertDialog(
+        onDismissRequest = { adding = false },
+        title = { Text("Add question") },
+        text = {
+            Column {
+                listOf("noul" to "Yes or no", "choice" to "Choice between options", "score" to "Score on a scale").forEach { (type, label) ->
+                    Text(label, Modifier.fillMaxWidth().clickable { adding = false; editing = DecisionQuestion.new(type) }.padding(vertical = 12.dp))
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { adding = false }) { Text("Cancel") } },
+    )
+
+    editing?.let { question ->
+        QuestionEditor(question, onDismiss = { editing = null }) { updated ->
+            val exists = decision.questions.any { it.id == updated.id }
+            decision = decision.copy(questions = if (exists) decision.questions.map { if (it.id == updated.id) updated else it } else decision.questions + updated)
+            answers = answers - updated.id
+            editing = null
+        }
+    }
+
+    if (naming) {
+        var name by remember { mutableStateOf(if (decision.category == DecisionExample.MY_CATEGORY && decision.name != "New decision") decision.name else "") }
+        AlertDialog(
+            onDismissRequest = { naming = false },
+            title = { Text("Save decision") },
+            text = { OutlinedTextField(name, { name = it }, singleLine = true, label = { Text("Name") }) },
+            confirmButton = { TextButton(onClick = { save(name); naming = false }, enabled = name.isNotBlank()) { Text("Save") } },
+            dismissButton = { TextButton(onClick = { naming = false }) { Text("Cancel") } },
+        )
+    }
+}
+
+/** Edits one question: its type, wording, and the options or levels. */
+@Composable
+private fun QuestionEditor(question: DecisionQuestion, onDismiss: () -> Unit, onSave: (DecisionQuestion) -> Unit) {
+    var draft by remember { mutableStateOf(question) }
+    fun setType(type: String) {
+        draft = draft.copy(
+            type = type,
+            options = if (type == "choice") draft.options ?: listOf(DecisionQuestion.Option("", ""), DecisionQuestion.Option("", "")) else null,
+            levels = if (type == "score") draft.levels ?: listOf("Low", "Medium", "High") else null,
+        )
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (question.instructions.isEmpty()) "New question" else "Edit question") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("noul" to "Yes/no", "choice" to "Choice", "score" to "Score").forEach { (type, label) ->
+                        FilterChip(selected = draft.type == type, onClick = { setType(type) }, label = { Text(label) })
+                    }
+                }
+                OutlinedTextField(draft.instructions, { draft = draft.copy(instructions = it) }, Modifier.fillMaxWidth(),
+                    label = { Text("Question") }, minLines = 2,
+                    placeholder = { Text(when (draft.type) { "choice" -> "Which option fits best?"; "score" -> "How urgent is this?"; else -> "Is this spam?" }) })
+                draft.options?.let { options ->
+                    Text("Options", style = MaterialTheme.typography.labelLarge)
+                    options.forEachIndexed { index, option ->
+                        EditableLine(option.text, "Option ${index + 1}",
+                            onChange = { text -> draft = draft.copy(options = options.toMutableList().also { it[index] = DecisionQuestion.Option("", text) }) },
+                            onRemove = { draft = draft.copy(options = options.filterIndexed { i, _ -> i != index }) })
+                    }
+                    TextButton(onClick = { draft = draft.copy(options = options + DecisionQuestion.Option("", "")) }) { Text("Add option") }
+                }
+                draft.levels?.let { levels ->
+                    Text("Levels, lowest first", style = MaterialTheme.typography.labelLarge)
+                    levels.forEachIndexed { index, level ->
+                        EditableLine(level, "Level $index",
+                            onChange = { text -> draft = draft.copy(levels = levels.toMutableList().also { it[index] = text }) },
+                            onRemove = { draft = draft.copy(levels = levels.filterIndexed { i, _ -> i != index }) })
+                    }
+                    TextButton(onClick = { draft = draft.copy(levels = levels + "") }) { Text("Add level") }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onSave(draft.cleaned()) }, enabled = draft.isComplete) { Text("Done") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+@Composable
+private fun EditableLine(value: String, label: String, onChange: (String) -> Unit, onRemove: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        OutlinedTextField(value, onChange, Modifier.weight(1f), singleLine = true, placeholder = { Text(label) })
+        IconButton(onClick = onRemove) { Icon(Icons.Outlined.RemoveCircleOutline, "Remove", tint = MaterialTheme.colorScheme.error) }
+    }
 }
 
 private data class Bar(val label: String, val probability: Double, val winner: Boolean)

@@ -1,19 +1,20 @@
 import SwiftUI
 
-/// A ready-made decision for the Clef decision model (`alias-clef`), from decision-model-frontend.
-struct DecisionExample: Decodable, Identifiable, Hashable {
-    struct Option: Decodable, Hashable {
-        let key: String
-        let text: String
+/// A decision for the Clef decision model (`alias-clef`): a situation and typed questions.
+/// The examples come from decision-model-frontend; the user's own are saved with `SavedDecisions`.
+struct DecisionExample: Codable, Identifiable, Hashable {
+    struct Option: Codable, Hashable {
+        var key: String
+        var text: String
     }
 
-    struct Question: Decodable, Hashable {
-        let id: String
+    struct Question: Codable, Hashable, Identifiable {
+        var id: String
         /// "noul" (yes/no), "choice" or "score".
-        let type: String
-        let instructions: String
-        let options: [Option]?
-        let levels: [String]?
+        var type: String
+        var instructions: String
+        var options: [Option]?
+        var levels: [String]?
 
         var wire: [String: Any] {
             var question: [String: Any] = ["type": type, "instructions": instructions]
@@ -21,20 +22,91 @@ struct DecisionExample: Decodable, Identifiable, Hashable {
             if let levels { question["criteria"] = levels }
             return question
         }
+
+        static func new(_ type: String) -> Question {
+            Question(
+                id: "q" + UUID().uuidString.prefix(8).lowercased(),
+                type: type,
+                instructions: "",
+                options: type == "choice" ? [Option(key: "", text: ""), Option(key: "", text: "")] : nil,
+                levels: type == "score" ? ["Low", "Medium", "High"] : nil
+            )
+        }
+
+        /// Ready to send: an instruction, and at least two options or levels where needed.
+        var isComplete: Bool {
+            guard !instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+            switch type {
+            case "choice": return (options ?? []).filter { !$0.text.trimmingCharacters(in: .whitespaces).isEmpty }.count >= 2
+            case "score": return (levels ?? []).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }.count >= 2
+            default: return true
+            }
+        }
+
+        /// Drops empty options and levels and gives choice options short unique keys.
+        func cleaned() -> Question {
+            var copy = self
+            copy.instructions = instructions.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let options {
+                var used = Set<String>()
+                copy.options = options.compactMap { option in
+                    let text = option.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !text.isEmpty else { return nil }
+                    var key = option.key.isEmpty ? Self.key(for: text) : option.key
+                    var n = 2
+                    let base = key
+                    while used.contains(key) { key = "\(base)_\(n)"; n += 1 }
+                    used.insert(key)
+                    return Option(key: key, text: text)
+                }
+            }
+            if let levels {
+                copy.levels = levels.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+            }
+            return copy
+        }
+
+        private static func key(for text: String) -> String {
+            let words = text.lowercased()
+                .components(separatedBy: CharacterSet.alphanumerics.inverted)
+                .filter { !$0.isEmpty }
+                .prefix(4)
+            return words.isEmpty ? "option" : words.joined(separator: "_")
+        }
     }
 
-    var id: String { name }
-    let name: String
-    let category: String
-    let description: String?
-    let state: String
-    let json: Bool
-    let questions: [Question]
+    var id: String { category + "/" + name }
+    var name: String
+    var category: String
+    var description: String?
+    var state: String
+    var json: Bool
+    var questions: [Question]
+
+    static let myCategory = "My decisions"
+
+    static var blank: DecisionExample {
+        DecisionExample(name: "New decision", category: myCategory, description: nil, state: "", json: false, questions: [.new("noul")])
+    }
 
     static var categories: [String] {
         var seen: [String] = []
         for example in all where !seen.contains(example.category) { seen.append(example.category) }
         return seen
+    }
+}
+
+/// The user's own decisions, kept in UserDefaults.
+enum SavedDecisions {
+    private static let key = "savedDecisions"
+
+    static func load() -> [DecisionExample] {
+        guard let data = UserDefaults.standard.data(forKey: key) else { return [] }
+        return (try? JSONDecoder().decode([DecisionExample].self, from: data)) ?? []
+    }
+
+    static func save(_ decisions: [DecisionExample]) {
+        UserDefaults.standard.set(try? JSONEncoder().encode(decisions), forKey: key)
     }
 }
 
@@ -76,68 +148,88 @@ extension BlabladorAPI {
     }
 }
 
-/// Pick an example, edit the situation, and see the decision model's answers with probabilities.
+/// Write a situation and typed questions, or start from an example, and see the decision model's answers with probabilities.
 struct DecisionView: View {
     @EnvironmentObject private var store: ChatStore
     @Environment(\.dismiss) private var dismiss
 
-    @State private var example = DecisionExample.all.first
-    @State private var state = DecisionExample.all.first?.state ?? ""
+    @State private var decision = DecisionExample.all.first ?? .blank
+    @State private var saved = SavedDecisions.load()
     @State private var answers: [String: DecisionAnswer] = [:]
     @State private var running = false
     @State private var error: String?
+    @State private var editing: DecisionExample.Question?
+    @State private var naming = false
+    @State private var name = ""
+
+    private var isSaved: Bool { saved.contains { $0.name == decision.name } && decision.category == DecisionExample.myCategory }
+
+    private var canRun: Bool {
+        !running && !decision.state.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !decision.questions.isEmpty && decision.questions.allSatisfy(\.isComplete)
+    }
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    Menu {
-                        ForEach(DecisionExample.categories, id: \.self) { category in
-                            Menu(category) {
-                                ForEach(DecisionExample.all.filter { $0.category == category }) { item in
-                                    Button(item.name) { select(item) }
-                                }
-                            }
-                        }
-                    } label: {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(example?.name ?? "Choose an example").foregroundStyle(.primary)
-                                if let example {
-                                    Text(example.category).font(.caption).foregroundStyle(.secondary)
-                                }
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.up.chevron.down").foregroundStyle(.secondary)
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    if let description = example?.description {
+                    picker
+                    if let description = decision.description {
                         Text(description).font(.callout).foregroundStyle(.secondary)
                     }
                 } header: {
-                    Text("Example")
+                    Text("Decision")
                 } footer: {
-                    Text("\(DecisionExample.all.count) examples in \(DecisionExample.categories.count) categories. The decision model answers typed questions with probabilities instead of text — for routing, triage and classification.")
+                    Text("Start a new decision, open one you saved, or try one of \(DecisionExample.all.count) examples. The decision model answers typed questions with probabilities instead of text — for routing, triage and classification.")
                 }
 
                 Section {
-                    TextField("Describe the situation", text: $state, axis: .vertical)
+                    TextField("Describe the situation: a message, a record, a request…", text: $decision.state, axis: .vertical)
                         .lineLimit(3...12)
-                        .font(example?.json == true ? .system(.callout, design: .monospaced) : .body)
+                        .font(decision.json ? .system(.callout, design: .monospaced) : .body)
                         .autocorrectionDisabled()
+                        .onChange(of: decision.state) { _, _ in answers = [:] }
                 } header: {
-                    Text(example?.json == true ? "Situation (JSON)" : "Situation")
+                    Text(decision.json ? "Situation (JSON)" : "Situation")
                 } footer: {
-                    Text("Edit it to see how the decisions change.")
+                    Text("Plain text or JSON. Edit it to see how the decisions change.")
                 }
 
-                if let example {
-                    Section("Questions") {
-                        ForEach(example.questions, id: \.id) { question in
+                Section {
+                    ForEach(decision.questions) { question in
+                        Button { editing = question } label: {
                             QuestionRow(question: question, answer: answers[question.id])
+                                .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
+                        .contextMenu {
+                            Button("Edit…") { editing = question }
+                            Button("Delete", role: .destructive) { remove(question) }
+                        }
+                    }
+                    .onDelete { offsets in
+                        decision.questions.remove(atOffsets: offsets)
+                        answers = [:]
+                    }
+                    Menu {
+                        Button { add("noul") } label: { Label("Yes or no", systemImage: "checkmark.circle") }
+                        Button { add("choice") } label: { Label("Choice between options", systemImage: "list.bullet") }
+                        Button { add("score") } label: { Label("Score on a scale", systemImage: "gauge.medium") }
+                    } label: {
+                        Label("Add question", systemImage: "plus.circle")
+                    }
+                } header: {
+                    Text("Questions")
+                } footer: {
+                    Text("Tap a question to edit it. Yes/no gives the probability of yes; choice picks one option; score rates on your levels from lowest to highest.")
+                }
+
+                Section {
+                    Button(isSaved ? "Save changes" : "Save as my decision…") {
+                        if isSaved { save(as: decision.name) } else { name = decision.category == DecisionExample.myCategory && decision.name != "New decision" ? decision.name : ""; naming = true }
+                    }
+                    if isSaved {
+                        Button("Delete this decision", role: .destructive) { deleteSaved() }
                     }
                 }
 
@@ -160,33 +252,216 @@ struct DecisionView: View {
                     } label: {
                         if running { ProgressView().controlSize(.small) } else { Text("Decide") }
                     }
-                    .disabled(running || example == nil || state.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(!canRun)
                     .keyboardShortcut(.return, modifiers: .command)
                 }
             }
+            .sheet(item: $editing) { question in
+                QuestionEditor(question: question) { updated in
+                    if let index = decision.questions.firstIndex(where: { $0.id == updated.id }) {
+                        decision.questions[index] = updated
+                    } else {
+                        decision.questions.append(updated)
+                    }
+                    answers[updated.id] = nil
+                }
+            }
+            .alert("Save decision", isPresented: $naming) {
+                TextField("Name", text: $name)
+                Button("Cancel", role: .cancel) {}
+                Button("Save") { save(as: name) }
+                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+            } message: {
+                Text("It appears under My decisions.")
+            }
         }
 #if os(macOS)
-        .frame(minWidth: 520, minHeight: 620)
+        .frame(minWidth: 560, minHeight: 680)
 #endif
     }
 
+    private var picker: some View {
+        Menu {
+            Button { select(.blank) } label: { Label("New decision", systemImage: "plus") }
+            if !saved.isEmpty {
+                Menu(DecisionExample.myCategory) {
+                    ForEach(saved) { item in Button(item.name) { select(item) } }
+                }
+            }
+            Divider()
+            ForEach(DecisionExample.categories, id: \.self) { category in
+                Menu(category) {
+                    ForEach(DecisionExample.all.filter { $0.category == category }) { item in
+                        Button(item.name) { select(item) }
+                    }
+                }
+            }
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(decision.name).foregroundStyle(.primary)
+                    Text(decision.category).font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.up.chevron.down").foregroundStyle(.secondary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
     private func select(_ item: DecisionExample) {
-        example = item
-        state = item.state
+        decision = item
         answers = [:]
         error = nil
     }
 
+    private func add(_ type: String) {
+        editing = .new(type)
+    }
+
+    private func remove(_ question: DecisionExample.Question) {
+        decision.questions.removeAll { $0.id == question.id }
+        answers[question.id] = nil
+    }
+
+    private func save(as name: String) {
+        var copy = decision
+        copy.name = name.trimmingCharacters(in: .whitespaces)
+        copy.category = DecisionExample.myCategory
+        copy.questions = copy.questions.map { $0.cleaned() }
+        saved.removeAll { $0.name == copy.name }
+        saved.append(copy)
+        saved.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        SavedDecisions.save(saved)
+        decision = copy
+    }
+
+    private func deleteSaved() {
+        saved.removeAll { $0.name == decision.name }
+        SavedDecisions.save(saved)
+        select(.blank)
+    }
+
     private func run() async {
-        guard let example else { return }
         running = true
         error = nil
         defer { running = false }
+        let questions = decision.questions.map { $0.cleaned() }
+        decision.questions = questions
         do {
-            answers = try await store.api.decide(state: state, questions: example.questions)
+            answers = try await store.api.decide(state: decision.state, questions: questions)
         } catch {
             self.error = error.localizedDescription
         }
+    }
+}
+
+/// Edits one question: its type, wording, and the options or levels.
+private struct QuestionEditor: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var draft: DecisionExample.Question
+    let onSave: (DecisionExample.Question) -> Void
+
+    init(question: DecisionExample.Question, onSave: @escaping (DecisionExample.Question) -> Void) {
+        _draft = State(initialValue: question)
+        self.onSave = onSave
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Picker("Type", selection: Binding(get: { draft.type }, set: setType)) {
+                        Text("Yes or no").tag("noul")
+                        Text("Choice").tag("choice")
+                        Text("Score").tag("score")
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                }
+                Section {
+                    TextField(placeholder, text: $draft.instructions, axis: .vertical)
+                        .lineLimit(2...6)
+                } header: {
+                    Text("Question")
+                }
+                if draft.type == "choice" {
+                    Section {
+                        ForEach(Array((draft.options ?? []).indices), id: \.self) { index in
+                            HStack {
+                                TextField("Option \(index + 1)", text: Binding(
+                                    get: { draft.options?[index].text ?? "" },
+                                    set: { draft.options?[index] = .init(key: "", text: $0) }
+                                ))
+                                removeButton { draft.options?.remove(at: index) }
+                            }
+                        }
+                        Button { draft.options?.append(.init(key: "", text: "")) } label: { Label("Add option", systemImage: "plus.circle") }
+                    } header: {
+                        Text("Options")
+                    } footer: {
+                        Text("The model picks one and gives each a probability. Describe each option in a few words.")
+                    }
+                }
+                if draft.type == "score" {
+                    Section {
+                        ForEach(Array((draft.levels ?? []).indices), id: \.self) { index in
+                            HStack {
+                                TextField("Level \(index)", text: Binding(
+                                    get: { draft.levels?[index] ?? "" },
+                                    set: { draft.levels?[index] = $0 }
+                                ))
+                                removeButton { draft.levels?.remove(at: index) }
+                            }
+                        }
+                        Button { draft.levels?.append("") } label: { Label("Add level", systemImage: "plus.circle") }
+                    } header: {
+                        Text("Levels, lowest first")
+                    } footer: {
+                        Text("The answer is a score between the first and the last level.")
+                    }
+                }
+            }
+            .formStyle(.grouped)
+            .navigationTitle(draft.instructions.isEmpty ? "New question" : "Edit question")
+#if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+#endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        onSave(draft.cleaned())
+                        dismiss()
+                    }
+                    .disabled(!draft.isComplete)
+                }
+            }
+        }
+#if os(macOS)
+        .frame(minWidth: 460, minHeight: 420)
+#endif
+    }
+
+    private var placeholder: String {
+        switch draft.type {
+        case "choice": "Which option fits best?"
+        case "score": "How urgent is this?"
+        default: "Is this spam?"
+        }
+    }
+
+    private func setType(_ type: String) {
+        draft.type = type
+        draft.options = type == "choice" ? (draft.options ?? [.init(key: "", text: ""), .init(key: "", text: "")]) : nil
+        draft.levels = type == "score" ? (draft.levels ?? ["Low", "Medium", "High"]) : nil
+    }
+
+    private func removeButton(_ action: @escaping () -> Void) -> some View {
+        Button(action: action) { Image(systemName: "minus.circle.fill").foregroundStyle(.red) }
+            .buttonStyle(.borderless)
+            .help("Remove")
     }
 }
 

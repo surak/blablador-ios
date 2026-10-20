@@ -116,6 +116,7 @@ import de.fz_juelich.blablador.data.BlabladorApi
 import de.fz_juelich.blablador.data.Conversation
 import de.fz_juelich.blablador.data.DocumentAttachment
 import de.fz_juelich.blablador.data.ImageStore
+import de.fz_juelich.blablador.data.Updates
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -185,6 +186,7 @@ fun ChatScreen(vm: ChatViewModel) {
             },
         ) { padding ->
             Column(Modifier.fillMaxSize().padding(padding).imePadding()) {
+                UpdateBanner()
                 Box(Modifier.weight(1f)) {
                     val conversation = vm.current
                     if (conversation == null || conversation.messages.isEmpty()) {
@@ -606,4 +608,32 @@ private fun rememberSpeaker(): Speaker {
         onDispose { engine.shutdown() }
     }
     return speaker
+}
+
+/** Tells the user when a newer version is on GitHub, with a link to the APK. */
+@Composable
+private fun UpdateBanner() {
+    val context = LocalContext.current
+    var release by remember { mutableStateOf<Updates.Release?>(null) }
+    LaunchedEffect(Unit) {
+        release = Updates.latest(context)?.takeIf { it.version != Updates.dismissed(context) }
+    }
+    val current = release ?: return
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp).clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.primaryContainer).padding(start = 14.dp, top = 6.dp, bottom = 6.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Blablador ${current.version} is available", style = MaterialTheme.typography.titleSmall)
+            Text("You have ${Updates.currentVersion(context)}. Download and open the APK to update.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+        }
+        TextButton(onClick = {
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(current.apk ?: current.page)))
+        }) { Text("Download") }
+        IconButton(onClick = { Updates.dismiss(context, current.version); release = null }) {
+            Icon(Icons.Default.Close, "Hide until the next version")
+        }
+    }
 }

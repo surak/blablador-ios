@@ -36,6 +36,9 @@ private struct AppCommands: Commands {
     @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
+        CommandGroup(after: .appInfo) {
+            Button("Check for Updates…") { Task { await AppUpdater.shared.check(force: true) } }
+        }
         CommandGroup(replacing: .appSettings) {
             Button("Settings…") { store?.settingsRequested = true }
                 .keyboardShortcut(",", modifiers: .command)
