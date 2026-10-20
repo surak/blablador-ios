@@ -144,8 +144,8 @@
       <h1><span class="gradient">Blablador,</span><br>native on your devices</h1>
       <p>Chat with the open models of Helmholtz Blablador on Mac, iPhone, iPad and Android. Talk to it, search the web, send photos and PDFs, create images and give it a voice, even your own.</p>
       <div class="buttons">
-        <a class="button primary" href="https://github.com/surak/blablador-ios/releases/latest">Download for Mac</a>
-        <a class="button primary" href="https://github.com/surak/blablador-ios/releases/latest">Download for Android</a>
+        <a class="button primary" data-asset="-macOS.dmg" href="https://github.com/surak/blablador-ios/releases/latest">Download for Mac</a>
+        <a class="button primary" data-asset="-android.apk" href="https://github.com/surak/blablador-ios/releases/latest">Download for Android</a>
         <a class="button secondary" href="https://github.com/surak/blablador-ios">View source</a>
       </div>
       <div class="small">Mac: Apple Silicon and Intel, macOS 14 or later · Android 8.0 or later</div>
@@ -236,5 +236,22 @@
       <span><a href="https://github.com/surak/blablador-ios">Source on GitHub</a></span>
     </div>
   </footer>
+<script>
+  // Point each download button at its file in the latest release; without this they open the release page.
+  fetch("https://api.github.com/repos/surak/blablador-ios/releases/latest")
+    .then(r => r.ok ? r.json() : Promise.reject())
+    .then(release => {
+      document.querySelectorAll("[data-asset]").forEach(link => {
+        const asset = release.assets.find(a => a.name.endsWith(link.dataset.asset));
+        if (!asset) return;
+        link.href = asset.browser_download_url;
+        link.title = asset.name;
+      });
+      const version = release.tag_name.replace(/^v/, "");
+      const small = document.querySelector(".hero .small, .small");
+      if (small && !small.textContent.includes(version)) small.textContent = "Version " + version + " · " + small.textContent;
+    })
+    .catch(() => {});
+</script>
 </body>
 </html>
