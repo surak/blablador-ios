@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Blablador for Mac, iPhone and iPad</title>
+  <title>Blablador for Mac, iPhone, iPad and Android</title>
   <meta name="description" content="Native client for Helmholtz Blablador: chat with open models, knowledge bases from your PDFs, voice input, expressive speech with voice cloning, web search and image generation.">
   <link rel="icon" href="logo.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Blablador">
-  <meta property="og:title" content="Blablador for Mac, iPhone and iPad">
+  <meta property="og:title" content="Blablador for Mac, iPhone, iPad and Android">
   <meta property="og:description" content="Native client for Helmholtz Blablador: chat with open models, knowledge bases from your PDFs, voice input, expressive speech with voice cloning, web search and image generation.">
   <meta property="og:url" content="https://surak.github.io/blablador-ios/">
   <meta property="og:image" content="https://surak.github.io/blablador-ios/og-image.jpg">
@@ -142,12 +142,13 @@
     <div class="wrap hero">
       <img src="logo.svg" alt="Blablador logo">
       <h1><span class="gradient">Blablador,</span><br>native on your devices</h1>
-      <p>Chat with the open models of Helmholtz Blablador on Mac, iPhone and iPad. Talk to it, search the web, send photos and PDFs, create images and give it a voice, even your own.</p>
+      <p>Chat with the open models of Helmholtz Blablador on Mac, iPhone, iPad and Android. Talk to it, search the web, send photos and PDFs, create images and give it a voice, even your own.</p>
       <div class="buttons">
         <a class="button primary" href="https://github.com/surak/blablador-ios/releases/latest">Download for Mac</a>
+        <a class="button primary" href="https://github.com/surak/blablador-ios/releases/latest">Download for Android</a>
         <a class="button secondary" href="https://github.com/surak/blablador-ios">View source</a>
       </div>
-      <div class="small">Universal app for Apple Silicon and Intel · macOS 14 or later</div>
+      <div class="small">Mac: Apple Silicon and Intel, macOS 14 or later · Android 8.0 or later</div>
     </div>
 
     <section id="demo">
@@ -183,7 +184,7 @@
           <div class="card"><div class="icon">📚</div><h3>Knowledge bases</h3><p>Keep collections of PDFs and notes on your device and chat with them. Blablador finds the right passages and cites them, so you can check every answer.</p></div>
           <div class="card"><div class="icon">📄</div><h3>PDFs, even scanned</h3><p>Attach PDFs and ask about them. Text is extracted on your device. Scanned pages and photos of documents are read with OCR, on your device or with Blablador's LightOnOCR, which keeps tables intact. Works with every model.</p></div>
           <div class="card"><div class="icon">🎨</div><h3>Create and edit images</h3><p>Generate images with FLUX.2-dev or Qwen-Image 2.1, and edit any image with Qwen-Image: tap Edit on it and describe the change, or just ask.</p></div>
-          <div class="card"><div class="icon">🗂️</div><h3>Your chats, private</h3><p>Searchable history stored on your device. Your API key stays in the Keychain.</p></div>
+          <div class="card"><div class="icon">🗂️</div><h3>Your chats, private</h3><p>Searchable history stored on your device. Your API key stays in the Keychain (Android Keystore on Android).</p></div>
         </div>
       </div>
     </section>
@@ -203,12 +204,24 @@
       </div>
     </section>
 
+    <section id="android">
+      <div class="wrap">
+        <h2>Install on Android</h2>
+        <ol class="steps">
+          <li>On your phone, download the <strong>.apk</strong> from the <a href="https://github.com/surak/blablador-ios/releases/latest">latest release</a>.</li>
+          <li>Open it. If Android asks, allow your browser or file manager to install unknown apps, then tap <strong>Install</strong>. The app is signed by the developer, not distributed through Google Play.</li>
+          <li>Open Blablador and paste your Blablador API key in Settings. Don't have one? <a href="https://sdlaml.pages.jsc.fz-juelich.de/ai/guides/blablador_api_access/">Get an API key</a>.</li>
+        </ol>
+      </div>
+    </section>
+
     <section>
       <div class="wrap">
         <h2>Platforms</h2>
         <div class="platforms">
           <div class="card"><div class="icon">💻</div><h3>Mac</h3><p>Available now as a download. Sidebar with your chats, native toolbar and model picker.</p></div>
           <div class="card"><div class="icon">📱</div><h3>iPhone and iPad</h3><p>Same app, adapted to each screen. Not yet distributed; build it from the source with Xcode.</p></div>
+          <div class="card"><div class="icon">🤖</div><h3>Android</h3><p>Available now as an APK for Android 8.0 or later. Native Material design with every feature except agent mode.</p></div>
         </div>
       </div>
     </section>
