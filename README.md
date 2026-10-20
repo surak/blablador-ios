@@ -1,10 +1,18 @@
-# Blablador macOS App
+# Blablador apps
 
-A native macOS/iOS/iPadOS application that provides a simple web view wrapper for the Helmholtz Blablador web application.
+Native clients for [Helmholtz Blablador](https://helmholtz-blablador.fz-juelich.de), the OpenAI-compatible LLM service of
+Forschungszentrum Jülich (`https://api.blablador.fz-juelich.de/v1`).
+
+| Platform | Code | Download |
+|---|---|---|
+| macOS, iPhone, iPad (SwiftUI) | [`Blablador/`](Blablador) | Mac DMG/zip on the [releases page](https://github.com/surak/blablador-ios/releases) (`v*` tags) |
+| Android 8.0+ (Kotlin, Compose) | [`android/`](android) — see [android/README.md](android/README.md) | APK on the [releases page](https://github.com/surak/blablador-ios/releases) (`android-v*` tags) |
+
+The Android app has the same features as the Apple apps except agent mode, which is Mac only.
 
 ## Overview
 
-Blablador is a SwiftUI-based macOS/iOS/iPadOS app that provides an enhanced mobile experience for accessing the Blablador platform. It features a full-screen web view with navigation controls and sharing capabilities.
+Blablador is a SwiftUI app for macOS, iOS and iPadOS that chats with every Blablador model.
 
 ## Features
 

@@ -6,6 +6,12 @@ This file contains instructions for AI agents working on this iOS project.
 
 Blablador is a native SwiftUI chat client for the Helmholtz Blablador OpenAI-compatible API (`https://api.blablador.fz-juelich.de/v1`). It streams chat completions, supports on-device voice dictation, read-aloud, on-device PDF reading with OCR, knowledge bases (RAG), Drama 3 speech with voice cloning, chat history and model selection (default `deepseek-v4.1-flash-at-hzdr`).
 
+## Android
+
+The Android app lives in `android/` (Kotlin, Jetpack Compose); see `android/README.md` for building and its structure.
+Keep features in sync between the two apps. Android releases are tagged `android-v<version>` with the APK attached;
+Apple releases are tagged `v<version>`.
+
 ## Code Style Guidelines
 
 - Follow Swift naming conventions (camelCase for variables/functions, PascalCase for types)
