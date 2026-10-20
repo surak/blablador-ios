@@ -3,6 +3,7 @@ import SwiftUI
 struct HistoryView: View {
     @EnvironmentObject private var store: ChatStore
     @State private var search = ""
+    var closable = false
     let onClose: () -> Void
 
     private var filtered: [Conversation] {
@@ -20,9 +21,25 @@ struct HistoryView: View {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
                 TextField("Search chats", text: $search)
                     .textFieldStyle(.plain)
+                    .submitLabel(.search)
             }
             .padding(10)
             .background(Theme.surface, in: Capsule())
+            .frame(maxWidth: .infinity)
+            .overlay(alignment: .trailing) {
+                if closable {
+                    Button(action: onClose) {
+                        Image(systemName: "chevron.left")
+                            .font(.headline)
+                            .frame(width: 40, height: 40)
+                            .background(Theme.surface, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Back to the chat")
+                    .offset(x: 48)
+                }
+            }
+            .padding(.trailing, closable ? 48 : 0)
 
             Button {
                 store.newChat()

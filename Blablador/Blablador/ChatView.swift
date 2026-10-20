@@ -15,6 +15,9 @@ struct ChatView: View {
     @State private var imageMode = false
     @State private var speechMode = false
     @State private var showHistory = false
+    @State private var drawerDrag: CGFloat = 0
+    @State private var droppedFiles: [URL] = []
+    @State private var dropTargeted = false
     @State private var showSettings = false
     @ObservedObject private var knowledge = KnowledgeLibrary.shared
     @State private var showKnowledge = false
@@ -133,7 +136,24 @@ struct ChatView: View {
                 CommandApprovalCard(approval: approval) { store.answerApproval($0) }
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
-            ComposerView(draft: $draft, attachments: $attachments, documents: $documents, imageMode: $imageMode, speechMode: $speechMode, speech: speech, focused: $inputFocused, onSend: send)
+            ComposerView(draft: $draft, attachments: $attachments, documents: $documents, imageMode: $imageMode, speechMode: $speechMode, droppedFiles: $droppedFiles, speech: speech, focused: $inputFocused, onSend: send)
+        }
+        // Drop images and PDFs from Finder or Files onto the chat to attach them.
+        .dropDestination(for: URL.self) { urls, _ in
+            let files = urls.filter(\.isFileURL)
+            guard !files.isEmpty else { return false }
+            droppedFiles += files
+            return true
+        } isTargeted: { dropTargeted = $0 }
+        .overlay {
+            if dropTargeted {
+                RoundedRectangle(cornerRadius: 20)
+                    .strokeBorder(Theme.gradient, style: StrokeStyle(lineWidth: 3, dash: [10, 6]))
+                    .background(Theme.background.opacity(0.6), in: RoundedRectangle(cornerRadius: 20))
+                    .overlay { Label("Drop images or PDFs to attach", systemImage: "paperclip").font(.title3.weight(.semibold)) }
+                    .padding()
+                    .allowsHitTesting(false)
+            }
         }
         .animation(.spring(duration: 0.25), value: store.commandApproval?.id)
         .background(Theme.background)
@@ -272,16 +292,33 @@ struct ChatView: View {
                 Color.black.opacity(0.3)
                     .ignoresSafeArea()
                     .onTapGesture { withAnimation(.spring(duration: 0.3)) { showHistory = false } }
-                HistoryView {
-                    withAnimation(.spring(duration: 0.3)) { showHistory = false }
-                }
+                HistoryView(closable: true) { closeHistory() }
                 .frame(width: 320)
                 .frame(maxHeight: .infinity)
                 .background(Theme.background)
+                .offset(x: min(0, drawerDrag))
                 .transition(.move(edge: .leading))
             }
             .transition(.opacity)
+            // Swipe left anywhere to go back to the chat, also while searching.
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 20)
+                    .onChanged { value in
+                        if abs(value.translation.width) > abs(value.translation.height) { drawerDrag = value.translation.width }
+                    }
+                    .onEnded { value in
+                        if value.translation.width < -80 || value.predictedEndTranslation.width < -160 { closeHistory() }
+                        withAnimation(.spring(duration: 0.25)) { drawerDrag = 0 }
+                    }
+            )
         }
+    }
+
+    private func closeHistory() {
+#if os(iOS)
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+#endif
+        withAnimation(.spring(duration: 0.3)) { showHistory = false }
     }
 
     private func send() {
@@ -434,6 +471,7 @@ private struct ComposerView: View {
     @Binding var documents: [DocumentAttachment]
     @Binding var imageMode: Bool
     @Binding var speechMode: Bool
+    @Binding var droppedFiles: [URL]
     @ObservedObject var speech: SpeechRecognizer
     var focused: FocusState<Bool>.Binding
     let onSend: () -> Void
@@ -599,19 +637,14 @@ private struct ComposerView: View {
                 }
             }
         }
-        .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.pdf], allowsMultipleSelection: true) { result in
+        .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.image, .pdf], allowsMultipleSelection: true) { result in
             guard case .success(let urls) = result else { return }
-            for url in urls {
-                readingPDFs += 1
-                Task {
-                    defer { readingPDFs -= 1 }
-                    do {
-                        documents.append(try await PDFExtractor.extract(from: url, api: store.api))
-                    } catch {
-                        pdfError = "\(url.lastPathComponent): \(error.localizedDescription)"
-                    }
-                }
-            }
+            addFiles(urls)
+        }
+        .onChange(of: droppedFiles) { _, urls in
+            guard !urls.isEmpty else { return }
+            droppedFiles = []
+            addFiles(urls)
         }
         .sheet(isPresented: $showKnowledge) {
             NavigationStack {
@@ -644,6 +677,34 @@ private struct ComposerView: View {
 #endif
     }
 
+    /// Images become photo attachments; PDFs are read into text.
+    private func addFiles(_ urls: [URL]) {
+        for url in urls {
+            let type = UTType(filenameExtension: url.pathExtension)
+            if type?.conforms(to: .image) == true {
+                let accessing = url.startAccessingSecurityScopedResource()
+                defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+                if let data = try? Data(contentsOf: url) {
+                    attachments.append(ImageStore.jpeg(from: data, maxPixelSize: 2048, quality: 0.9) ?? data)
+                } else {
+                    pdfError = "\(url.lastPathComponent): couldn't open the image."
+                }
+            } else if type?.conforms(to: .pdf) == true {
+                readingPDFs += 1
+                Task {
+                    defer { readingPDFs -= 1 }
+                    do {
+                        documents.append(try await PDFExtractor.extract(from: url, api: store.api))
+                    } catch {
+                        pdfError = "\(url.lastPathComponent): \(error.localizedDescription)"
+                    }
+                }
+            } else {
+                pdfError = "\(url.lastPathComponent): only images and PDFs can be attached."
+            }
+        }
+    }
+
     private var addMenu: some View {
         Menu {
             if CameraPicker.isAvailable {
@@ -655,7 +716,7 @@ private struct ComposerView: View {
                 Label("Photos", systemImage: "photo.on.rectangle")
             }
             Button { showFileImporter = true } label: {
-                Label("PDF", systemImage: "doc.richtext")
+                Label("File (image or PDF)…", systemImage: "doc")
             }
             Button { showOCRPicker = true } label: {
                 Label("Text from photo", systemImage: "text.viewfinder")

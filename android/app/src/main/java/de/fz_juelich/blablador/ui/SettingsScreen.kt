@@ -1,5 +1,7 @@
 package de.fz_juelich.blablador.ui
 
+import de.fz_juelich.blablador.data.Updates
+import androidx.compose.ui.text.style.TextAlign
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
@@ -106,6 +108,11 @@ fun SettingsScreen(vm: ChatViewModel, onOpenKnowledge: () -> Unit, onOpenVoices:
             }
 
             TextButton(onClick = { confirmDelete = true }) { Text("Delete all chats", color = MaterialTheme.colorScheme.error) }
+
+            val context = LocalContext.current
+            Text("Blablador ${Updates.currentVersion(context)}", style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                textAlign = TextAlign.Center)
         }
     }
 

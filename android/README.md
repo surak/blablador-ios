@@ -8,7 +8,7 @@ It is the Android counterpart of [blablador-ios](https://github.com/surak/blabla
 
 - **Chat** with every Blablador chat model, streaming replies; default `deepseek-v4.1-flash-at-hzdr`. Markdown with code blocks and tables
 - **Web search** through search.blablador.fz-juelich.de, with cited sources
-- **Photos and camera** for vision-capable models
+- **Photos, camera and files** for vision-capable models (+ → File picks images or PDFs)
 - **PDFs** (+ → PDF): text extracted on the device with PdfBox; scanned pages read with OCR
 - **Text from photo** (+ → Text from photo): OCR of documents, receipts or slides
 - **OCR engine** in Settings → Documents: on device (ML Kit) or Blablador's LightOnOCR (`alias-ocr`), which keeps tables; falls back to on-device
@@ -120,6 +120,7 @@ app/src/main/java/de/fz_juelich/blablador/
 ## Version history
 The Android and Apple apps share one version number and one release.
 
+- **2.3.0**: attach images from files; version shown in Settings
 - **2.2.1**: version in step with the Mac and iPhone fix for the Decide window
 - **2.2.0**: write and save your own decisions; update notice
 - **2.1.0**: knowledge bases, Drama 3 speech with voice cloning, Clef decisions

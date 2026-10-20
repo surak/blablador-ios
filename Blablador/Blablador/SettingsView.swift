@@ -106,6 +106,11 @@ struct SettingsView: View {
                 Section {
                     Button("Delete all chats", role: .destructive) { confirmDelete = true }
                 }
+
+                Section("About") {
+                    LabeledContent("Version", value: AppUpdater.currentVersion)
+                    Button("Check for updates") { Task { await AppUpdater.shared.check(force: true) } }
+                }
             }
             .formStyle(.grouped)
             .navigationTitle("Settings")

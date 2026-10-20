@@ -372,10 +372,14 @@ private fun Composer(
     var cameraUri by remember { mutableStateOf<Uri?>(null) }
     val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { taken -> if (taken) cameraUri?.let { addPhoto(it) } }
     val pdfs = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        // Images become photo attachments; PDFs are read into text.
         uris.forEach { uri ->
-            reading++
-            scope.launch {
-                try { documents.add(vm.readPdf(uri)) } catch (e: Exception) { error = e.message } finally { reading-- }
+            if (context.contentResolver.getType(uri)?.startsWith("image/") == true) addPhoto(uri)
+            else {
+                reading++
+                scope.launch {
+                    try { documents.add(vm.readPdf(uri)) } catch (e: Exception) { error = e.message } finally { reading-- }
+                }
             }
         }
     }
@@ -441,8 +445,8 @@ private fun Composer(
                     DropdownMenuItem(text = { Text("Photos") }, leadingIcon = { Icon(Icons.Outlined.Photo, null) }, onClick = {
                         menu = false; photos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                     })
-                    DropdownMenuItem(text = { Text("PDF") }, leadingIcon = { Icon(Icons.Outlined.PictureAsPdf, null) }, onClick = {
-                        menu = false; pdfs.launch(arrayOf("application/pdf"))
+                    DropdownMenuItem(text = { Text("File (image or PDF)") }, leadingIcon = { Icon(Icons.Outlined.PictureAsPdf, null) }, onClick = {
+                        menu = false; pdfs.launch(arrayOf("application/pdf", "image/*"))
                     })
                     DropdownMenuItem(text = { Text("Text from photo") }, leadingIcon = { Icon(Icons.Outlined.DocumentScanner, null) }, onClick = {
                         menu = false; ocrPhotos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
