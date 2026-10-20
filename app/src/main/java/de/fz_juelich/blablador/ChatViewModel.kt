@@ -9,6 +9,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import de.fz_juelich.blablador.data.AudioPlayback
+import de.fz_juelich.blablador.data.AudioStore
 import de.fz_juelich.blablador.data.BlabladorApi
 import de.fz_juelich.blablador.data.BlabladorException
 import de.fz_juelich.blablador.data.ChatMessage
@@ -17,13 +19,16 @@ import de.fz_juelich.blablador.data.Conversation
 import de.fz_juelich.blablador.data.ConversationStore
 import de.fz_juelich.blablador.data.DocumentAttachment
 import de.fz_juelich.blablador.data.ImageStore
+import de.fz_juelich.blablador.data.KnowledgeLibrary
 import de.fz_juelich.blablador.data.PdfExtractor
 import de.fz_juelich.blablador.data.RemoteModel
 import de.fz_juelich.blablador.data.SearchResult
 import de.fz_juelich.blablador.data.Settings
 import de.fz_juelich.blablador.data.Tools
+import de.fz_juelich.blablador.data.VoiceLibrary
 import de.fz_juelich.blablador.data.WebSearch
 import de.fz_juelich.blablador.data.jsonString
+import de.fz_juelich.blablador.data.speech
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -45,6 +50,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val images = ImageStore(application)
     private val conversationStore = ConversationStore(application)
     private val pdf = PdfExtractor(application, settings)
+    val knowledge = KnowledgeLibrary(application, viewModelScope, pdf)
+    val voices = VoiceLibrary(application)
+    val audio = AudioStore(application)
+    val playback = AudioPlayback()
 
     val conversations = mutableStateListOf<Conversation>().apply { addAll(conversationStore.load()) }
     var currentId by mutableStateOf<String?>(null)
@@ -122,11 +131,26 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // MARK: Knowledge
+
+    /** Knowledge bases picked before the first message of a new chat. */
+    private var pendingKnowledge by mutableStateOf<List<String>>(emptyList())
+
+    /** Knowledge bases searched for the current chat. */
+    val activeKnowledge: List<String>
+        get() = (if (currentId == null) pendingKnowledge else current?.knowledge.orEmpty()).filter { knowledge.base(it) != null }
+
+    fun toggleKnowledge(id: String) {
+        val ids = if (id in activeKnowledge) activeKnowledge - id else activeKnowledge + id
+        if (currentId == null) pendingKnowledge = ids else update { it.copy(knowledge = ids) }
+    }
+
     // MARK: Conversations
 
     fun newChat() {
         stop()
         currentId = null
+        pendingKnowledge = emptyList()
     }
 
     fun select(conversation: Conversation) {
@@ -138,6 +162,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun delete(conversation: Conversation) {
         if (conversation.id == currentId) newChat()
         images.delete(conversation.messages.flatMap { it.images })
+        audio.delete(conversation.messages.flatMap { it.audio })
         conversations.removeAll { it.id == conversation.id }
         persist()
     }
@@ -145,11 +170,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteAll() {
         newChat()
         images.delete(conversations.flatMap { c -> c.messages.flatMap { it.images } })
+        audio.delete(conversations.flatMap { c -> c.messages.flatMap { it.audio } })
         conversations.clear()
         persist()
     }
 
     // MARK: Attachments
+
+    fun displayName(uri: Uri) = pdf.displayName(uri)
 
     suspend fun readPdf(uri: Uri): DocumentAttachment = pdf.extract(uri, api)
 
@@ -157,8 +185,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     // MARK: Messaging
 
-    /** Sends a chat message. With [createImage], the text is used directly as an image prompt. */
-    fun send(text: String, attachments: List<ByteArray> = emptyList(), documents: List<DocumentAttachment> = emptyList(), createImage: Boolean = false) {
+    /**
+     * Sends a chat message. With [createImage], the text is used directly as an image prompt;
+     * with [speak], it is spoken with the selected Drama 3 voice.
+     */
+    fun send(text: String, attachments: List<ByteArray> = emptyList(), documents: List<DocumentAttachment> = emptyList(),
+             createImage: Boolean = false, speak: Boolean = false) {
         val trimmed = text.trim()
         if ((trimmed.isEmpty() && attachments.isEmpty() && documents.isEmpty()) || isStreaming) return
 
@@ -168,14 +200,19 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 documents.isNotEmpty() -> documents.first().name
                 else -> "Image"
             }
-            val conversation = Conversation(title = title, model = selectedModel)
+            val conversation = Conversation(title = title, model = selectedModel, knowledge = pendingKnowledge)
+            pendingKnowledge = emptyList()
             conversations.add(0, conversation)
             currentId = conversation.id
         }
         val names = attachments.map(images::save)
         update { it.copy(messages = it.messages + ChatMessage(role = ChatRole.user, content = trimmed, images = names, documents = documents)) }
 
-        if (createImage) makeImage(trimmed, names.lastOrNull()) else respond()
+        when {
+            speak && trimmed.isNotEmpty() -> makeSpeech(trimmed)
+            createImage -> makeImage(trimmed, names.lastOrNull())
+            else -> respond()
+        }
     }
 
     fun regenerate() {
@@ -226,6 +263,36 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         return images.save(data)
     }
 
+    /** Speech mode: speaks the user's text with the selected voice and delivery settings. */
+    private fun makeSpeech(script: String) {
+        val reply = ChatMessage(role = ChatRole.assistant, content = "")
+        update { it.copy(messages = it.messages + reply) }
+        isStreaming = true
+        streamJob = viewModelScope.launch {
+            try {
+                val name = runSpeechTool(script, reply.id)
+                updateMessage(reply.id) { it.copy(audio = it.audio + name) }
+                playback.toggle(name, audio.file(name))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                updateMessage(reply.id) { it.copy(content = e.message ?: "Speech failed.", isError = true) }
+            } finally {
+                updateMessage(reply.id) { it.copy(status = null) }
+                isStreaming = false
+                persist()
+            }
+        }
+    }
+
+    /** Speaks a script with Drama 3 and returns the stored file name. */
+    private suspend fun runSpeechTool(script: String, replyId: String): String {
+        val voice = voices.selected
+        updateMessage(replyId) { it.copy(status = "Speaking with ${voice.name} · Drama 3…") }
+        val sample = withContext(Dispatchers.IO) { voices.sample(voice) }
+        return withContext(Dispatchers.IO) { audio.save(api.speech(voices.styled(script), voice, sample)) }
+    }
+
     private val latestImage get() = current?.messages?.lastOrNull { it.images.isNotEmpty() }?.images?.lastOrNull()
 
     private fun respond() {
@@ -238,6 +305,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         if (imageToolsEnabled) {
             system += " You can create images with generate_image and modify the latest image in the chat with edit_image. Never describe an image as created unless the tool succeeded."
         }
+        if (voices.toolsEnabled) {
+            system += " You can speak aloud with generate_speech when the user asks you to say, read or voice something. Never claim you spoke unless the tool succeeded."
+        }
         val wire = buildList {
             add(buildJsonObject { put("role", "system"); put("content", system.trim()) })
             conversation.messages.filter { !it.isError }.forEach { add(wireMessage(it)) }
@@ -245,16 +315,35 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
         val reply = ChatMessage(role = ChatRole.assistant, content = "")
         val model = selectedModel
+        val bases = activeKnowledge
+        val question = conversation.messages.lastOrNull { it.role == ChatRole.user }?.content.orEmpty()
         update { it.copy(model = model, messages = it.messages + reply) }
 
         val tools = buildList {
             if (webSearchEnabled) add(Tools.webSearch)
             if (imageToolsEnabled) { add(Tools.generateImage); add(Tools.editImage) }
+            if (voices.toolsEnabled) add(Tools.generateSpeech)
         }
         isStreaming = true
         streamJob = viewModelScope.launch {
             try {
-                runTurn(model, wire, tools, reply.id)
+                var messages = wire
+                if (bases.isNotEmpty() && question.isNotEmpty()) {
+                    updateMessage(reply.id) { it.copy(status = "Searching knowledge…") }
+                    try {
+                        val citations = knowledge.search(question, bases, api)
+                        if (citations.isNotEmpty()) {
+                            updateMessage(reply.id) { it.copy(citations = citations) }
+                            val system = jsonString(wire[0]["content"]).orEmpty() + "\n\n" + KnowledgeLibrary.context(citations)
+                            messages = listOf(buildJsonObject { put("role", "system"); put("content", system.trim()) }) + wire.drop(1)
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        updateMessage(reply.id) { it.copy(status = "Knowledge search failed, answering without it…") }
+                    }
+                }
+                runTurn(model, messages, tools, reply.id)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: BlabladorException) {
@@ -266,7 +355,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 updateMessage(reply.id) { it.copy(content = e.message ?: "Request failed.", isError = true) }
             } finally {
                 updateMessage(reply.id) {
-                    val empty = it.content.isEmpty() && it.images.isEmpty() && isActive
+                    val empty = it.content.isEmpty() && it.images.isEmpty() && it.audio.isEmpty() && isActive
                     if (empty) it.copy(status = null, content = "No response from the model.", isError = true) else it.copy(status = null)
                 }
                 isStreaming = false
@@ -326,6 +415,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 val arguments = runCatching { BlabladorApi.json.parseToJsonElement(call.arguments).jsonObject }.getOrNull()
                 val query = jsonString(arguments?.get("query")).orEmpty()
                 val prompt = jsonString(arguments?.get("prompt")).orEmpty()
+                val script = jsonString(arguments?.get("script")).orEmpty()
                 val output = when {
                     (call.name == "generate_image" || call.name == "edit_image") && prompt.isNotEmpty() -> try {
                         val image = runImageTool(call.name, prompt, latestImage, replyId)
@@ -335,6 +425,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         throw e
                     } catch (e: Exception) {
                         "Image tool failed: ${e.message}"
+                    }
+                    call.name == "generate_speech" && script.isNotEmpty() -> try {
+                        val name = runSpeechTool(script, replyId)
+                        updateMessage(replyId) { it.copy(audio = it.audio + name) }
+                        "The speech was created and the user can play it. Don't repeat the script; just briefly comment on it."
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        "Speech tool failed: ${e.message}"
                     }
                     call.name == "web_search" && query.isNotEmpty() -> {
                         updateMessage(replyId) { it.copy(status = "Searching “$query”") }
@@ -374,6 +473,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
         if (message.role != ChatRole.user || message.images.isEmpty()) {
             if (message.role == ChatRole.assistant && message.images.isNotEmpty()) text = "[Generated image]\n$text"
+            if (message.role == ChatRole.assistant && message.audio.isNotEmpty()) text = "[Generated speech]\n$text"
             return buildJsonObject { put("role", message.role.name); put("content", text) }
         }
         return buildJsonObject {

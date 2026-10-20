@@ -35,6 +35,10 @@ data class ChatMessage(
     /** File names in ImageStore: attachments on user messages, generated images on replies. */
     val images: List<String> = emptyList(),
     val documents: List<DocumentAttachment> = emptyList(),
+    /** Speech generated with Drama 3, as file names in AudioStore. */
+    val audio: List<String> = emptyList(),
+    /** Knowledge-base excerpts the reply was based on, cited as [K1], [K2]… */
+    val citations: List<KnowledgeCitation> = emptyList(),
     /** Transient status shown while tools run, e.g. "Searching the web…". Not saved. */
     @kotlinx.serialization.Transient val status: String? = null,
 )
@@ -45,6 +49,8 @@ data class Conversation(
     val title: String,
     val model: String,
     val messages: List<ChatMessage> = emptyList(),
+    /** Knowledge bases searched for this chat. */
+    val knowledge: List<String> = emptyList(),
     val updatedAt: Long = System.currentTimeMillis(),
 )
 

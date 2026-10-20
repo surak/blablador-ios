@@ -104,7 +104,7 @@ class PdfExtractor(private val context: Context, private val settings: Settings)
         bitmap
     }
 
-    private fun displayName(uri: Uri): String? =
+    fun displayName(uri: Uri): String? =
         context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
             if (cursor.moveToFirst()) cursor.getString(0) else null
         }

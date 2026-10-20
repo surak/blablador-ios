@@ -47,6 +47,13 @@ class BlabladorApi(private val apiKey: String) {
         const val IMAGE_EDIT_MODEL = "alias-image"
         const val DEFAULT_IMAGE_MODEL = "alias-flux2"
         const val OCR_MODEL = "alias-ocr"
+        const val SPEECH_MODEL = "alias-voice-drama3"
+        const val TRANSCRIPTION_MODEL = "faster-whisper-large-v3"
+        const val EMBEDDING_MODEL = "alias-qwen3-4b-embeddings"
+        /** Used for a new knowledge base when the default embedding model doesn't respond. */
+        const val FALLBACK_EMBEDDING_MODEL = "alias-embeddings"
+        const val RERANK_MODEL = "alias-qwen3-4b-reranker"
+        const val DECISION_MODEL = "alias-clef"
         val IMAGE_MODELS = listOf("alias-flux2" to "FLUX.2-dev", "alias-image" to "Qwen-Image 2.1")
 
         val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
@@ -73,6 +80,21 @@ class BlabladorApi(private val apiKey: String) {
                 put("function", buildJsonObject { put("name", name); put("arguments", arguments) })
             }
     }
+
+    internal fun authorized(path: String) = request(path)
+
+    /** Sends a request with its own timeout and returns the body bytes. */
+    internal suspend fun send(request: Request, timeoutSeconds: Long): ByteArray = withContext(Dispatchers.IO) {
+        client.newBuilder().callTimeout(timeoutSeconds, TimeUnit.SECONDS).build().newCall(request).await().use { response ->
+            val bytes = response.body?.bytes() ?: ByteArray(0)
+            if (!response.isSuccessful) throw BlabladorException(response.code, bytes.decodeToString().take(500))
+            bytes
+        }
+    }
+
+    internal suspend fun postBytes(path: String, body: JsonObject, timeoutSeconds: Long) = send(post(path, body), timeoutSeconds)
+
+    internal suspend fun postJson(path: String, body: JsonObject, timeoutSeconds: Long) = postBytes(path, body, timeoutSeconds).decodeToString()
 
     private fun request(path: String): Request.Builder {
         if (apiKey.isEmpty()) throw BlabladorException(0, "No API key set. Add your Blablador API key in Settings.")
@@ -189,6 +211,69 @@ class BlabladorApi(private val apiKey: String) {
         return response["choices"]?.jsonArray?.firstOrNull()?.jsonObject?.get("message")?.jsonObject
             ?.get("content")?.jsonPrimitive?.contentOrNull.orEmpty()
     }
+}
+
+/** Returns one embedding per text, in order. */
+suspend fun BlabladorApi.embeddings(texts: List<String>, model: String = BlabladorApi.EMBEDDING_MODEL): List<FloatArray> {
+    val body = buildJsonObject {
+        put("model", model)
+        put("input", buildJsonArray { texts.forEach { add(JsonPrimitive(it)) } })
+    }
+    val data = BlabladorApi.json.parseToJsonElement(postJson("embeddings", body, 45)).jsonObject["data"]!!.jsonArray
+    return data.map { it.jsonObject }
+        .sortedBy { it["index"]?.jsonPrimitive?.intOrNull ?: 0 }
+        .map { item -> item["embedding"]!!.jsonArray.map { it.jsonPrimitive.content.toFloat() }.toFloatArray() }
+}
+
+/** Returns document indices, most relevant first. */
+suspend fun BlabladorApi.rerank(query: String, documents: List<String>): List<Int> {
+    val body = buildJsonObject {
+        put("model", BlabladorApi.RERANK_MODEL)
+        put("query", query)
+        put("documents", buildJsonArray { documents.forEach { add(JsonPrimitive(it)) } })
+    }
+    val results = BlabladorApi.json.parseToJsonElement(postJson("rerank", body, 60)).jsonObject["results"]!!.jsonArray
+    return results.map { it.jsonObject }
+        .sortedByDescending { it["relevance_score"]?.jsonPrimitive?.content?.toDoubleOrNull() ?: 0.0 }
+        .map { it["index"]!!.jsonPrimitive.content.toInt() }
+}
+
+/** Speaks [text] with Drama 3, with a built-in voice or cloned from a reference recording. Returns MP3 audio. */
+suspend fun BlabladorApi.speech(text: String, voice: Voice, sample: ByteArray?): ByteArray {
+    val body = buildJsonObject {
+        put("model", BlabladorApi.SPEECH_MODEL)
+        put("input", text)
+        put("response_format", "mp3")
+        if (voice.referenceId != null) put("voice", voice.referenceId)
+        else if (sample != null) put("references", buildJsonArray {
+            add(buildJsonObject {
+                put("audio_path", "data:audio/wav;base64," + Base64.encodeToString(sample, Base64.NO_WRAP))
+                put("text", voice.transcript)
+            })
+        })
+    }
+    return postBytes("audio/speech", body, 300)
+}
+
+/** Transcribes a WAV file with Whisper; used for the transcript voice cloning needs. */
+suspend fun BlabladorApi.transcribe(wav: ByteArray): String {
+    val body = MultipartBody.Builder().setType(MultipartBody.FORM)
+        .addFormDataPart("model", BlabladorApi.TRANSCRIPTION_MODEL)
+        .addFormDataPart("file", "sample.wav", wav.toRequestBody("audio/wav".toMediaType()))
+        .build()
+    val response = send(authorized("audio/transcriptions").post(body).build(), 300)
+    return BlabladorApi.json.parseToJsonElement(response.decodeToString()).jsonObject["text"]?.jsonPrimitive?.content.orEmpty().trim()
+}
+
+/** Asks the Clef decision model typed questions about a state; returns answers by question id. */
+suspend fun BlabladorApi.decide(state: String, questions: List<DecisionQuestion>): Map<String, DecisionAnswer> {
+    val body = buildJsonObject {
+        put("model", BlabladorApi.DECISION_MODEL)
+        put("state", state)
+        put("questions", buildJsonObject { questions.forEach { put(it.id, it.wire) } })
+    }
+    val answers = BlabladorApi.json.parseToJsonElement(postJson("systemone", body, 60)).jsonObject["answers"]!!.jsonObject
+    return answers.mapValues { BlabladorApi.json.decodeFromJsonElement(DecisionAnswer.serializer(), it.value) }
 }
 
 /** Suspends until OkHttp has the response headers; cancelling the coroutine cancels the call. */

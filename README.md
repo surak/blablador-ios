@@ -16,7 +16,17 @@ It is the Android counterpart of [blablador-ios](https://github.com/surak/blabla
 - **Dictation** (system speech recognizer) and **read-aloud** (system text-to-speech)
 - **History** with search; personalised greeting; API key stored encrypted with the Android Keystore
 
-Not yet ported from iOS: knowledge bases, Drama 3 speech and voice cloning, decisions (Clef), and agent mode (Mac only).
+- **Knowledge bases** (+ → Knowledge): collections of PDFs and text files indexed with `alias-qwen3-4b-embeddings` and re-ranked with
+  `alias-qwen3-4b-reranker`; the index stays on the device and replies cite excerpts as [K1], [K2]
+- **Speech with Drama 3** (+ → Speak): built-in voices, feelings, pace, whisper and an Expressions menu for pauses, laughs and tags;
+  the assistant can also speak with the `generate_speech` tool
+- **Voice cloning**: record a sample, pick an audio or video file, or fetch a link; Whisper transcribes it for Drama 3
+- **Decide** (+ → Decide): the Clef decision model (`alias-clef`) with 73 examples; answers with probabilities
+
+Agent mode is Mac only on iOS and isn't ported.
+
+The decision examples in `app/src/main/assets/decision-examples.json` are generated from decision-model-frontend; regenerate with
+`node scripts/generate-decision-examples.js ../decision-model-frontend/static/app.js` rather than editing them.
 
 ## Requirements
 

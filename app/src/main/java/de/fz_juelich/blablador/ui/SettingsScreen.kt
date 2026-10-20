@@ -44,7 +44,7 @@ import de.fz_juelich.blablador.data.BlabladorApi
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(vm: ChatViewModel, onClose: () -> Unit) {
+fun SettingsScreen(vm: ChatViewModel, onOpenKnowledge: () -> Unit, onOpenVoices: () -> Unit, onOpenDecision: () -> Unit, onClose: () -> Unit) {
     var key by remember { mutableStateOf(vm.apiKey) }
     var confirmDelete by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -89,6 +89,13 @@ fun SettingsScreen(vm: ChatViewModel, onClose: () -> Unit) {
                 Choice("Blablador (LightOnOCR)", vm.ocrEngine == "blablador") { vm.chooseOcrEngine("blablador") }
             }
 
+            VoiceSettingsSection(vm, onManageVoices = onOpenVoices)
+
+            Section("Knowledge and decisions", footer = "Knowledge bases let chats answer from your documents. Decide asks Blablador's Clef model typed questions and shows probabilities.") {
+                Link("Knowledge bases", "${vm.knowledge.bases.size}", onOpenKnowledge)
+                Link("Decide (Clef)", "", onOpenDecision)
+            }
+
             Section("Web search", footer = "Lets the model search the web via search.blablador.fz-juelich.de when it needs current information.") {
                 Toggle("Web search", vm.webSearchEnabled, vm::setWebSearch)
             }
@@ -111,7 +118,7 @@ fun SettingsScreen(vm: ChatViewModel, onClose: () -> Unit) {
 }
 
 @Composable
-private fun Section(title: String, footer: String? = null, content: @Composable () -> Unit) {
+internal fun Section(title: String, footer: String? = null, content: @Composable () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
         Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp)) { content() } }
@@ -120,7 +127,7 @@ private fun Section(title: String, footer: String? = null, content: @Composable 
 }
 
 @Composable
-private fun Choice(label: String, selected: Boolean, onClick: () -> Unit) {
+internal fun Choice(label: String, selected: Boolean, onClick: () -> Unit) {
     Row(Modifier.fillMaxWidth().clickable(onClick = onClick), verticalAlignment = Alignment.CenterVertically) {
         RadioButton(selected, onClick)
         Text(label)
@@ -128,9 +135,17 @@ private fun Choice(label: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun Toggle(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+internal fun Toggle(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(label, Modifier.weight(1f))
         Switch(checked, onChange)
+    }
+}
+
+@Composable
+private fun Link(label: String, value: String, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, Modifier.weight(1f))
+        Text("$value ›", color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

@@ -61,6 +61,13 @@ object Tools {
         buildJsonObject { put("prompt", stringProperty("Instruction describing the change, in English.")) },
         listOf("prompt"),
     )
+
+    val generateSpeech = function(
+        "generate_speech",
+        "Speak a script aloud with the user's chosen voice (Drama 3 text-to-speech). Use when the user asks you to say, read, narrate, perform or voice something. " + SpeechMarkup.GUIDE,
+        buildJsonObject { put("script", stringProperty("The exact words to speak, in the user's language, with optional Drama 3 controls.")) },
+        listOf("script"),
+    )
 }
 
 object WebSearch {

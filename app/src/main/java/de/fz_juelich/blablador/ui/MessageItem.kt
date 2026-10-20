@@ -22,7 +22,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.LibraryBooks
 import androidx.compose.material.icons.automirrored.outlined.VolumeUp
+import androidx.compose.material.icons.outlined.GraphicEq
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import de.fz_juelich.blablador.data.KnowledgeCitation
 import androidx.compose.material.icons.outlined.Brush
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
@@ -76,6 +83,7 @@ fun MessageItem(
     onSpeak: () -> Unit,
     onRegenerate: () -> Unit,
     onEditImage: (String) -> Unit,
+    speechClip: @Composable (String) -> Unit,
 ) {
     when (message.role) {
         ChatRole.user -> Column(Modifier.fillMaxWidth().padding(start = 48.dp), horizontalAlignment = Alignment.End,
@@ -95,14 +103,21 @@ fun MessageItem(
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 message.status?.let { status ->
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Icon(if (status.startsWith("Search")) Icons.Outlined.Language else Icons.Outlined.Brush, null,
+                        val icon = when {
+                            status.startsWith("Searching knowledge") || status.startsWith("Knowledge") -> Icons.AutoMirrored.Outlined.LibraryBooks
+                            status.startsWith("Search") -> Icons.Outlined.Language
+                            status.startsWith("Speaking") -> Icons.Outlined.GraphicEq
+                            else -> Icons.Outlined.Brush
+                        }
+                        Icon(icon, null,
                             Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(status, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 message.images.forEach { ChatImage(imageFile(it), 420, square = false) { onEditImage(it) } }
+                message.audio.forEach { speechClip(it) }
                 when {
-                    message.content.isEmpty() -> if (message.status == null && message.images.isEmpty()) TypingIndicator()
+                    message.content.isEmpty() -> if (message.status == null && message.images.isEmpty() && message.audio.isEmpty()) TypingIndicator()
                     message.isError -> SelectionContainer {
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             Icon(Icons.Outlined.WarningAmber, null, tint = MaterialTheme.colorScheme.error)
@@ -111,6 +126,7 @@ fun MessageItem(
                     }
                     else -> MarkdownText(message.content)
                 }
+                if (message.citations.isNotEmpty()) Citations(message.citations)
                 if (message.sources.isNotEmpty()) Sources(message.sources)
                 if (!(isLast && isStreaming) && (message.content.isNotEmpty() || message.images.isNotEmpty())) {
                     Actions(message, isLast, speaking, onSpeak, onRegenerate)
@@ -201,6 +217,37 @@ private fun Sources(sources: List<SearchResult>) {
         }
     }
 }
+
+/** Knowledge-base excerpts behind a reply; tap one to read it. */
+@Composable
+private fun Citations(citations: List<KnowledgeCitation>) {
+    var shown by remember { mutableStateOf<Int?>(null) }
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        itemsIndexed(citations) { index, citation ->
+            Column(
+                Modifier.width(170.dp).height(72.dp).clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surfaceVariant)
+                    .clickable { shown = index }.padding(10.dp),
+                verticalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(citation.text, style = MaterialTheme.typography.labelMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(label(index, citation), style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+    shown?.let { index ->
+        val citation = citations[index]
+        AlertDialog(
+            onDismissRequest = { shown = null },
+            title = { Text(label(index, citation)) },
+            text = { SelectionContainer { Text(citation.text, Modifier.verticalScroll(rememberScrollState())) } },
+            confirmButton = { TextButton(onClick = { shown = null }) { Text("Done") } },
+        )
+    }
+}
+
+private fun label(index: Int, citation: KnowledgeCitation) =
+    "K${index + 1} · ${citation.document}" + (citation.page?.let { " · p. $it" } ?: "")
 
 @Composable
 private fun Actions(message: ChatMessage, isLast: Boolean, speaking: Boolean, onSpeak: () -> Unit, onRegenerate: () -> Unit) {

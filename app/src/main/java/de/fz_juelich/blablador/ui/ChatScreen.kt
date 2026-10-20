@@ -41,6 +41,10 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Brush
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.automirrored.outlined.LibraryBooks
+import androidx.compose.material.icons.outlined.Balance
+import androidx.compose.material.icons.outlined.GraphicEq
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Brush
@@ -119,25 +123,45 @@ import java.io.File
 import java.util.Calendar
 import java.util.Locale
 
+/** Full-screen pages on top of the chat. */
+private sealed interface Page {
+    data object Settings : Page
+    data class Knowledge(val baseId: String? = null) : Page
+    data object Decision : Page
+    data object Voices : Page
+    data object AddVoice : Page
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(vm: ChatViewModel) {
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
-    var showSettings by remember { mutableStateOf(vm.apiKey.isEmpty()) }
+    val pages = remember { mutableStateListOf<Page>().apply { if (vm.apiKey.isEmpty()) add(Page.Settings) } }
+    fun open(page: Page) { pages.add(page) }
+    fun close() { pages.removeLastOrNull() }
 
     // Composer state lives here so images in the chat can start an edit.
     var draft by remember { mutableStateOf("") }
     val attachments = remember { mutableStateListOf<ByteArray>() }
     val documents = remember { mutableStateListOf<DocumentAttachment>() }
     var imageMode by remember { mutableStateOf(false) }
+    var speechMode by remember { mutableStateOf(false) }
     val focus = remember { FocusRequester() }
 
     val speaker = rememberSpeaker()
 
-    if (showSettings) {
-        SettingsScreen(vm, onClose = { showSettings = false })
-        return
+    when (val page = pages.lastOrNull()) {
+        Page.Settings -> {
+            SettingsScreen(vm, onOpenKnowledge = { open(Page.Knowledge()) }, onOpenVoices = { open(Page.Voices) },
+                onOpenDecision = { open(Page.Decision) }, onClose = ::close)
+            return
+        }
+        is Page.Knowledge -> { KnowledgeScreen(vm, page.baseId, onClose = ::close); return }
+        Page.Decision -> { DecisionScreen(vm, onClose = ::close); return }
+        Page.Voices -> { VoicesScreen(vm, onClone = { open(Page.AddVoice) }, onClose = ::close); return }
+        Page.AddVoice -> { AddVoiceScreen(vm, onClose = ::close); return }
+        null -> {}
     }
 
     ModalNavigationDrawer(
@@ -155,7 +179,7 @@ fun ChatScreen(vm: ChatViewModel) {
                         IconButton(onClick = { vm.newChat(); draft = ""; attachments.clear(); documents.clear() }, enabled = vm.currentId != null) {
                             Icon(Icons.Outlined.EditNote, "New chat")
                         }
-                        IconButton(onClick = { showSettings = true }) { Icon(Icons.Outlined.Settings, "Settings") }
+                        IconButton(onClick = { open(Page.Settings) }) { Icon(Icons.Outlined.Settings, "Settings") }
                     },
                 )
             },
@@ -170,17 +194,25 @@ fun ChatScreen(vm: ChatViewModel) {
                             vm.images.data(name)?.let {
                                 attachments.clear(); attachments.add(it)
                                 imageMode = true
+                                speechMode = false
                                 focus.requestFocus()
                             }
                         }
                     }
                 }
-                Composer(vm, draft, { draft = it }, attachments, documents, imageMode, { imageMode = it }, focus) {
+                ActiveKnowledge(vm, onOpen = { open(Page.Knowledge(it)) })
+                Composer(
+                    vm, draft, { draft = it }, attachments, documents,
+                    imageMode, { imageMode = it; if (it) speechMode = false },
+                    speechMode, { speechMode = it; if (it) imageMode = false },
+                    focus,
+                    onNavigate = ::open,
+                ) {
                     val text = draft
                     val images = attachments.toList()
                     val docs = documents.toList()
                     draft = ""; attachments.clear(); documents.clear()
-                    vm.send(text, images, docs, imageMode)
+                    vm.send(text, images, docs, imageMode, speechMode)
                 }
             }
         }
@@ -299,6 +331,7 @@ private fun MessageList(conversation: Conversation, vm: ChatViewModel, speaker: 
                 onSpeak = { speaker.toggle(message.id, message.content) },
                 onRegenerate = vm::regenerate,
                 onEditImage = onEditImage,
+                speechClip = { SpeechClip(vm, it) },
             )
         }
     }
@@ -313,12 +346,17 @@ private fun Composer(
     documents: MutableList<DocumentAttachment>,
     imageMode: Boolean,
     onImageMode: (Boolean) -> Unit,
+    speechMode: Boolean,
+    onSpeechMode: (Boolean) -> Unit,
     focus: FocusRequester,
+    onNavigate: (Page) -> Unit,
     onSend: () -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var menu by remember { mutableStateOf(false) }
+    var knowledgeMenu by remember { mutableStateOf(false) }
+    var naming by remember { mutableStateOf(false) }
     var reading by remember { mutableIntStateOf(0) }
     var error by remember { mutableStateOf<String?>(null) }
     val canSend = reading == 0 && (draft.isNotBlank() || attachments.isNotEmpty() || documents.isNotEmpty())
@@ -382,6 +420,12 @@ private fun Composer(
             }
         }
         AnimatedVisibility(imageMode) { ImageModeChip(vm, editing = attachments.isNotEmpty()) { onImageMode(false) } }
+        AnimatedVisibility(speechMode) {
+            Row(Modifier.padding(start = 8.dp, top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SpeechModeChip(vm, onCloneVoice = { onNavigate(Page.AddVoice) }) { onSpeechMode(false) }
+                SpeechMarkupMenu(draft, onDraft)
+            }
+        }
         Row(verticalAlignment = Alignment.Bottom) {
             Box {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Outlined.Add, "Add") }
@@ -402,18 +446,45 @@ private fun Composer(
                         menu = false; ocrPhotos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                     })
                     HorizontalDivider()
+                    DropdownMenuItem(text = { Text("Knowledge") }, leadingIcon = { Icon(Icons.AutoMirrored.Outlined.LibraryBooks, null) },
+                        trailingIcon = { if (vm.activeKnowledge.isNotEmpty()) Text("${vm.activeKnowledge.size}") },
+                        onClick = { menu = false; knowledgeMenu = true })
                     DropdownMenuItem(text = { Text("Create or edit image") }, leadingIcon = { Icon(Icons.Outlined.Brush, null) },
                         trailingIcon = { if (imageMode) Icon(Icons.Outlined.Check, null) },
                         onClick = { menu = false; onImageMode(!imageMode) })
+                    DropdownMenuItem(text = { Text("Speak (Drama 3)") }, leadingIcon = { Icon(Icons.Outlined.GraphicEq, null) },
+                        trailingIcon = { if (speechMode) Icon(Icons.Outlined.Check, null) },
+                        onClick = { menu = false; onSpeechMode(!speechMode) })
                     DropdownMenuItem(text = { Text("Web search") }, leadingIcon = { Icon(Icons.Outlined.Language, null) },
                         trailingIcon = { if (vm.webSearchEnabled) Icon(Icons.Outlined.Check, null) },
                         onClick = { menu = false; vm.setWebSearch(!vm.webSearchEnabled) })
+                    HorizontalDivider()
+                    DropdownMenuItem(text = { Text("Decide (Clef)") }, leadingIcon = { Icon(Icons.Outlined.Balance, null) },
+                        onClick = { menu = false; onNavigate(Page.Decision) })
+                }
+                DropdownMenu(expanded = knowledgeMenu, onDismissRequest = { knowledgeMenu = false }) {
+                    if (vm.knowledge.bases.isEmpty()) DropdownMenuItem(text = { Text("No knowledge bases yet") }, onClick = {}, enabled = false)
+                    vm.knowledge.bases.forEach { base ->
+                        DropdownMenuItem(text = { Text(base.name) }, onClick = { vm.toggleKnowledge(base.id) },
+                            leadingIcon = { if (base.id in vm.activeKnowledge) Icon(Icons.Outlined.Check, null) else Spacer(Modifier.size(24.dp)) })
+                    }
+                    HorizontalDivider()
+                    DropdownMenuItem(text = { Text("New knowledge base…") }, leadingIcon = { Icon(Icons.Outlined.Add, null) },
+                        onClick = { knowledgeMenu = false; naming = true })
+                    DropdownMenuItem(text = { Text("Manage knowledge…") }, leadingIcon = { Icon(Icons.Outlined.Settings, null) },
+                        onClick = { knowledgeMenu = false; onNavigate(Page.Knowledge()) })
                 }
             }
             TextField(
                 value = draft, onValueChange = onDraft,
                 modifier = Modifier.weight(1f).focusRequester(focus),
-                placeholder = { Text(if (imageMode) (if (attachments.isEmpty()) "Describe an image" else "Describe the change") else "Ask Blablador") },
+                placeholder = {
+                    Text(when {
+                        imageMode -> if (attachments.isEmpty()) "Describe an image" else "Describe the change"
+                        speechMode -> "What should ${vm.voices.selected.name} say?"
+                        else -> "Ask Blablador"
+                    })
+                },
                 maxLines = 6,
                 colors = TextFieldDefaults.colors(
                     focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent,
@@ -431,11 +502,18 @@ private fun Composer(
                         tint = MaterialTheme.colorScheme.surface)
                 }
                 canSend -> IconButton(onClick = onSend) {
-                    Icon(if (imageMode) Icons.Filled.Brush else Icons.Filled.ArrowUpward, if (imageMode) "Create image" else "Send",
+                    Icon(when { imageMode -> Icons.Filled.Brush; speechMode -> Icons.Filled.GraphicEq; else -> Icons.Filled.ArrowUpward },
+                        when { imageMode -> "Create image"; speechMode -> "Speak"; else -> "Send" },
                         Modifier.clip(CircleShape).background(Brand.gradient).padding(8.dp), tint = Color.White)
                 }
             }
         }
+    }
+    if (naming) NameDialog("New knowledge base", "", onDismiss = { naming = false }) { name ->
+        naming = false
+        val base = vm.knowledge.create(name)
+        vm.toggleKnowledge(base.id)
+        onNavigate(Page.Knowledge(base.id))
     }
     error?.let { message ->
         androidx.compose.material3.AlertDialog(
@@ -444,6 +522,27 @@ private fun Composer(
             title = { Text("Couldn't read text") },
             text = { Text(message) },
         )
+    }
+}
+
+/** Knowledge bases searched in this chat; tap to open, × to stop using. */
+@Composable
+private fun ActiveKnowledge(vm: ChatViewModel, onOpen: (String) -> Unit) {
+    val active = vm.activeKnowledge.mapNotNull(vm.knowledge::base)
+    if (active.isEmpty()) return
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        active.forEach { base ->
+            Row(
+                Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant).clickable { onOpen(base.id) }
+                    .padding(start = 10.dp, end = 6.dp, top = 5.dp, bottom = 5.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Icon(Icons.AutoMirrored.Outlined.LibraryBooks, null, Modifier.size(14.dp), tint = Brand.violet)
+                Text(vm.knowledge.progress[base.id] ?: base.name, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                Icon(Icons.Filled.Close, "Stop using ${base.name}", Modifier.size(16.dp).clickable { vm.toggleKnowledge(base.id) })
+            }
+        }
     }
 }
 
