@@ -5,8 +5,8 @@ Forschungszentrum Jülich (`https://api.blablador.fz-juelich.de/v1`).
 
 | Platform | Code | Download |
 |---|---|---|
-| macOS, iPhone, iPad (SwiftUI) | [`Blablador/`](Blablador) | Mac DMG/zip on the [releases page](https://github.com/surak/blablador-ios/releases) (`v*` tags) |
-| Android 8.0+ (Kotlin, Compose) | [`android/`](android) — see [android/README.md](android/README.md) | APK on the [releases page](https://github.com/surak/blablador-ios/releases) (`android-v*` tags) |
+| macOS, iPhone, iPad (SwiftUI) | [`Blablador/`](Blablador) | [Latest release](https://github.com/surak/blablador-ios/releases/latest): `Blablador-<version>-macOS.dmg` |
+| Android 8.0+ (Kotlin, Compose) | [`android/`](android) — see [android/README.md](android/README.md) | [Latest release](https://github.com/surak/blablador-ios/releases/latest): `Blablador-<version>-android.apk` |
 
 The Android app has the same features as the Apple apps except agent mode, which is Mac only.
 
