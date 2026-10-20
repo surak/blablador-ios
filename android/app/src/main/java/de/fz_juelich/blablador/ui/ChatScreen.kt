@@ -1,5 +1,6 @@
 package de.fz_juelich.blablador.ui
 
+import androidx.compose.material.icons.outlined.ContentPaste
 import android.content.Intent
 import android.net.Uri
 import android.speech.RecognizerIntent
@@ -444,6 +445,16 @@ private fun Composer(
                     })
                     DropdownMenuItem(text = { Text("Photos") }, leadingIcon = { Icon(Icons.Outlined.Photo, null) }, onClick = {
                         menu = false; photos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    })
+                    DropdownMenuItem(text = { Text("Paste image") }, leadingIcon = { Icon(Icons.Outlined.ContentPaste, null) }, onClick = {
+                        menu = false
+                        // Images copied in other apps arrive as content URIs on the clipboard.
+                        val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
+                        val clip = clipboard?.primaryClip
+                        val uris = (0 until (clip?.itemCount ?: 0)).mapNotNull { clip?.getItemAt(it)?.uri }
+                            .filter { context.contentResolver.getType(it)?.startsWith("image/") == true }
+                        if (uris.isEmpty()) error = "The clipboard has no image. Copy an image first, then choose Paste image."
+                        else uris.forEach { addPhoto(it) }
                     })
                     DropdownMenuItem(text = { Text("File (image or PDF)") }, leadingIcon = { Icon(Icons.Outlined.PictureAsPdf, null) }, onClick = {
                         menu = false; pdfs.launch(arrayOf("application/pdf", "image/*"))

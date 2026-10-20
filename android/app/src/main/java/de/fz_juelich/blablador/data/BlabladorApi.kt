@@ -56,6 +56,11 @@ class BlabladorApi(private val apiKey: String) {
         const val DECISION_MODEL = "alias-clef"
         val IMAGE_MODELS = listOf("alias-flux2" to "FLUX.2-dev", "alias-image" to "Qwen-Image 2.1")
 
+        /** Minutes to wait for a reply to start or continue; 0 waits as long as it takes. Set in Settings. */
+        @Volatile var responseTimeoutMinutes = 10
+        val RESPONSE_TIMEOUT_CHOICES = listOf(2, 5, 10, 30, 0)
+        fun timeoutLabel(minutes: Int) = if (minutes == 0) "No limit" else "$minutes minutes"
+
         val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
 
         val client: OkHttpClient = OkHttpClient.Builder()
@@ -69,6 +74,7 @@ class BlabladorApi(private val apiKey: String) {
 
     sealed interface StreamEvent {
         data class Content(val text: String) : StreamEvent
+        data class Reasoning(val text: String) : StreamEvent
         data class ToolCalls(val calls: List<ToolCall>) : StreamEvent
     }
 
@@ -134,7 +140,8 @@ class BlabladorApi(private val apiKey: String) {
             if (tools.isNotEmpty()) put("tools", JsonArray(tools))
         }
         val request = post("chat/completions", body).newBuilder().header("Accept", "text/event-stream").build()
-        val call = client.newCall(request)
+        // Slow models can take minutes before the first token.
+        val call = client.newBuilder().readTimeout(responseTimeoutMinutes.toLong(), TimeUnit.MINUTES).build().newCall(request)
         val response = call.await()
         try {
             if (!response.isSuccessful) throw BlabladorException(response.code, response.body?.string().orEmpty().take(500))
@@ -149,6 +156,9 @@ class BlabladorApi(private val apiKey: String) {
                 val delta = runCatching {
                     json.parseToJsonElement(payload).jsonObject["choices"]?.jsonArray?.firstOrNull()?.jsonObject?.get("delta")?.jsonObject
                 }.getOrNull() ?: continue
+                // Thinking trace: vLLM and DeepSeek send reasoning_content, others reasoning.
+                (jsonString(delta["reasoning_content"]) ?: jsonString(delta["reasoning"]))?.takeIf { it.isNotEmpty() }
+                    ?.let { emit(StreamEvent.Reasoning(it)) }
                 delta["content"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotEmpty() }?.let { emit(StreamEvent.Content(it)) }
                 (delta["tool_calls"] as? JsonArray)?.forEach { element ->
                     val callDelta = element.jsonObject

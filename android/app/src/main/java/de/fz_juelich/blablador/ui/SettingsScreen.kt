@@ -81,6 +81,12 @@ fun SettingsScreen(vm: ChatViewModel, onOpenKnowledge: () -> Unit, onOpenVoices:
                 TextButton(onClick = { vm.selectModel(BlabladorApi.DEFAULT_MODEL) }) { Text("Reset to ${BlabladorApi.DEFAULT_MODEL}") }
             }
 
+            Section("Wait for a reply", footer = "How long to wait for a model that is slow to start or pauses while thinking, before giving up.") {
+                BlabladorApi.RESPONSE_TIMEOUT_CHOICES.forEach { minutes ->
+                    Choice(BlabladorApi.timeoutLabel(minutes), minutes == vm.responseTimeoutMinutes) { vm.setResponseTimeout(minutes) }
+                }
+            }
+
             Section("Images", footer = "Used for new images. Editing photos always uses Qwen-Image 2.1, the model that supports editing.") {
                 BlabladorApi.IMAGE_MODELS.forEach { (id, name) -> Choice(name, id == vm.imageModel) { vm.selectImageModel(id) } }
                 Toggle("Let the assistant create images", vm.imageToolsEnabled, vm::setImageTools)

@@ -192,6 +192,7 @@ struct BlabladorAPI {
 
     enum StreamEvent {
         case content(String)
+        case reasoning(String)
         case toolCalls([ToolCall])
     }
 
@@ -205,6 +206,18 @@ struct BlabladorAPI {
         }
     }
 
+    /// Minutes to wait for a reply to start or continue; 0 waits as long as it takes. Set in Settings → Model.
+    static var responseTimeoutMinutes: Int {
+        get { UserDefaults.standard.object(forKey: "responseTimeoutMinutes") as? Int ?? 10 }
+        set { UserDefaults.standard.set(newValue, forKey: "responseTimeoutMinutes") }
+    }
+
+    static let responseTimeoutChoices = [2, 5, 10, 30, 0]
+
+    static func timeoutLabel(_ minutes: Int) -> String {
+        minutes == 0 ? "No limit" : "\(minutes) minutes"
+    }
+
     /// Streams a chat completion. `messages` are OpenAI wire-format dictionaries.
     func streamChat(model: String, messages: [[String: Any]], tools: [[String: Any]] = []) -> AsyncThrowingStream<StreamEvent, Error> {
         AsyncThrowingStream { continuation in
@@ -213,6 +226,9 @@ struct BlabladorAPI {
                     var request = try request(path: "chat/completions")
                     request.httpMethod = "POST"
                     request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+                    // Slow models can take minutes before the first token; the default is 60 s.
+                    let minutes = Self.responseTimeoutMinutes
+                    request.timeoutInterval = minutes == 0 ? 7 * 24 * 3600 : TimeInterval(minutes * 60)
                     var body: [String: Any] = ["model": model, "messages": messages, "stream": true]
                     if !tools.isEmpty { body["tools"] = tools }
                     request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -232,6 +248,9 @@ struct BlabladorAPI {
                         guard let data = payload.data(using: .utf8),
                               let chunk = try? JSONDecoder().decode(ChatChunk.self, from: data),
                               let delta = chunk.choices.first?.delta else { continue }
+                        if let thinking = delta.reasoning_content ?? delta.reasoning, !thinking.isEmpty {
+                            continuation.yield(.reasoning(thinking))
+                        }
                         if let content = delta.content, !content.isEmpty {
                             continuation.yield(.content(content))
                         }
@@ -275,6 +294,9 @@ private struct ChatChunk: Decodable {
                 let function: Function?
             }
             let content: String?
+            /// Thinking trace: vLLM and DeepSeek send `reasoning_content`, others `reasoning`.
+            let reasoning_content: String?
+            let reasoning: String?
             let tool_calls: [ToolCallDelta]?
         }
         let delta: Delta

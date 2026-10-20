@@ -1,5 +1,11 @@
 package de.fz_juelich.blablador.ui
 
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.Psychology
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.Image
@@ -114,10 +120,11 @@ fun MessageItem(
                         Text(status, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
+                if (message.reasoning.isNotEmpty()) Thinking(message.reasoning, isLast && isStreaming && message.content.isEmpty())
                 message.images.forEach { ChatImage(imageFile(it), 420, square = false) { onEditImage(it) } }
                 message.audio.forEach { speechClip(it) }
                 when {
-                    message.content.isEmpty() -> if (message.status == null && message.images.isEmpty() && message.audio.isEmpty()) TypingIndicator()
+                    message.content.isEmpty() -> if (message.status == null && message.images.isEmpty() && message.audio.isEmpty() && message.reasoning.isEmpty()) TypingIndicator()
                     message.isError -> SelectionContainer {
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             Icon(Icons.Outlined.WarningAmber, null, tint = MaterialTheme.colorScheme.error)
@@ -267,5 +274,32 @@ private fun Actions(message: ChatMessage, isLast: Boolean, speaking: Boolean, on
             context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, message.content), null))
         }) { Icon(Icons.Outlined.Share, "Share", Modifier.size(18.dp), tint = tint) }
         if (isLast) IconButton(onClick = onRegenerate) { Icon(Icons.Outlined.Refresh, "Regenerate", Modifier.size(18.dp), tint = tint) }
+    }
+}
+
+/** The model's thinking trace: open and following along while it thinks, folded away once the answer starts. */
+@Composable
+private fun Thinking(text: String, thinking: Boolean) {
+    var expanded by remember { mutableStateOf<Boolean?>(null) }
+    val open = expanded ?: thinking
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(Modifier.clickable { expanded = !open }, verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Icon(Icons.Outlined.Psychology, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(if (thinking) "Thinking…" else "Thought process", style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Icon(if (open) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, if (open) "Hide thinking" else "Show thinking",
+                Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (open) {
+            val scroll = rememberScrollState()
+            LaunchedEffect(text.length) { if (thinking) scroll.scrollTo(scroll.maxValue) }
+            SelectionContainer {
+                Text(text.trim(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.heightIn(max = 260.dp).verticalScroll(scroll)
+                        .drawBehind { drawRect(Color.Gray.copy(alpha = 0.35f), size = androidx.compose.ui.geometry.Size(2.dp.toPx(), size.height)) }
+                        .padding(start = 12.dp))
+            }
+        }
     }
 }

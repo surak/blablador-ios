@@ -96,6 +96,9 @@ struct MessageView: View {
                             .foregroundStyle(.secondary)
                             .symbolEffect(.pulse)
                     }
+                    if !message.reasoning.isEmpty {
+                        ThinkingView(text: message.reasoning, isThinking: isLast && isStreaming && message.content.isEmpty)
+                    }
                     ForEach(message.images, id: \.self) { name in
                         GeneratedImage(name: name)
                     }
@@ -106,7 +109,7 @@ struct MessageView: View {
                         AgentStepsView(steps: message.steps)
                     }
                     if message.content.isEmpty {
-                        if message.status == nil && message.images.isEmpty && message.audio.isEmpty && message.steps.isEmpty { TypingIndicator() }
+                        if message.status == nil && message.images.isEmpty && message.audio.isEmpty && message.steps.isEmpty && message.reasoning.isEmpty { TypingIndicator() }
                     } else if message.isError {
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
                             Image(systemName: "exclamationmark.triangle")
@@ -558,5 +561,57 @@ private struct SelectTextView: View {
 #if os(macOS)
         .frame(minWidth: 500, minHeight: 400)
 #endif
+    }
+}
+
+/// The model's thinking trace: open and following along while it thinks, folded away once the answer starts.
+private struct ThinkingView: View {
+    let text: String
+    let isThinking: Bool
+    @State private var expanded: Bool?
+
+    private var isExpanded: Bool { expanded ?? isThinking }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                withAnimation(.spring(duration: 0.25)) { expanded = !isExpanded }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "brain")
+                        .symbolEffect(.pulse, isActive: isThinking)
+                    Text(isThinking ? "Thinking…" : "Thought process")
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                }
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint(isExpanded ? "Hides the thinking" : "Shows the thinking")
+
+            if isExpanded {
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        Text(text.trimmingCharacters(in: .whitespacesAndNewlines))
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Color.clear.frame(height: 1).id("end")
+                    }
+                    .frame(maxHeight: 260)
+                    .onChange(of: text) { _, _ in
+                        if isThinking { proxy.scrollTo("end", anchor: .bottom) }
+                    }
+                }
+                .padding(.leading, 12)
+                .overlay(alignment: .leading) {
+                    Rectangle().fill(.secondary.opacity(0.3)).frame(width: 2)
+                }
+            }
+        }
     }
 }

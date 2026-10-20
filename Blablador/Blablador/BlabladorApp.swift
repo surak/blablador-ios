@@ -71,9 +71,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSWindow.allowsAutomaticWindowTabbing = true
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            // ⌘V with an image (or image/PDF files) on the clipboard attaches it instead of pasting text.
+            if flags == .command, event.charactersIgnoringModifiers == "v", PasteRequest.clipboardHasAttachment {
+                let request = PasteRequest()
+                NotificationCenter.default.post(name: .pasteAttachment, object: request)
+                if request.handled { return nil }
+            }
             guard flags == .command, event.charactersIgnoringModifiers == "c" else { return event }
             return NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil) ? nil : event
         }
+    }
+}
+#endif
+
+#if os(macOS)
+extension Notification.Name {
+    /// Asks the key window's composer to attach what's on the clipboard.
+    static let pasteAttachment = Notification.Name("pasteAttachment")
+}
+
+/// Lets the composer report that it took the paste, so the text field doesn't paste too.
+final class PasteRequest {
+    var handled = false
+
+    /// An image without text (a screenshot, a copied picture), or copied image/PDF files from Finder.
+    static var clipboardHasAttachment: Bool {
+        let board = NSPasteboard.general
+        let files = board.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+        if files.contains(where: { ["png", "jpg", "jpeg", "heic", "gif", "tiff", "webp", "bmp", "pdf"].contains($0.pathExtension.lowercased()) }) {
+            return true
+        }
+        let types = board.types ?? []
+        return !types.contains(.string) && NSImage.canInit(with: board)
     }
 }
 #endif

@@ -23,10 +23,12 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     var citations: [KnowledgeCitation] = []
     /// Tool calls made in agent mode.
     var steps: [AgentStep] = []
+    /// The model's thinking trace, streamed separately from the answer.
+    var reasoning = ""
     /// Transient status shown while tools run, e.g. "Searching the web…"
     var status: String?
 
-    private enum CodingKeys: String, CodingKey { case id, role, content, date, isError, sources, images, documents, audio, citations, steps }
+    private enum CodingKeys: String, CodingKey { case id, role, content, date, isError, sources, images, documents, audio, citations, steps, reasoning }
 
     init(role: ChatRole, content: String, images: [String] = [], documents: [DocumentAttachment] = []) {
         self.role = role
@@ -48,6 +50,7 @@ struct ChatMessage: Identifiable, Codable, Equatable {
         audio = try c.decodeIfPresent([String].self, forKey: .audio) ?? []
         citations = try c.decodeIfPresent([KnowledgeCitation].self, forKey: .citations) ?? []
         steps = try c.decodeIfPresent([AgentStep].self, forKey: .steps) ?? []
+        reasoning = try c.decodeIfPresent(String.self, forKey: .reasoning) ?? ""
     }
 }
 

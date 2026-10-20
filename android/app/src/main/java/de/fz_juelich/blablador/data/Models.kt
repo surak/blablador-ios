@@ -39,6 +39,8 @@ data class ChatMessage(
     val audio: List<String> = emptyList(),
     /** Knowledge-base excerpts the reply was based on, cited as [K1], [K2]… */
     val citations: List<KnowledgeCitation> = emptyList(),
+    /** The model's thinking trace, streamed separately from the answer. */
+    val reasoning: String = "",
     /** Transient status shown while tools run, e.g. "Searching the web…". Not saved. */
     @kotlinx.serialization.Transient val status: String? = null,
 )

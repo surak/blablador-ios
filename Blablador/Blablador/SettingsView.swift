@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct SettingsView: View {
+    @State private var responseTimeout = BlabladorAPI.responseTimeoutMinutes
     @EnvironmentObject private var store: ChatStore
     @Environment(\.dismiss) private var dismiss
     @State private var apiKey = ""
@@ -28,7 +29,7 @@ struct SettingsView: View {
                     }
                 }
 
-                Section("Model") {
+                Section {
                     Picker("Default model", selection: Binding(
                         get: { store.selectedModel },
                         set: { store.selectedModel = $0 }
@@ -43,6 +44,16 @@ struct SettingsView: View {
                     Button("Reset to \(BlabladorAPI.defaultModel)") {
                         store.selectedModel = BlabladorAPI.defaultModel
                     }
+                    Picker("Wait for a reply", selection: $responseTimeout) {
+                        ForEach(BlabladorAPI.responseTimeoutChoices, id: \.self) { minutes in
+                            Text(BlabladorAPI.timeoutLabel(minutes)).tag(minutes)
+                        }
+                    }
+                    .onChange(of: responseTimeout) { _, minutes in BlabladorAPI.responseTimeoutMinutes = minutes }
+                } header: {
+                    Text("Model")
+                } footer: {
+                    Text("How long to wait for a model that is slow to start or pauses while thinking, before giving up.")
                 }
 
                 Section {

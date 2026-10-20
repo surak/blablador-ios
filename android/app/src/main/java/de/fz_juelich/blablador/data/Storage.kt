@@ -100,6 +100,10 @@ class Settings(context: Context) {
         get() = prefs.getString("systemPrompt", "").orEmpty()
         set(value) = prefs.edit().putString("systemPrompt", value).apply()
 
+    var responseTimeoutMinutes: Int
+        get() = prefs.getInt("responseTimeoutMinutes", 10)
+        set(value) = prefs.edit().putInt("responseTimeoutMinutes", value).apply()
+
     var webSearchEnabled: Boolean
         get() = prefs.getBoolean("webSearchEnabled", true)
         set(value) = prefs.edit().putBoolean("webSearchEnabled", value).apply()

@@ -75,6 +75,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         private set
     var webSearchEnabled by mutableStateOf(settings.webSearchEnabled)
         private set
+    var responseTimeoutMinutes by mutableStateOf(settings.responseTimeoutMinutes.also { BlabladorApi.responseTimeoutMinutes = it })
+        private set
     var imageToolsEnabled by mutableStateOf(settings.imageToolsEnabled)
         private set
     var systemPrompt by mutableStateOf(settings.systemPrompt)
@@ -110,6 +112,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun selectModel(id: String) { selectedModel = id; settings.selectedModel = id }
     fun selectImageModel(id: String) { imageModel = id; settings.imageModel = id }
+    fun setResponseTimeout(minutes: Int) {
+        responseTimeoutMinutes = minutes; settings.responseTimeoutMinutes = minutes; BlabladorApi.responseTimeoutMinutes = minutes
+    }
+
     fun setWebSearch(on: Boolean) { webSearchEnabled = on; settings.webSearchEnabled = on }
     fun setImageTools(on: Boolean) { imageToolsEnabled = on; settings.imageToolsEnabled = on }
     fun updateSystemPrompt(text: String) { systemPrompt = text; settings.systemPrompt = text }
@@ -375,15 +381,25 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 messages += buildJsonObject { put("role", "user"); put("content", "Stop using tools now and write the final answer using the results above.") }
             }
             val prefix = message(replyId)?.content.orEmpty()
+            val reasoningPrefix = message(replyId)?.reasoning.orEmpty()
             var text = ""
+            var reasoning = ""
             var calls: List<BlabladorApi.ToolCall> = emptyList()
             try {
                 api.streamChat(model, messages, tools).collect { event ->
                     when (event) {
                         is BlabladorApi.StreamEvent.Content -> {
                             text += event.text
-                            val visible = stripToolMarkup(text)
-                            updateMessage(replyId) { it.copy(status = null, content = prefix + visible) }
+                            val (thinking, answer) = splitThinking(text)
+                            val visible = stripToolMarkup(answer)
+                            updateMessage(replyId) {
+                                it.copy(status = null, content = prefix + visible,
+                                    reasoning = if (thinking.isEmpty()) it.reasoning else joined(reasoningPrefix, reasoning + thinking))
+                            }
+                        }
+                        is BlabladorApi.StreamEvent.Reasoning -> {
+                            reasoning += event.text
+                            updateMessage(replyId) { it.copy(status = null, reasoning = joined(reasoningPrefix, reasoning)) }
                         }
                         is BlabladorApi.StreamEvent.ToolCalls -> calls = event.calls
                     }
@@ -495,6 +511,18 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val toolMarkup = Regex("""<[｜|]\s*DSML\s*[｜|][\s\S]*$""")
     private fun containsToolMarkup(text: String) = toolMarkup.containsMatchIn(text)
     /** Removes raw tool-call markup some models emit as text instead of structured tool calls. */
+    /** Splits a `<think>…</think>` block some models put at the start of their answer from the answer itself. */
+    private fun splitThinking(text: String): Pair<String, String> {
+        val trimmed = text.trimStart()
+        if (!trimmed.startsWith("<think>")) return "" to text
+        val body = trimmed.removePrefix("<think>")
+        val end = body.indexOf("</think>")
+        return if (end < 0) body to "" else body.substring(0, end) to body.substring(end + "</think>".length).trim()
+    }
+
+    /** Thinking from earlier tool rounds, then this round's. */
+    private fun joined(earlier: String, new: String) = if (earlier.isEmpty()) new else "$earlier\n\n$new"
+
     private fun stripToolMarkup(text: String) = text.replace(toolMarkup, "").trim()
 
     private fun message(id: String) = conversations.firstNotNullOfOrNull { c -> c.messages.firstOrNull { it.id == id } }

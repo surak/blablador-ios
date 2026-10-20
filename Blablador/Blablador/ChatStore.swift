@@ -506,17 +506,27 @@ final class ChatStore: ObservableObject {
                 messages.append(["role": "user", "content": "Stop using tools now and write the final answer using the results above."])
             }
             let prefix = current?.messages.first { $0.id == replyID }?.content ?? ""
+            let reasoningPrefix = current?.messages.first { $0.id == replyID }?.reasoning ?? ""
             var text = ""
+            var reasoning = ""
             var calls: [BlabladorAPI.ToolCall] = []
             do {
                 for try await event in api.streamChat(model: model, messages: messages, tools: tools) {
                     switch event {
                     case let .content(delta):
                         text += delta
-                        let visible = Self.stripToolMarkup(text)
+                        let (thinking, answer) = Self.splitThinking(text)
+                        let visible = Self.stripToolMarkup(answer)
                         updateMessage(replyID) {
                             $0.status = nil
                             $0.content = prefix + visible
+                            if !thinking.isEmpty { $0.reasoning = Self.joined(reasoningPrefix, reasoning + thinking) }
+                        }
+                    case let .reasoning(delta):
+                        reasoning += delta
+                        updateMessage(replyID) {
+                            $0.status = nil
+                            $0.reasoning = Self.joined(reasoningPrefix, reasoning)
                         }
                     case let .toolCalls(toolCalls):
                         calls = toolCalls
@@ -639,6 +649,20 @@ final class ChatStore: ObservableObject {
 
     private static func containsToolMarkup(_ text: String) -> Bool {
         text.range(of: toolMarkupPattern, options: .regularExpression) != nil
+    }
+
+    /// Splits a `<think>…</think>` block some models put at the start of their answer from the answer itself.
+    static func splitThinking(_ text: String) -> (thinking: String, answer: String) {
+        let trimmed = text.drop { $0.isWhitespace }
+        guard trimmed.hasPrefix("<think>") else { return ("", text) }
+        let body = trimmed.dropFirst("<think>".count)
+        guard let end = body.range(of: "</think>") else { return (String(body), "") }
+        return (String(body[..<end.lowerBound]), String(body[end.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    /// Thinking from earlier tool rounds, then this round's.
+    static func joined(_ earlier: String, _ new: String) -> String {
+        earlier.isEmpty ? new : earlier + "\n\n" + new
     }
 
     /// Removes raw tool-call markup some models emit as text instead of structured tool calls.

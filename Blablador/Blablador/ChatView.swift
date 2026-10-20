@@ -473,6 +473,12 @@ private struct ComposerView: View {
     @Binding var speechMode: Bool
     @Binding var droppedFiles: [URL]
     @ObservedObject var speech: SpeechRecognizer
+#if os(macOS)
+    @Environment(\.controlActiveState) private var controlActiveState
+#else
+    @State private var clipboardHasImage = false
+    @State private var dismissedClipboard = -1
+#endif
     var focused: FocusState<Bool>.Binding
     let onSend: () -> Void
 
@@ -509,6 +515,11 @@ private struct ComposerView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+#if os(iOS)
+            if clipboardHasImage {
+                pasteBar
+            }
+#endif
             if !attachments.isEmpty {
                 attachmentStrip
             }
@@ -641,6 +652,18 @@ private struct ComposerView: View {
             guard case .success(let urls) = result else { return }
             addFiles(urls)
         }
+#if os(iOS)
+        .onAppear { refreshClipboard() }
+        .onReceive(NotificationCenter.default.publisher(for: UIPasteboard.changedNotification)) { _ in refreshClipboard() }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in refreshClipboard() }
+        .animation(.spring(duration: 0.25), value: clipboardHasImage)
+#endif
+#if os(macOS)
+        .onReceive(NotificationCenter.default.publisher(for: .pasteAttachment)) { note in
+            guard controlActiveState == .key else { return }
+            if pasteImage() { (note.object as? PasteRequest)?.handled = true }
+        }
+#endif
         .onChange(of: droppedFiles) { _, urls in
             guard !urls.isEmpty else { return }
             droppedFiles = []
@@ -674,6 +697,83 @@ private struct ComposerView: View {
         .sheet(isPresented: $showCamera) {
             CameraPicker { data in attachments.append(ImageStore.jpeg(from: data, maxPixelSize: 2048, quality: 0.9) ?? data) }
         }
+#endif
+    }
+
+#if os(iOS)
+    /// Offers a copied image with the system Paste button, which needs no permission prompt.
+    private var pasteBar: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "photo.on.rectangle").foregroundStyle(.secondary)
+            Text("Image on the clipboard").font(.subheadline).foregroundStyle(.secondary)
+            Spacer()
+            PasteButton(supportedContentTypes: [.image]) { providers in
+                Task { await attach(providers) }
+            }
+            .labelStyle(.titleAndIcon)
+            .buttonBorderShape(.capsule)
+            .controlSize(.small)
+            Button { dismissedClipboard = UIPasteboard.general.changeCount; clipboardHasImage = false } label: {
+                Image(systemName: "xmark").font(.caption.weight(.semibold))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .accessibilityLabel("Hide")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Theme.surface, in: Capsule())
+    }
+
+    /// Checks the clipboard without reading it, so iOS doesn't ask for permission.
+    private func refreshClipboard() {
+        let board = UIPasteboard.general
+        clipboardHasImage = board.hasImages && board.changeCount != dismissedClipboard
+    }
+
+    private func attach(_ providers: [NSItemProvider]) async {
+        for provider in providers {
+            guard let type = provider.registeredContentTypes.first(where: { $0.conforms(to: .image) }) else { continue }
+            let data: Data? = await withCheckedContinuation { continuation in
+                _ = provider.loadDataRepresentation(for: type) { data, _ in continuation.resume(returning: data) }
+            }
+            if let data {
+                attachments.append(ImageStore.jpeg(from: data, maxPixelSize: 2048, quality: 0.9) ?? data)
+            }
+        }
+        dismissedClipboard = UIPasteboard.general.changeCount
+        clipboardHasImage = false
+    }
+#endif
+
+    /// Attaches an image, or image and PDF files, from the clipboard. Returns whether there was one.
+    @discardableResult
+    private func pasteImage() -> Bool {
+#if os(iOS)
+        guard UIPasteboard.general.hasImages else {
+            pdfError = "The clipboard has no image. Copy an image first, then choose Paste image."
+            return false
+        }
+        // Wait for the menu to close, or iOS can't show its "Allow Paste" question.
+        Task {
+            try? await Task.sleep(for: .milliseconds(400))
+            await attach(UIPasteboard.general.itemProviders)
+        }
+        return true
+#else
+        let board = NSPasteboard.general
+        let files = (board.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? [])
+            .filter { url in
+                guard let type = UTType(filenameExtension: url.pathExtension) else { return false }
+                return type.conforms(to: .image) || type.conforms(to: .pdf)
+            }
+        if !files.isEmpty {
+            addFiles(files)
+            return true
+        }
+        guard let image = NSImage(pasteboard: board), let tiff = image.tiffRepresentation else { return false }
+        attachments.append(ImageStore.jpeg(from: tiff, maxPixelSize: 2048, quality: 0.9) ?? tiff)
+        return true
 #endif
     }
 
@@ -714,6 +814,9 @@ private struct ComposerView: View {
             }
             Button { showPhotoPicker = true } label: {
                 Label("Photos", systemImage: "photo.on.rectangle")
+            }
+            Button { pasteImage() } label: {
+                Label("Paste image", systemImage: "doc.on.clipboard")
             }
             Button { showFileImporter = true } label: {
                 Label("File (image or PDF)…", systemImage: "doc")
