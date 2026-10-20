@@ -225,6 +225,20 @@ struct DecisionView: View {
                 }
 
                 Section {
+                    Button {
+                        Task { await run() }
+                    } label: {
+                        HStack {
+                            Spacer()
+                            if running { ProgressView().controlSize(.small) } else { Text("Decide").fontWeight(.semibold) }
+                            Spacer()
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!canRun)
+                }
+
+                Section {
                     Button(isSaved ? "Save changes" : "Save as my decision…") {
                         if isSaved { save(as: decision.name) } else { name = decision.category == DecisionExample.myCategory && decision.name != "New decision" ? decision.name : ""; naming = true }
                     }
@@ -276,7 +290,7 @@ struct DecisionView: View {
             }
         }
 #if os(macOS)
-        .frame(minWidth: 560, minHeight: 680)
+        .frame(minWidth: 520, idealWidth: 620, minHeight: 360, idealHeight: 640)
 #endif
     }
 
@@ -440,7 +454,7 @@ private struct QuestionEditor: View {
             }
         }
 #if os(macOS)
-        .frame(minWidth: 460, minHeight: 420)
+        .frame(minWidth: 440, idealWidth: 480, minHeight: 320, idealHeight: 460)
 #endif
     }
 
