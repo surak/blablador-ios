@@ -227,8 +227,8 @@ final class ChatStore: ObservableObject {
 
         if speak, !trimmed.isEmpty {
             makeSpeech(script: trimmed)
-        } else if createVideo, !trimmed.isEmpty {
-            makeVideo(prompt: trimmed)
+        } else if createVideo, !trimmed.isEmpty || !images.isEmpty {
+            makeVideo(prompt: trimmed.isEmpty ? Self.continuePrompt : trimmed, firstFrame: images.last)
         } else if createImage {
             makeImage(prompt: trimmed, editing: images.last)
         } else {
@@ -280,8 +280,17 @@ final class ChatStore: ObservableObject {
         return ImageStore.save(data)
     }
 
+    static let continuePrompt = "Continue the scene naturally, with matching sound."
+
+    /// The prompt that made a video, to start its continuation from.
+    func prompt(forVideo name: String) -> String? {
+        guard let messages = current?.messages,
+              let index = messages.firstIndex(where: { $0.videos.contains(name) }) else { return nil }
+        return messages[..<index].last { $0.role == .user }?.content
+    }
+
     /// Video mode: make a clip with sound from the prompt.
-    private func makeVideo(prompt: String) {
+    private func makeVideo(prompt: String, firstFrame: String?) {
         let reply = ChatMessage(role: .assistant, content: "")
         update { $0.messages.append(reply) }
         isStreaming = true
@@ -289,7 +298,8 @@ final class ChatStore: ObservableObject {
         streamTask = Task {
             do {
                 updateMessage(reply.id) { $0.status = "Making a \(seconds)-second video with MiniMax-H3… This takes a few minutes." }
-                let data = try await api.generateVideo(prompt: prompt, seconds: seconds, aspect: aspect)
+                let frame = firstFrame.flatMap(ImageStore.data(for:)).map { ImageStore.jpeg(from: $0, maxPixelSize: 1920) ?? $0 }
+                let data = try await api.generateVideo(prompt: prompt, seconds: seconds, aspect: aspect, firstFrame: frame)
                 let name = VideoStore.save(data)
                 updateMessage(reply.id) { $0.videos.append(name) }
             } catch is CancellationError {

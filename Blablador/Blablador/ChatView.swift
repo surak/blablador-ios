@@ -273,7 +273,7 @@ struct ChatView: View {
             .onChange(of: conversation.messages.last?.content) { _, _ in
                 proxy.scrollTo("bottom", anchor: .bottom)
             }
-            .environment(\.editImage, ImageEditAction(edit: editImage))
+            .environment(\.editImage, ImageEditAction(edit: editImage, continueVideo: continueVideo))
         }
     }
 
@@ -284,6 +284,17 @@ struct ChatView: View {
         speechMode = false
         imageMode = true
         inputFocused = true
+    }
+
+    /// Puts a video's last frame into the composer in video mode, to make the next clip.
+    private func continueVideo(_ name: String) {
+        Task {
+            guard let frame = await VideoStore.lastFrame(of: name) else { return }
+            attachments = [frame]
+            if draft.isEmpty { draft = store.prompt(forVideo: name) ?? "" }
+            videoMode = true
+            inputFocused = true
+        }
     }
 
     @ViewBuilder
@@ -511,7 +522,7 @@ private struct ComposerView: View {
     private var placeholder: String {
         if speech.isRecording { return "Listening…" }
         if speechMode { return "What should be said?" }
-        if videoMode { return "Describe a video, with its sounds" }
+        if videoMode { return attachments.isEmpty ? "Describe a video, with its sounds" : "Describe what happens next" }
         if imageMode { return attachments.isEmpty ? "Describe an image" : "Describe the change" }
         return "Ask Blablador"
     }
@@ -875,13 +886,15 @@ private struct ComposerView: View {
                 Picker("Length", selection: Binding(get: { store.videoSeconds }, set: { store.videoSeconds = $0 })) {
                     ForEach(BlabladorAPI.videoDurations, id: \.self) { Text("\($0) seconds").tag($0) }
                 }
-                Picker("Shape", selection: Binding(get: { store.videoAspect }, set: { store.videoAspect = $0 })) {
-                    ForEach(BlabladorAPI.videoAspects, id: \.id) { Text("\($0.name) \($0.id)").tag($0.id) }
+                if attachments.isEmpty {
+                    Picker("Shape", selection: Binding(get: { store.videoAspect }, set: { store.videoAspect = $0 })) {
+                        ForEach(BlabladorAPI.videoAspects, id: \.id) { Text("\($0.name) \($0.id)").tag($0.id) }
+                    }
                 }
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "film.fill")
-                    Text("Video · \(store.videoSeconds) s · \(store.videoAspectName)")
+                    Text(attachments.isEmpty ? "Video · \(store.videoSeconds) s · \(store.videoAspectName)" : "Video from image · \(store.videoSeconds) s")
                     Image(systemName: "chevron.down")
                         .imageScale(.small)
                 }

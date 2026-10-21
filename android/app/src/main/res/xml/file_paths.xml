@@ -3,4 +3,5 @@
     <cache-path name="camera" path="camera/" />
     <files-path name="images" path="images/" />
     <files-path name="audio" path="audio/" />
+    <files-path name="videos" path="videos/" />
 </paths>

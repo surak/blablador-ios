@@ -122,6 +122,7 @@ app/src/main/java/de/fz_juelich/blablador/
 ## Version history
 The Android and Apple apps share one version number and one release.
 
+- **2.6.0**: continue a video from its last frame, start a video from a picture, save videos
 - **2.5.1**: version in step with the Mac and iPhone fix for playing videos
 - **2.5.0**: videos with sound (MiniMax-H3), choose another OpenAI-compatible endpoint, API-key link with the read_user scope
 - **2.4.0**: thinking trace, configurable reply timeout, paste images

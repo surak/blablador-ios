@@ -6,6 +6,8 @@ import UIKit
 /// Lets images in the chat start an edit in the composer.
 struct ImageEditAction {
     var edit: ((String) -> Void)?
+    /// Starts a new video from this video's last frame.
+    var continueVideo: ((String) -> Void)?
 }
 
 private struct ImageEditKey: EnvironmentKey {

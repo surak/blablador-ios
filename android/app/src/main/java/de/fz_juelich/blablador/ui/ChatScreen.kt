@@ -196,7 +196,16 @@ fun ChatScreen(vm: ChatViewModel) {
                     if (conversation == null || conversation.messages.isEmpty()) {
                         Welcome(vm.userName) { vm.send(it) }
                     } else {
-                        MessageList(conversation, vm, speaker) { name ->
+                        MessageList(conversation, vm, speaker, onContinueVideo = { name ->
+                            scope.launch {
+                                vm.videos.lastFrame(name)?.let {
+                                    attachments.clear(); attachments.add(it)
+                                    if (draft.isEmpty()) draft = vm.promptForVideo(name).orEmpty()
+                                    videoMode = true; imageMode = false; speechMode = false
+                                    focus.requestFocus()
+                                }
+                            }
+                        }) { name ->
                             vm.images.data(name)?.let {
                                 attachments.clear(); attachments.add(it)
                                 imageMode = true
@@ -320,7 +329,7 @@ private fun Welcome(userName: String, onPick: (String) -> Unit) {
 }
 
 @Composable
-private fun MessageList(conversation: Conversation, vm: ChatViewModel, speaker: Speaker, onEditImage: (String) -> Unit) {
+private fun MessageList(conversation: Conversation, vm: ChatViewModel, speaker: Speaker, onContinueVideo: (String) -> Unit, onEditImage: (String) -> Unit) {
     val state = rememberLazyListState()
     val last = conversation.messages.lastOrNull()
     LaunchedEffect(conversation.messages.size, last?.content?.length, last?.images?.size) {
@@ -340,6 +349,7 @@ private fun MessageList(conversation: Conversation, vm: ChatViewModel, speaker: 
                 onEditImage = onEditImage,
                 speechClip = { SpeechClip(vm, it) },
                 videoFile = vm.videos::file,
+                onContinueVideo = onContinueVideo,
             )
         }
     }
@@ -434,7 +444,7 @@ private fun Composer(
             }
         }
         AnimatedVisibility(imageMode) { ImageModeChip(vm, editing = attachments.isNotEmpty()) { onImageMode(false) } }
-        AnimatedVisibility(videoMode) { VideoModeChip(vm) { onVideoMode(false) } }
+        AnimatedVisibility(videoMode) { VideoModeChip(vm, fromImage = attachments.isNotEmpty()) { onVideoMode(false) } }
         AnimatedVisibility(speechMode) {
             Row(Modifier.padding(start = 8.dp, top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 SpeechModeChip(vm, onCloneVoice = { onNavigate(Page.AddVoice) }) { onSpeechMode(false) }
@@ -509,7 +519,7 @@ private fun Composer(
                 placeholder = {
                     Text(when {
                         imageMode -> if (attachments.isEmpty()) "Describe an image" else "Describe the change"
-                        videoMode -> "Describe a video, with its sounds"
+                        videoMode -> if (attachments.isEmpty()) "Describe a video, with its sounds" else "Describe what happens next"
                         speechMode -> "What should ${vm.voices.selected.name} say?"
                         else -> "Ask Blablador"
                     })
@@ -576,7 +586,7 @@ private fun ActiveKnowledge(vm: ChatViewModel, onOpen: (String) -> Unit) {
 }
 
 @Composable
-private fun VideoModeChip(vm: ChatViewModel, onClose: () -> Unit) {
+private fun VideoModeChip(vm: ChatViewModel, fromImage: Boolean, onClose: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
     Row(
         Modifier.padding(start = 8.dp, top = 6.dp).clip(CircleShape).background(Brand.gradient).padding(horizontal = 10.dp, vertical = 5.dp),
@@ -584,15 +594,15 @@ private fun VideoModeChip(vm: ChatViewModel, onClose: () -> Unit) {
     ) {
         Icon(Icons.Filled.Movie, null, Modifier.size(14.dp), tint = Color.White)
         Box {
-            Text("Video · ${vm.videoSeconds} s · ${vm.videoAspectName} ▾", color = Color.White,
+            Text(if (fromImage) "Video from image · ${vm.videoSeconds} s ▾" else "Video · ${vm.videoSeconds} s · ${vm.videoAspectName} ▾", color = Color.White,
                 style = MaterialTheme.typography.labelMedium, modifier = Modifier.clickable { menu = true })
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 BlabladorApi.VIDEO_DURATIONS.forEach { seconds ->
                     DropdownMenuItem(text = { Text("$seconds seconds") }, onClick = { vm.chooseVideoSeconds(seconds); menu = false },
                         leadingIcon = { if (seconds == vm.videoSeconds) Icon(Icons.Outlined.Check, null) else Spacer(Modifier.size(24.dp)) })
                 }
-                HorizontalDivider()
-                BlabladorApi.VIDEO_ASPECTS.forEach { (id, name) ->
+                if (!fromImage) HorizontalDivider()
+                if (!fromImage) BlabladorApi.VIDEO_ASPECTS.forEach { (id, name) ->
                     DropdownMenuItem(text = { Text("$name $id") }, onClick = { vm.chooseVideoAspect(id); menu = false },
                         leadingIcon = { if (id == vm.videoAspect) Icon(Icons.Outlined.Check, null) else Spacer(Modifier.size(24.dp)) })
                 }

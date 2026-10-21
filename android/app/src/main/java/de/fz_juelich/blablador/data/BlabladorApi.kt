@@ -191,16 +191,21 @@ class BlabladorApi(private val apiKey: String) {
     }
 
     /** Makes a video with sound from a text prompt and returns the MP4. */
-    suspend fun generateVideo(prompt: String, seconds: Int, aspect: String): ByteArray {
+    suspend fun generateVideo(prompt: String, seconds: Int, aspect: String, firstFrame: ByteArray? = null): ByteArray {
         val (width, height) = when (aspect) { "9:16" -> 768 to 1344; "1:1" -> 768 to 768; else -> 1344 to 768 }
-        val body = MultipartBody.Builder().setType(MultipartBody.FORM)
+        val builder = MultipartBody.Builder().setType(MultipartBody.FORM)
             .addFormDataPart("model", VIDEO_MODEL)
             .addFormDataPart("prompt", prompt)
-            .addFormDataPart("aspect_ratio", aspect)
-            .addFormDataPart("width", "$width")
-            .addFormDataPart("height", "$height")
             .addFormDataPart("extra_params", "{\"duration\":$seconds}")
-            .build()
+        // With a first frame, the clip opens on it and takes its shape from it.
+        if (firstFrame == null) {
+            builder.addFormDataPart("aspect_ratio", aspect).addFormDataPart("width", "$width").addFormDataPart("height", "$height")
+        } else {
+            val isPng = firstFrame.size > 4 && firstFrame[0] == 0x89.toByte() && firstFrame[1] == 0x50.toByte()
+            builder.addFormDataPart("first_frame", if (isPng) "frame.png" else "frame.jpg",
+                firstFrame.toRequestBody((if (isPng) "image/png" else "image/jpeg").toMediaType()))
+        }
+        val body = builder.build()
         val call = client.newBuilder().readTimeout(2, TimeUnit.HOURS).callTimeout(2, TimeUnit.HOURS).build()
             .newCall(request("videos/sync").post(body).build())
         return withContext(Dispatchers.IO) {

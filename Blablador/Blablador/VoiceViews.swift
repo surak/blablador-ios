@@ -7,6 +7,8 @@ import UniformTypeIdentifiers
 struct VideoClip: View {
     let name: String
     @State private var player: AVPlayer?
+    @State private var saving = false
+    @Environment(\.editImage) private var actions
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 6) {
@@ -14,12 +16,30 @@ struct VideoClip: View {
                 .aspectRatio(aspectRatio, contentMode: .fit)
                 .frame(maxWidth: 520, maxHeight: 420)
                 .clipShape(RoundedRectangle(cornerRadius: 14))
-            ShareLink(item: VideoStore.url(for: name)) {
-                Label("Save or share", systemImage: "square.and.arrow.up")
-                    .font(.caption)
+            HStack(spacing: 16) {
+                if let continueVideo = actions.continueVideo {
+                    Button {
+                        player?.pause()
+                        continueVideo(name)
+                    } label: {
+                        Label("Continue", systemImage: "forward.end")
+                    }
+                    .help("Make the next clip, starting from this video's last frame")
+                }
+                Button {
+                    saving = true
+                } label: {
+                    Label("Save", systemImage: "square.and.arrow.down")
+                }
+                ShareLink(item: VideoStore.url(for: name)) {
+                    Label("Share", systemImage: "square.and.arrow.up")
+                }
             }
+            .font(.caption)
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
+            .fileExporter(isPresented: $saving, document: VideoFile(url: VideoStore.url(for: name)),
+                          contentType: .mpeg4Movie, defaultFilename: "Blablador video") { _ in }
         }
         .onAppear { if player == nil { player = AVPlayer(url: VideoStore.url(for: name)) } }
         .onDisappear { player?.pause() }
@@ -99,6 +119,19 @@ struct SpeechClip: View {
 /// Generated speech handed to the Save dialog.
 struct AudioFile: FileDocument {
     static let readableContentTypes: [UTType] = [.mp3]
+    var data: Data
+
+    init(url: URL) { data = (try? Data(contentsOf: url)) ?? Data() }
+    init(configuration: ReadConfiguration) throws { data = configuration.file.regularFileContents ?? Data() }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: data)
+    }
+}
+
+/// A generated video handed to the Save dialog.
+struct VideoFile: FileDocument {
+    static let readableContentTypes: [UTType] = [.mpeg4Movie]
     var data: Data
 
     init(url: URL) { data = (try? Data(contentsOf: url)) ?? Data() }

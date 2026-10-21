@@ -82,7 +82,9 @@ struct BlabladorAPI {
     }
 
     /// Makes a video with sound from a text prompt and returns the MP4.
-    func generateVideo(prompt: String, seconds: Int, aspect: String) async throws -> Data {
+    /// With `firstFrame`, the clip opens on that image (continuing a video or animating a picture)
+    /// and takes its shape from it.
+    func generateVideo(prompt: String, seconds: Int, aspect: String, firstFrame: Data? = nil) async throws -> Data {
         let boundary = "Boundary-\(UUID().uuidString)"
         var request = try request(path: "videos/sync")
         request.httpMethod = "POST"
@@ -94,11 +96,18 @@ struct BlabladorAPI {
         default: (1344, 768)
         }
         var body = Data()
-        for (name, value) in [
-            ("model", Self.videoModel), ("prompt", prompt), ("aspect_ratio", aspect),
-            ("width", "\(size.0)"), ("height", "\(size.1)"), ("extra_params", "{\"duration\":\(seconds)}")
-        ] {
+        var fields = [("model", Self.videoModel), ("prompt", prompt), ("extra_params", "{\"duration\":\(seconds)}")]
+        if firstFrame == nil {
+            fields += [("aspect_ratio", aspect), ("width", "\(size.0)"), ("height", "\(size.1)")]
+        }
+        for (name, value) in fields {
             body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(name)\"\r\n\r\n\(value)\r\n".utf8))
+        }
+        if let firstFrame {
+            let isPNG = firstFrame.starts(with: [0x89, 0x50, 0x4E, 0x47])
+            body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"first_frame\"; filename=\"frame.\(isPNG ? "png" : "jpg")\"\r\nContent-Type: image/\(isPNG ? "png" : "jpeg")\r\n\r\n".utf8))
+            body.append(firstFrame)
+            body.append(Data("\r\n".utf8))
         }
         body.append(Data("--\(boundary)--\r\n".utf8))
         request.httpBody = body

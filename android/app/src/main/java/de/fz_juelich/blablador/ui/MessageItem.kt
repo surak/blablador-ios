@@ -91,6 +91,7 @@ fun MessageItem(
     onEditImage: (String) -> Unit,
     speechClip: @Composable (String) -> Unit,
     videoFile: (String) -> File = { File(it) },
+    onContinueVideo: (String) -> Unit = {},
 ) {
     when (message.role) {
         ChatRole.user -> Column(Modifier.fillMaxWidth().padding(start = 48.dp), horizontalAlignment = Alignment.End,
@@ -124,7 +125,7 @@ fun MessageItem(
                 if (message.reasoning.isNotEmpty()) Thinking(message.reasoning, isLast && isStreaming && message.content.isEmpty())
                 message.images.forEach { ChatImage(imageFile(it), 420, square = false) { onEditImage(it) } }
                 message.audio.forEach { speechClip(it) }
-                message.videos.forEach { VideoClip(videoFile(it)) }
+                message.videos.forEach { name -> VideoClip(videoFile(name)) { onContinueVideo(name) } }
                 when {
                     message.content.isEmpty() -> if (message.status == null && message.images.isEmpty() && message.audio.isEmpty() && message.videos.isEmpty() && message.reasoning.isEmpty()) TypingIndicator()
                     message.isError -> SelectionContainer {
@@ -308,7 +309,13 @@ private fun Thinking(text: String, thinking: Boolean) {
 
 /** A generated video with its sound, with play controls. */
 @Composable
-private fun VideoClip(file: File) {
+private fun VideoClip(file: File, onContinue: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val save = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("video/mp4")) { uri ->
+        if (uri != null) context.contentResolver.openOutputStream(uri)?.use { out -> file.inputStream().use { it.copyTo(out) } }
+    }
+    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
     androidx.compose.ui.viewinterop.AndroidView(
         factory = { context ->
             android.widget.VideoView(context).apply {
@@ -321,4 +328,15 @@ private fun VideoClip(file: File) {
         },
         modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp).clip(RoundedCornerShape(14.dp)),
     )
+    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        TextButton(onClick = onContinue) { Text("Continue") }
+        TextButton(onClick = { save.launch("Blablador video.mp4") }) { Text("Save") }
+        TextButton(onClick = {
+            val uri = androidx.core.content.FileProvider.getUriForFile(context, context.packageName + ".files", file)
+            val intent = android.content.Intent(android.content.Intent.ACTION_SEND).setType("video/mp4")
+                .putExtra(android.content.Intent.EXTRA_STREAM, uri).addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            context.startActivity(android.content.Intent.createChooser(intent, null))
+        }) { Text("Share") }
+    }
+    }
 }

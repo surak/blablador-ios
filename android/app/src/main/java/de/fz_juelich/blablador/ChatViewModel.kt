@@ -46,6 +46,8 @@ import kotlinx.serialization.json.put
 import java.text.DateFormat
 import java.util.Date
 
+private const val CONTINUE_PROMPT = "Continue the scene naturally, with matching sound."
+
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val settings = Settings(application)
     val images = ImageStore(application)
@@ -240,7 +242,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
         when {
             speak && trimmed.isNotEmpty() -> makeSpeech(trimmed)
-            createVideo && trimmed.isNotEmpty() -> makeVideo(trimmed)
+            createVideo && (trimmed.isNotEmpty() || names.isNotEmpty()) -> makeVideo(trimmed.ifEmpty { CONTINUE_PROMPT }, names.lastOrNull())
             createImage -> makeImage(trimmed, names.lastOrNull())
             else -> respond()
         }
@@ -294,8 +296,16 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         return images.save(data)
     }
 
+    /** The prompt that made a video, to start its continuation from. */
+    fun promptForVideo(name: String): String? {
+        val messages = current?.messages ?: return null
+        val index = messages.indexOfFirst { name in it.videos }
+        if (index < 0) return null
+        return messages.take(index).lastOrNull { it.role == ChatRole.user }?.content
+    }
+
     /** Video mode: makes a clip with sound from the prompt. */
-    private fun makeVideo(prompt: String) {
+    private fun makeVideo(prompt: String, firstFrame: String?) {
         val reply = ChatMessage(role = ChatRole.assistant, content = "")
         update { it.copy(messages = it.messages + reply) }
         isStreaming = true
@@ -304,7 +314,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         streamJob = viewModelScope.launch {
             try {
                 updateMessage(reply.id) { it.copy(status = "Making a $seconds-second video with MiniMax-H3… This takes a few minutes.") }
-                val data = api.generateVideo(prompt, seconds, aspect)
+                val frame = firstFrame?.let(images::data)?.let { withContext(Dispatchers.Default) { ImageStore.jpeg(it, 1920) } ?: it }
+                val data = api.generateVideo(prompt, seconds, aspect, frame)
                 val name = withContext(Dispatchers.IO) { videos.save(data) }
                 updateMessage(reply.id) { it.copy(videos = it.videos + name) }
             } catch (e: CancellationException) {

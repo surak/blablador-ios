@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import ImageIO
 import SwiftUI
@@ -97,5 +98,22 @@ enum VideoStore {
 
     static func delete(_ names: [String]) {
         for name in names { try? FileManager.default.removeItem(at: url(for: name)) }
+    }
+
+    /// The final frame as JPEG, for continuing the video.
+    static func lastFrame(of name: String) async -> Data? {
+        let asset = AVURLAsset(url: url(for: name))
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.requestedTimeToleranceBefore = .zero
+        generator.requestedTimeToleranceAfter = .zero
+        guard let duration = try? await asset.load(.duration) else { return nil }
+        // A little before the end: the very last timestamp often has no frame.
+        let time = CMTimeSubtract(duration, CMTime(value: 1, timescale: 24))
+        guard let image = try? await generator.image(at: time).image else { return nil }
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(data, UTType.jpeg.identifier as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: 0.92] as CFDictionary)
+        return CGImageDestinationFinalize(destination) ? data as Data : nil
     }
 }

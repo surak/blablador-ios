@@ -166,6 +166,23 @@ class VideoStore(context: Context) {
         return name
     }
 
+    /** The final frame as JPEG, for continuing the video. */
+    suspend fun lastFrame(name: String): ByteArray? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val retriever = android.media.MediaMetadataRetriever()
+        try {
+            retriever.setDataSource(file(name).path)
+            val micros = (retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L) * 1000
+            // A little before the end: the very last timestamp often has no frame.
+            val frame = retriever.getFrameAtTime((micros - 42_000).coerceAtLeast(0), android.media.MediaMetadataRetriever.OPTION_CLOSEST)
+                ?: return@withContext null
+            java.io.ByteArrayOutputStream().also { frame.compress(android.graphics.Bitmap.CompressFormat.JPEG, 92, it) }.toByteArray()
+        } catch (e: Exception) {
+            null
+        } finally {
+            retriever.release()
+        }
+    }
+
     fun delete(names: List<String>) = names.forEach { file(it).delete() }
 }
 
