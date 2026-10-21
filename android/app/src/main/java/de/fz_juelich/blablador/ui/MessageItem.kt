@@ -217,7 +217,9 @@ private fun Sources(sources: List<SearchResult>) {
         itemsIndexed(sources) { index, source ->
             Column(
                 Modifier.width(170.dp).height(72.dp).clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surfaceVariant)
-                    .clickable { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(source.url))) }.padding(10.dp),
+                    .clickable(enabled = isSafeLink(source.url)) {
+                        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(source.url))) }
+                    }.padding(10.dp),
                 verticalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(source.title, style = MaterialTheme.typography.labelMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)

@@ -9,6 +9,7 @@ import okhttp3.Request
 
 /** Checks GitHub for a newer release; the Android app can't install it itself, so it only offers the APK. */
 object Updates {
+    private const val RELEASES = "https://github.com/surak/blablador-ios/releases/"
     private const val LATEST = "https://api.github.com/repos/surak/blablador-ios/releases/latest"
     private const val PREFS = "updates"
 
@@ -29,7 +30,9 @@ object Updates {
                 val apk = json["assets"]?.jsonArray?.map { it.jsonObject }
                     ?.firstOrNull { jsonString(it["name"])?.endsWith("-android.apk") == true }
                     ?.let { jsonString(it["browser_download_url"]) }
-                Release(version, jsonString(json["html_url"]) ?: "https://github.com/surak/blablador-ios/releases/latest", apk)
+                    ?.takeIf { it.startsWith(RELEASES) }
+                // Only ever open this project's releases on GitHub.
+                Release(version, jsonString(json["html_url"])?.takeIf { it.startsWith(RELEASES) } ?: "${RELEASES}latest", apk)
             }
         }.getOrNull()
     }

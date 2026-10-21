@@ -289,7 +289,7 @@ private struct SourcesView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 ForEach(Array(sources.enumerated()), id: \.offset) { index, source in
-                    if let url = URL(string: source.url) {
+                    if let url = URL(string: source.url), SafeLinks.allows(url) {
                         Link(destination: url) {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(source.title)
@@ -619,4 +619,14 @@ private struct ThinkingView: View {
             }
         }
     }
+}
+
+/// Links in replies and sources open only on the web or as email. Other schemes (file:, app URL schemes…)
+/// could launch apps or files from text a model or search result wrote.
+enum SafeLinks {
+    static func allows(_ url: URL) -> Bool {
+        ["http", "https", "mailto"].contains(url.scheme?.lowercased() ?? "")
+    }
+
+    static let action = OpenURLAction { url in allows(url) ? .systemAction : .discarded }
 }

@@ -71,18 +71,22 @@ class ImageStore(context: Context) {
 /** Settings in shared preferences; the API key in encrypted preferences backed by the Android Keystore. */
 class Settings(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
-    private val secure: SharedPreferences = runCatching {
+    private val secure: SharedPreferences? = runCatching {
         EncryptedSharedPreferences.create(
             context, "secure",
             MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build(),
             EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
         )
-    }.getOrElse { context.getSharedPreferences("secure-fallback", Context.MODE_PRIVATE) }
+    }.getOrNull()
+    /** Without a working Keystore the key is kept for this session only, never written in plain text. */
+    private var memoryKey = ""
+
+    init { context.deleteSharedPreferences("secure-fallback") }
 
     var apiKey: String
-        get() = secure.getString("apiKey", "").orEmpty()
-        set(value) = secure.edit().putString("apiKey", value).apply()
+        get() = secure?.getString("apiKey", "")?.orEmpty() ?: memoryKey
+        set(value) { secure?.edit()?.putString("apiKey", value)?.apply() ?: run { memoryKey = value } }
 
     var selectedModel: String
         get() = prefs.getString("selectedModel", BlabladorApi.DEFAULT_MODEL)!!

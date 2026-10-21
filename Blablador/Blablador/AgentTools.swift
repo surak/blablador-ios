@@ -97,7 +97,7 @@ enum AgentTools {
         case "search_files":
             return try search(arguments["pattern"] as? String ?? "", in: resolve(path, in: root), root: root)
         case "write_file":
-            let url = try resolve(path, in: root)
+            let url = try writable(resolve(path, in: root), in: root)
             let content = arguments["content"] as? String ?? ""
             let existed = FileManager.default.fileExists(atPath: url.path)
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -105,12 +105,20 @@ enum AgentTools {
             let lines = content.split(separator: "\n", omittingEmptySubsequences: false).count
             return "\(existed ? "Overwrote" : "Created") \(path) (\(lines) lines)."
         case "edit_file":
-            return try edit(resolve(path, in: root), path: path,
+            return try edit(writable(resolve(path, in: root), in: root), path: path,
                             old: arguments["old_text"] as? String ?? "", new: arguments["new_text"] as? String ?? "",
                             all: arguments["replace_all"] as? Bool ?? false)
         default:
             throw ToolError(message: "Unknown tool \(tool).")
         }
+    }
+
+    /// Refuses writes into .git: hooks there run on the next git command the user approves.
+    static func writable(_ url: URL, in root: URL) throws -> URL {
+        if relative(url, to: root).split(separator: "/").contains(".git") {
+            throw ToolError(message: "Changing files inside .git isn't allowed.")
+        }
+        return url
     }
 
     /// Resolves a workspace-relative path and refuses anything outside the workspace.

@@ -128,6 +128,7 @@ fun inline(text: String, codeBackground: androidx.compose.ui.graphics.Color): An
             g[3].isNotEmpty() -> withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { append(inline(g[3], codeBackground)) }
             g[4].isNotEmpty() -> withStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = codeBackground)) { append(g[4]) }
             g[5].isNotEmpty() -> withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) { append(g[5]) }
+            g[6].isNotEmpty() && !isSafeLink(g[7]) -> append(g[6])
             g[6].isNotEmpty() -> withLink(androidx.compose.ui.text.LinkAnnotation.Url(g[7],
                 androidx.compose.ui.text.TextLinkStyles(SpanStyle(color = Brand.blue)))) { append(g[6]) }
         }
@@ -225,3 +226,6 @@ private fun TableRow(cells: List<String>, alignments: List<TextAlign>, codeBackg
     }
 }
 
+
+/** Links from model output open only on the web or as email; other schemes (tel:, sms:, content:…) stay plain text. */
+internal fun isSafeLink(url: String) = url.trim().substringBefore(':').lowercase() in setOf("http", "https", "mailto")

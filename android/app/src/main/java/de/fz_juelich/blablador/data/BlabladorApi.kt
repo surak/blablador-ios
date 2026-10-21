@@ -67,6 +67,15 @@ class BlabladorApi(private val apiKey: String) {
         val RESPONSE_TIMEOUT_CHOICES = listOf(2, 5, 10, 30, 0)
         fun timeoutLabel(minutes: Int) = if (minutes == 0) "No limit" else "$minutes minutes"
 
+        /** Refuses replies too big to hold in memory, from a broken or hostile server. */
+        private const val MAX_MEDIA_BYTES = 100L * 1024 * 1024
+        private const val MAX_VIDEO_BYTES = 1024L * 1024 * 1024
+
+        private fun checkSize(response: Response, limit: Long) {
+            val length = response.body?.contentLength() ?: -1
+            if (length > limit) throw BlabladorException(0, "The server's reply is too large (${length / (1024 * 1024)} MB).")
+        }
+
         val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
 
         val client: OkHttpClient = OkHttpClient.Builder()
@@ -98,6 +107,7 @@ class BlabladorApi(private val apiKey: String) {
     /** Sends a request with its own timeout and returns the body bytes. */
     internal suspend fun send(request: Request, timeoutSeconds: Long): ByteArray = withContext(Dispatchers.IO) {
         client.newBuilder().callTimeout(timeoutSeconds, TimeUnit.SECONDS).build().newCall(request).await().use { response ->
+            checkSize(response, MAX_MEDIA_BYTES)
             val bytes = response.body?.bytes() ?: ByteArray(0)
             if (!response.isSuccessful) throw BlabladorException(response.code, bytes.decodeToString().take(500))
             bytes
@@ -115,6 +125,7 @@ class BlabladorApi(private val apiKey: String) {
 
     private suspend fun execute(request: Request): String = withContext(Dispatchers.IO) {
         client.newCall(request).await().use { response ->
+            checkSize(response, MAX_MEDIA_BYTES)
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) throw BlabladorException(response.code, body.take(500))
             body
@@ -210,6 +221,7 @@ class BlabladorApi(private val apiKey: String) {
             .newCall(request("videos/sync").post(body).build())
         return withContext(Dispatchers.IO) {
             call.await().use { response ->
+                checkSize(response, MAX_VIDEO_BYTES)
                 if (!response.isSuccessful) throw BlabladorException(response.code, response.body?.string().orEmpty().take(500))
                 response.body?.bytes() ?: ByteArray(0)
             }

@@ -154,7 +154,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             runCatching { api.models() }
                 .onSuccess { models = it; modelsError = null }
                 .onFailure { modelsError = it.message }
-            runCatching { api.userName() }.onSuccess {
+            // The name comes from Helmholtz Codebase; only Blablador keys belong there.
+            if (endpoint == BlabladorApi.DEFAULT_ENDPOINT) runCatching { api.userName() }.onSuccess {
                 userName = it.trim()
                 settings.userName = userName
             }

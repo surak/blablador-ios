@@ -141,7 +141,9 @@ final class ChatStore: ObservableObject {
 
     /// Greeting name of the key's owner; left empty when the lookup fails.
     func loadUserName() async {
-        guard !apiKey.isEmpty, let name = try? await api.userName() else { return }
+        // The name comes from Helmholtz Codebase; only Blablador keys belong there.
+        guard !apiKey.isEmpty, BlabladorAPI.endpoint == BlabladorAPI.defaultEndpoint,
+              let name = try? await api.userName() else { return }
         userName = name.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
@@ -384,17 +386,24 @@ final class ChatStore: ObservableObject {
             if currentID == nil {
                 pendingWorkspace = newValue?.path
             } else {
+                if let currentID { commandsAllowed.remove(currentID) }
                 update {
                     $0.workspace = newValue?.path
-                    if newValue == nil { $0.allowsCommands = nil }
+                    $0.allowsCommands = nil
                 }
             }
         }
     }
 
+    /// Chats whose commands run without asking. Kept in memory only, so it ends when the app quits.
+    @Published private var commandsAllowed: Set<UUID> = []
+
     var allowsCommands: Bool {
-        get { current?.allowsCommands ?? false }
-        set { update { $0.allowsCommands = newValue } }
+        get { currentID.map(commandsAllowed.contains) ?? false }
+        set {
+            guard let currentID else { return }
+            if newValue { commandsAllowed.insert(currentID) } else { commandsAllowed.remove(currentID) }
+        }
     }
 
     struct CommandApproval: Identifiable {

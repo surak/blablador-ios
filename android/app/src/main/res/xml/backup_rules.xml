@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The encrypted API key can't be restored on another device (its Keystore key stays behind), so leave it out. -->
+<full-backup-content>
+    <exclude domain="sharedpref" path="secure.xml" />
+    <exclude domain="sharedpref" path="__androidx_security_crypto_encrypted_prefs__.xml" />
+</full-backup-content>

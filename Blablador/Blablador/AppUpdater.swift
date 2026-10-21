@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import CryptoKit
+import Security
 #if os(macOS)
 import AppKit
 #endif
@@ -71,7 +72,7 @@ final class AppUpdater: ObservableObject {
         available = Release(
             version: version,
             page: page,
-            macZip: assets.first { $0.0.hasSuffix("-macOS.zip") }?.1,
+            macZip: assets.first { $0.0 == "Blablador-\(version)-macOS.zip" }?.1,
             checksums: assets.first { $0.0 == "SHA256SUMS.txt" }?.1
         )
         if force { dismissedVersion = "" }
@@ -104,9 +105,12 @@ final class AppUpdater: ObservableObject {
             let (sums, _) = try await URLSession.shared.data(from: sumsURL)
             let (zip, response) = try await URLSession.shared.download(from: zipURL)
             guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw UpdateError("The download failed.") }
-            let expected = String(decoding: sums, as: UTF8.self).split(separator: "\n").first {
-                $0.hasSuffix(zipURL.lastPathComponent)
-            }?.split(separator: " ").first.map(String.init)
+            // Lines are "<hash>  <name>"; the name must match exactly.
+            var expected: String?
+            for line in String(decoding: sums, as: UTF8.self).split(separator: "\n") {
+                let parts = line.split(separator: " ")
+                if parts.count == 2, String(parts[1]) == zipURL.lastPathComponent { expected = String(parts[0]) }
+            }
             let actual = SHA256.hash(data: try Data(contentsOf: zip)).map { String(format: "%02x", $0) }.joined()
             guard let expected, expected == actual else { throw UpdateError("The download doesn't match its checksum.") }
 
@@ -115,16 +119,38 @@ final class AppUpdater: ObservableObject {
             try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
             try run("/usr/bin/ditto", ["-x", "-k", zip.path, work.path])
             let newApp = work.appendingPathComponent("Blablador.app")
-            guard let info = Bundle(url: newApp),
+            let kind = try FileManager.default.attributesOfItem(atPath: newApp.path)[.type] as? FileAttributeType
+            guard kind == .typeDirectory, let info = Bundle(url: newApp),
                   info.bundleIdentifier == Bundle.main.bundleIdentifier,
                   let newVersion = info.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
                   Self.isNewer(newVersion, than: Self.currentVersion) else {
                 throw UpdateError("The download isn't a newer Blablador.")
             }
-            try run("/usr/bin/codesign", ["--verify", "--deep", newApp.path])
+            try Self.verifySignature(of: newApp)
             try relaunch(replacingWith: newApp, work: work)
         } catch {
             state = .failed((error as? UpdateError)?.message ?? error.localizedDescription)
+        }
+    }
+
+    /// The update must be signed by the same Apple developer team as the running app.
+    /// A valid signature alone isn't enough: anyone can sign an app ad hoc.
+    private static func verifySignature(of app: URL) throws {
+        var running: SecStaticCode?
+        var info: CFDictionary?
+        guard SecStaticCodeCreateWithPath(Bundle.main.bundleURL as CFURL, [], &running) == errSecSuccess, let running,
+              SecCodeCopySigningInformation(running, SecCSFlags(rawValue: kSecCSSigningInformation), &info) == errSecSuccess,
+              let team = (info as? [String: Any])?[kSecCodeInfoTeamIdentifier as String] as? String,
+              team.allSatisfy({ $0.isLetter || $0.isNumber }) else {
+            throw UpdateError("This copy of Blablador isn't signed by a developer team, so it can't check updates. Download the new version instead.")
+        }
+        var requirement: SecRequirement?
+        var candidate: SecStaticCode?
+        guard SecRequirementCreateWithString("anchor apple generic and certificate leaf[subject.OU] = \"\(team)\"" as CFString, [], &requirement) == errSecSuccess,
+              let requirement,
+              SecStaticCodeCreateWithPath(app as CFURL, [], &candidate) == errSecSuccess, let candidate,
+              SecStaticCodeCheckValidity(candidate, SecCSFlags(rawValue: kSecCSCheckAllArchitectures | kSecCSCheckNestedCode | kSecCSStrictValidate), requirement) == errSecSuccess else {
+            throw UpdateError("The download isn't signed by Blablador's developer.")
         }
     }
 

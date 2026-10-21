@@ -274,6 +274,7 @@ struct ChatView: View {
                 proxy.scrollTo("bottom", anchor: .bottom)
             }
             .environment(\.editImage, ImageEditAction(edit: editImage, continueVideo: continueVideo))
+            .environment(\.openURL, SafeLinks.action)
         }
     }
 
