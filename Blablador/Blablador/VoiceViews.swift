@@ -10,7 +10,7 @@ struct VideoClip: View {
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 6) {
-            VideoPlayer(player: player)
+            PlayerView(player: player)
                 .aspectRatio(aspectRatio, contentMode: .fit)
                 .frame(maxWidth: 520, maxHeight: 420)
                 .clipShape(RoundedRectangle(cornerRadius: 14))
@@ -31,6 +31,30 @@ struct VideoClip: View {
         return size.height == 0 ? 16 / 9 : abs(size.width / size.height)
     }
 }
+
+/// AVKit's own player view. SwiftUI's VideoPlayer crashes on load in this app.
+#if os(macOS)
+private struct PlayerView: NSViewRepresentable {
+    let player: AVPlayer?
+    func makeNSView(context: Context) -> AVPlayerView {
+        let view = AVPlayerView()
+        view.controlsStyle = .inline
+        view.showsSharingServiceButton = true
+        return view
+    }
+    func updateNSView(_ view: AVPlayerView, context: Context) {
+        if view.player !== player { view.player = player }
+    }
+}
+#else
+private struct PlayerView: UIViewControllerRepresentable {
+    let player: AVPlayer?
+    func makeUIViewController(context: Context) -> AVPlayerViewController { AVPlayerViewController() }
+    func updateUIViewController(_ controller: AVPlayerViewController, context: Context) {
+        if controller.player !== player { controller.player = player }
+    }
+}
+#endif
 
 struct SpeechClip: View {
     let name: String
