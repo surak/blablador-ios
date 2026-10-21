@@ -42,7 +42,9 @@ class BlabladorException(val status: Int, val body: String) :
 /** Client for Blablador's OpenAI-compatible API. */
 class BlabladorApi(private val apiKey: String) {
     companion object {
-        const val BASE_URL = "https://api.blablador.fz-juelich.de/v1"
+        const val DEFAULT_ENDPOINT = "https://api.blablador.fz-juelich.de/v1"
+        /** The OpenAI-compatible endpoint, Blablador unless changed in Settings. */
+        @Volatile var endpoint = DEFAULT_ENDPOINT
         const val DEFAULT_MODEL = "deepseek-v4.1-flash-at-hzdr"
         const val IMAGE_EDIT_MODEL = "alias-image"
         const val DEFAULT_IMAGE_MODEL = "alias-flux2"
@@ -54,6 +56,10 @@ class BlabladorApi(private val apiKey: String) {
         const val FALLBACK_EMBEDDING_MODEL = "alias-embeddings"
         const val RERANK_MODEL = "alias-qwen3-4b-reranker"
         const val DECISION_MODEL = "alias-clef"
+        /** MiniMax-H3: text to video with sound, at 24 fps. A 4-second clip takes about 3–4 minutes. */
+        const val VIDEO_MODEL = "alias-video"
+        val VIDEO_DURATIONS = listOf(4, 6, 8, 10)
+        val VIDEO_ASPECTS = listOf("16:9" to "Landscape", "9:16" to "Portrait", "1:1" to "Square")
         val IMAGE_MODELS = listOf("alias-flux2" to "FLUX.2-dev", "alias-image" to "Qwen-Image 2.1")
 
         /** Minutes to wait for a reply to start or continue; 0 waits as long as it takes. Set in Settings. */
@@ -104,7 +110,7 @@ class BlabladorApi(private val apiKey: String) {
 
     private fun request(path: String): Request.Builder {
         if (apiKey.isEmpty()) throw BlabladorException(0, "No API key set. Add your Blablador API key in Settings.")
-        return Request.Builder().url("$BASE_URL/$path").header("Authorization", "Bearer $apiKey")
+        return Request.Builder().url("${endpoint.trim().trimEnd('/')}/$path").header("Authorization", "Bearer $apiKey")
     }
 
     private suspend fun execute(request: Request): String = withContext(Dispatchers.IO) {
@@ -182,6 +188,27 @@ class BlabladorApi(private val apiKey: String) {
             put("model", model); put("prompt", prompt); put("n", 1); put("size", "1024x1024")
         }
         return imageFrom(execute(post("images/generations", body)))
+    }
+
+    /** Makes a video with sound from a text prompt and returns the MP4. */
+    suspend fun generateVideo(prompt: String, seconds: Int, aspect: String): ByteArray {
+        val (width, height) = when (aspect) { "9:16" -> 768 to 1344; "1:1" -> 768 to 768; else -> 1344 to 768 }
+        val body = MultipartBody.Builder().setType(MultipartBody.FORM)
+            .addFormDataPart("model", VIDEO_MODEL)
+            .addFormDataPart("prompt", prompt)
+            .addFormDataPart("aspect_ratio", aspect)
+            .addFormDataPart("width", "$width")
+            .addFormDataPart("height", "$height")
+            .addFormDataPart("extra_params", "{\"duration\":$seconds}")
+            .build()
+        val call = client.newBuilder().readTimeout(2, TimeUnit.HOURS).callTimeout(2, TimeUnit.HOURS).build()
+            .newCall(request("videos/sync").post(body).build())
+        return withContext(Dispatchers.IO) {
+            call.await().use { response ->
+                if (!response.isSuccessful) throw BlabladorException(response.code, response.body?.string().orEmpty().take(500))
+                response.body?.bytes() ?: ByteArray(0)
+            }
+        }
     }
 
     suspend fun editImage(prompt: String, image: ByteArray): ByteArray {

@@ -29,7 +29,9 @@ Blablador is a SwiftUI app for macOS, iOS and iPadOS that chats with every Blabl
 - **Updates**: the app checks GitHub for a newer release. On the Mac, **Update** downloads it, checks it against `SHA256SUMS.txt`, replaces the app and restarts it (also **Blablador → Check for Updates…**); if the app's folder isn't writable it links to the download instead. iPhone and iPad show a notice with a link to the release.
 - **Speech and voice cloning**: Turn on **+ → Speak** to have text spoken with Drama 3 (`alias-voice-drama3`), or ask the assistant to say something. Pick a feeling, pace and whisper in Settings → Voice, and add pauses, laughs, whispers and other expressions from the Expressions menu. Clone a voice with **Clone a voice…** in Settings → Voice or in the Speak chip's voice menu, from a recording, an audio or video file, or a direct link to one (10–30 seconds; YouTube pages are not supported). The sample is transcribed with Whisper.
 - **Images**: Create images with FLUX.2-dev or Qwen-Image 2.1 (**+ → Create or edit image**). To edit, tap **Edit** on any image in the chat, or attach a photo and turn on image mode, then describe the change; editing uses Qwen-Image. You can also just ask the assistant to change the latest image.
+- **Videos**: Make short videos with sound from a description with MiniMax-H3 (**+ → Create video**). Choose 4–10 seconds and landscape, portrait or square from the chip above the text field. A clip takes a few minutes; it plays in the chat and can be saved or shared
 - **History**: Searchable chats stored on the device; API key kept in the Keychain
+- **Other endpoints**: Blablador by default; Settings can point the app at any OpenAI-compatible endpoint, with a button to go back to Blablador. API keys are Helmholtz Codebase personal access tokens with the `read_user` scope
 
 ## Requirements
 

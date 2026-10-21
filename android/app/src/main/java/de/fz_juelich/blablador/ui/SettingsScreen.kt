@@ -48,9 +48,10 @@ import de.fz_juelich.blablador.data.BlabladorApi
 @Composable
 fun SettingsScreen(vm: ChatViewModel, onOpenKnowledge: () -> Unit, onOpenVoices: () -> Unit, onOpenDecision: () -> Unit, onClose: () -> Unit) {
     var key by remember { mutableStateOf(vm.apiKey) }
+    var endpoint by remember { mutableStateOf(vm.endpoint) }
     var confirmDelete by remember { mutableStateOf(false) }
     val context = LocalContext.current
-    fun close() { vm.updateApiKey(key); onClose() }
+    fun close() { vm.updateConnection(key, endpoint); onClose() }
     BackHandler(onBack = ::close)
 
     Scaffold(topBar = {
@@ -63,14 +64,25 @@ fun SettingsScreen(vm: ChatViewModel, onOpenKnowledge: () -> Unit, onOpenVoices:
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Section("Blablador API", footer = vm.modelsError ?: if (vm.models.isNotEmpty()) "Connected – ${vm.chatModels.size} chat models available." else null) {
+            Section("Blablador API", footer = listOfNotNull(
+                vm.modelsError ?: if (vm.models.isNotEmpty()) "Connected – ${vm.chatModels.size} chat models available." else null,
+                "The endpoint is Blablador unless you change it. For Blablador, create a Helmholtz Codebase personal access token with the read_user scope and paste it as the API key.",
+            ).joinToString("\n\n")) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(endpoint, { endpoint = it }, Modifier.weight(1f), label = { Text("Endpoint") }, singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
+                    if (endpoint != BlabladorApi.DEFAULT_ENDPOINT) TextButton(onClick = {
+                        endpoint = BlabladorApi.DEFAULT_ENDPOINT
+                        vm.updateConnection(key, endpoint)
+                    }) { Text("Blablador") }
+                }
                 OutlinedTextField(key, { key = it }, Modifier.fillMaxWidth(), label = { Text("API key") }, singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
                 TextButton(onClick = {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://sdlaml.pages.jsc.fz-juelich.de/ai/guides/blablador_api_access/")))
-                }) { Text("Get an API key") }
-                TextButton(onClick = { vm.updateApiKey(key) }) { Text("Connect") }
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://codebase.helmholtz.cloud/-/user_settings/personal_access_tokens/legacy/new")))
+                }) { Text("Get an API key (read_user scope)") }
+                TextButton(onClick = { vm.updateConnection(key, endpoint) }) { Text("Connect") }
             }
 
             Section("Model") {

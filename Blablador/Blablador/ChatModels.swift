@@ -19,6 +19,8 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     var documents: [DocumentAttachment] = []
     /// Speech generated with Drama 3, as file names in AudioStore.
     var audio: [String] = []
+    /// Videos made with alias-video, as file names in VideoStore.
+    var videos: [String] = []
     /// Knowledge base excerpts the reply was based on.
     var citations: [KnowledgeCitation] = []
     /// Tool calls made in agent mode.
@@ -28,7 +30,7 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     /// Transient status shown while tools run, e.g. "Searching the web…"
     var status: String?
 
-    private enum CodingKeys: String, CodingKey { case id, role, content, date, isError, sources, images, documents, audio, citations, steps, reasoning }
+    private enum CodingKeys: String, CodingKey { case id, role, content, date, isError, sources, images, documents, audio, videos, citations, steps, reasoning }
 
     init(role: ChatRole, content: String, images: [String] = [], documents: [DocumentAttachment] = []) {
         self.role = role
@@ -48,6 +50,7 @@ struct ChatMessage: Identifiable, Codable, Equatable {
         images = try c.decodeIfPresent([String].self, forKey: .images) ?? []
         documents = try c.decodeIfPresent([DocumentAttachment].self, forKey: .documents) ?? []
         audio = try c.decodeIfPresent([String].self, forKey: .audio) ?? []
+        videos = try c.decodeIfPresent([String].self, forKey: .videos) ?? []
         citations = try c.decodeIfPresent([KnowledgeCitation].self, forKey: .citations) ?? []
         steps = try c.decodeIfPresent([AgentStep].self, forKey: .steps) ?? []
         reasoning = try c.decodeIfPresent(String.self, forKey: .reasoning) ?? ""

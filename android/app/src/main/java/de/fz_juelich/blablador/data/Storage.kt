@@ -88,6 +88,14 @@ class Settings(context: Context) {
         get() = prefs.getString("selectedModel", BlabladorApi.DEFAULT_MODEL)!!
         set(value) = prefs.edit().putString("selectedModel", value).apply()
 
+    var videoSeconds: Int
+        get() = prefs.getInt("videoSeconds", 4)
+        set(value) = prefs.edit().putInt("videoSeconds", value).apply()
+
+    var videoAspect: String
+        get() = prefs.getString("videoAspect", "16:9")!!
+        set(value) = prefs.edit().putString("videoAspect", value).apply()
+
     var imageModel: String
         get() = prefs.getString("imageModel", BlabladorApi.DEFAULT_IMAGE_MODEL)!!
         set(value) = prefs.edit().putString("imageModel", value).apply()
@@ -99,6 +107,10 @@ class Settings(context: Context) {
     var systemPrompt: String
         get() = prefs.getString("systemPrompt", "").orEmpty()
         set(value) = prefs.edit().putString("systemPrompt", value).apply()
+
+    var endpoint: String
+        get() = prefs.getString("apiEndpoint", null) ?: BlabladorApi.DEFAULT_ENDPOINT
+        set(value) = prefs.edit().putString("apiEndpoint", value).apply()
 
     var responseTimeoutMinutes: Int
         get() = prefs.getInt("responseTimeoutMinutes", 10)

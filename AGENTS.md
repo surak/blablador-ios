@@ -33,6 +33,7 @@ release tagged `v<version>` with the Mac DMG and zip, the Android APK and `SHA25
 - `AgentTools.swift`, `AgentViews.swift`: agent mode (macOS). Tools list/read/search/write/edit files confined to `Conversation.workspace` (paths resolved through symlinks) and `run_command` via `zsh -lc` after the user approves (`ChatStore.commandApproval`); up to `AgentTools.maxRounds` tool rounds, steps stored in `ChatMessage.steps`
 - `AppUpdater.swift`: checks `api.github.com/repos/surak/blablador-ios/releases/latest`; on macOS downloads `Blablador-<version>-macOS.zip`, verifies it against `SHA256SUMS.txt`, the bundle id, a newer version and `codesign --verify`, then swaps the bundle after quitting and relaunches. iOS shows `UpdateBanner` with a link. Releases must keep these asset names
 - `DecisionView.swift`, `DecisionExamples.swift`: Clef decision model (`alias-clef`, `POST /v1/systemone`, question types noul/choice/score; the user writes their own decisions and questions, saved in UserDefaults by `SavedDecisions`). `DecisionExamples.swift` is generated from `../decision-model-frontend/static/app.js` PRESETS with `node scripts/generate-decision-examples.js ../decision-model-frontend/static/app.js`; regenerate rather than edit
+- Video mode (`ChatStore.makeVideo`, `BlabladorAPI.generateVideo`): `alias-video` (MiniMax-H3) via multipart `POST /v1/videos/sync` with `prompt`, `aspect_ratio`, `width`/`height` and `extra_params={"duration":n}`; returns an MP4 with sound, stored in `VideoStore`, shown by `VideoClip`. Text-to-video only
 - `KnowledgeBase.swift`, `KnowledgeViews.swift`: knowledge bases (RAG) — chunks and normalized vectors stored per base on device, `/embeddings` with `alias-qwen3-4b-embeddings`, `/rerank` with `alias-qwen3-4b-reranker`, excerpts injected into the system prompt as [K1]…
 - `VoiceLibrary.swift`, `VoiceViews.swift`: Drama 3 speech (`alias-voice-drama3` via `/audio/speech`), voice cloning (reference sample as `references[].audio_path` data URI plus transcript from Whisper), delivery settings
 - `SpeechRecognizer.swift`: Dictation (Speech framework) and read-aloud (AVSpeechSynthesizer)
@@ -50,7 +51,7 @@ Before making changes:
 ## Common Tasks
 
 - Change the default model: `BlabladorAPI.defaultModel` in `BlabladorAPI.swift`
-- Change the API endpoint: `BlabladorAPI.baseURL`
+- The API endpoint: `BlabladorAPI.endpoint` (UserDefaults `apiEndpoint`, set in Settings; `defaultEndpoint` is Blablador). Android: `BlabladorApi.endpoint`, saved by `Settings.endpoint`
 - New Swift files must also be added to `Blablador.xcodeproj/project.pbxproj` (or regenerate with `xcodegen`)
 
 ## Dependencies

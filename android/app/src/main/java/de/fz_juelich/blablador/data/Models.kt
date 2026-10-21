@@ -37,6 +37,8 @@ data class ChatMessage(
     val documents: List<DocumentAttachment> = emptyList(),
     /** Speech generated with Drama 3, as file names in AudioStore. */
     val audio: List<String> = emptyList(),
+    /** Videos made with alias-video, as file names in VideoStore. */
+    val videos: List<String> = emptyList(),
     /** Knowledge-base excerpts the reply was based on, cited as [K1], [K2]… */
     val citations: List<KnowledgeCitation> = emptyList(),
     /** The model's thinking trace, streamed separately from the answer. */

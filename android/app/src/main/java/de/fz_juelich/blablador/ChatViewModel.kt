@@ -11,6 +11,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import de.fz_juelich.blablador.data.AudioPlayback
 import de.fz_juelich.blablador.data.AudioStore
+import de.fz_juelich.blablador.data.VideoStore
 import de.fz_juelich.blablador.data.BlabladorApi
 import de.fz_juelich.blablador.data.BlabladorException
 import de.fz_juelich.blablador.data.ChatMessage
@@ -53,6 +54,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val knowledge = KnowledgeLibrary(application, viewModelScope, pdf)
     val voices = VoiceLibrary(application)
     val audio = AudioStore(application)
+    val videos = VideoStore(application)
     val playback = AudioPlayback()
 
     val conversations = mutableStateListOf<Conversation>().apply { addAll(conversationStore.load()) }
@@ -100,6 +102,18 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     // MARK: Settings
 
+    var endpoint by mutableStateOf(settings.endpoint.also { BlabladorApi.endpoint = it })
+        private set
+
+    fun updateConnection(key: String, newEndpoint: String) {
+        val url = newEndpoint.trim().ifEmpty { BlabladorApi.DEFAULT_ENDPOINT }
+        if (url != endpoint) {
+            endpoint = url; settings.endpoint = url; BlabladorApi.endpoint = url
+            if (key.trim() == apiKey) { refresh(); return }
+        }
+        updateApiKey(key)
+    }
+
     fun updateApiKey(key: String) {
         val trimmed = key.trim()
         if (trimmed == apiKey) return
@@ -111,6 +125,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun selectModel(id: String) { selectedModel = id; settings.selectedModel = id }
+    var videoSeconds by mutableStateOf(settings.videoSeconds)
+        private set
+    var videoAspect by mutableStateOf(settings.videoAspect)
+        private set
+    val videoAspectName get() = BlabladorApi.VIDEO_ASPECTS.firstOrNull { it.first == videoAspect }?.second ?: videoAspect
+    fun chooseVideoSeconds(seconds: Int) { videoSeconds = seconds; settings.videoSeconds = seconds }
+    fun chooseVideoAspect(aspect: String) { videoAspect = aspect; settings.videoAspect = aspect }
+
     fun selectImageModel(id: String) { imageModel = id; settings.imageModel = id }
     fun setResponseTimeout(minutes: Int) {
         responseTimeoutMinutes = minutes; settings.responseTimeoutMinutes = minutes; BlabladorApi.responseTimeoutMinutes = minutes
@@ -169,6 +191,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         if (conversation.id == currentId) newChat()
         images.delete(conversation.messages.flatMap { it.images })
         audio.delete(conversation.messages.flatMap { it.audio })
+        videos.delete(conversation.messages.flatMap { it.videos })
         conversations.removeAll { it.id == conversation.id }
         persist()
     }
@@ -177,6 +200,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         newChat()
         images.delete(conversations.flatMap { c -> c.messages.flatMap { it.images } })
         audio.delete(conversations.flatMap { c -> c.messages.flatMap { it.audio } })
+        videos.delete(conversations.flatMap { c -> c.messages.flatMap { it.videos } })
         conversations.clear()
         persist()
     }
@@ -196,7 +220,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
      * with [speak], it is spoken with the selected Drama 3 voice.
      */
     fun send(text: String, attachments: List<ByteArray> = emptyList(), documents: List<DocumentAttachment> = emptyList(),
-             createImage: Boolean = false, speak: Boolean = false) {
+             createImage: Boolean = false, createVideo: Boolean = false, speak: Boolean = false) {
         val trimmed = text.trim()
         if ((trimmed.isEmpty() && attachments.isEmpty() && documents.isEmpty()) || isStreaming) return
 
@@ -216,6 +240,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
         when {
             speak && trimmed.isNotEmpty() -> makeSpeech(trimmed)
+            createVideo && trimmed.isNotEmpty() -> makeVideo(trimmed)
             createImage -> makeImage(trimmed, names.lastOrNull())
             else -> respond()
         }
@@ -267,6 +292,31 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             api.generateImage(imageModel, prompt)
         }
         return images.save(data)
+    }
+
+    /** Video mode: makes a clip with sound from the prompt. */
+    private fun makeVideo(prompt: String) {
+        val reply = ChatMessage(role = ChatRole.assistant, content = "")
+        update { it.copy(messages = it.messages + reply) }
+        isStreaming = true
+        val seconds = videoSeconds
+        val aspect = videoAspect
+        streamJob = viewModelScope.launch {
+            try {
+                updateMessage(reply.id) { it.copy(status = "Making a $seconds-second video with MiniMax-H3… This takes a few minutes.") }
+                val data = api.generateVideo(prompt, seconds, aspect)
+                val name = withContext(Dispatchers.IO) { videos.save(data) }
+                updateMessage(reply.id) { it.copy(videos = it.videos + name) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                updateMessage(reply.id) { it.copy(content = e.message ?: "Video failed.", isError = true) }
+            } finally {
+                updateMessage(reply.id) { it.copy(status = null) }
+                isStreaming = false
+                persist()
+            }
+        }
     }
 
     /** Speech mode: speaks the user's text with the selected voice and delivery settings. */
@@ -361,7 +411,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 updateMessage(reply.id) { it.copy(content = e.message ?: "Request failed.", isError = true) }
             } finally {
                 updateMessage(reply.id) {
-                    val empty = it.content.isEmpty() && it.images.isEmpty() && it.audio.isEmpty() && isActive
+                    val empty = it.content.isEmpty() && it.images.isEmpty() && it.audio.isEmpty() && it.videos.isEmpty() && isActive
                     if (empty) it.copy(status = null, content = "No response from the model.", isError = true) else it.copy(status = null)
                 }
                 isStreaming = false

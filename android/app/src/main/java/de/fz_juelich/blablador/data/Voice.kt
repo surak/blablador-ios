@@ -154,6 +154,21 @@ class VoiceLibrary(context: Context) {
 }
 
 /** Generated speech as files, like ImageStore. */
+/** Generated videos (MP4 with sound). */
+class VideoStore(context: Context) {
+    private val directory = File(context.filesDir, "videos").apply { mkdirs() }
+
+    fun file(name: String) = File(directory, name)
+
+    fun save(data: ByteArray): String {
+        val name = UUID.randomUUID().toString() + ".mp4"
+        file(name).writeBytes(data)
+        return name
+    }
+
+    fun delete(names: List<String>) = names.forEach { file(it).delete() }
+}
+
 class AudioStore(context: Context) {
     private val directory = File(context.filesDir, "audio").apply { mkdirs() }
 

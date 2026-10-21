@@ -13,6 +13,7 @@ struct ChatView: View {
     @State private var attachments: [Data] = []
     @State private var documents: [DocumentAttachment] = []
     @State private var imageMode = false
+    @State private var videoMode = false
     @State private var speechMode = false
     @State private var showHistory = false
     @State private var drawerDrag: CGFloat = 0
@@ -136,7 +137,7 @@ struct ChatView: View {
                 CommandApprovalCard(approval: approval) { store.answerApproval($0) }
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
-            ComposerView(draft: $draft, attachments: $attachments, documents: $documents, imageMode: $imageMode, speechMode: $speechMode, droppedFiles: $droppedFiles, speech: speech, focused: $inputFocused, onSend: send)
+            ComposerView(draft: $draft, attachments: $attachments, documents: $documents, imageMode: $imageMode, videoMode: $videoMode, speechMode: $speechMode, droppedFiles: $droppedFiles, speech: speech, focused: $inputFocused, onSend: send)
         }
         // Drop images and PDFs from Finder or Files onto the chat to attach them.
         .dropDestination(for: URL.self) { urls, _ in
@@ -330,7 +331,7 @@ struct ChatView: View {
         draft = ""
         attachments = []
         documents = []
-        store.send(text, attachments: images, documents: pdfs, createImage: imageMode, speak: speechMode)
+        store.send(text, attachments: images, documents: pdfs, createImage: imageMode, createVideo: videoMode, speak: speechMode)
     }
 
     private func handleSiri(_ command: String?) {
@@ -470,6 +471,7 @@ private struct ComposerView: View {
     @Binding var attachments: [Data]
     @Binding var documents: [DocumentAttachment]
     @Binding var imageMode: Bool
+    @Binding var videoMode: Bool
     @Binding var speechMode: Bool
     @Binding var droppedFiles: [URL]
     @ObservedObject var speech: SpeechRecognizer
@@ -509,6 +511,7 @@ private struct ComposerView: View {
     private var placeholder: String {
         if speech.isRecording { return "Listening…" }
         if speechMode { return "What should be said?" }
+        if videoMode { return "Describe a video, with its sounds" }
         if imageMode { return attachments.isEmpty ? "Describe an image" : "Describe the change" }
         return "Ask Blablador"
     }
@@ -541,6 +544,9 @@ private struct ComposerView: View {
             }
             if imageMode {
                 imageModeChip
+            }
+            if videoMode {
+                videoModeChip
             }
             if speechMode {
                 HStack(spacing: 8) {
@@ -585,14 +591,14 @@ private struct ComposerView: View {
                     .accessibilityLabel("Stop generating")
                 } else if canSend {
                     Button(action: onSend) {
-                        Image(systemName: speechMode ? "waveform" : imageMode ? "paintbrush.pointed.fill" : "arrow.up")
+                        Image(systemName: speechMode ? "waveform" : imageMode ? "paintbrush.pointed.fill" : videoMode ? "film.fill" : "arrow.up")
                             .font(.body.weight(.semibold))
                             .frame(width: 40, height: 40)
                             .foregroundStyle(.white)
                             .background(Theme.gradient, in: Circle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(speechMode ? "Speak" : imageMode ? "Create image" : "Send")
+                    .accessibilityLabel(speechMode ? "Speak" : imageMode ? "Create image" : videoMode ? "Create video" : "Send")
                     .transition(.scale.combined(with: .opacity))
                 }
             }
@@ -608,8 +614,9 @@ private struct ComposerView: View {
         .animation(.spring(duration: 0.25), value: canSend)
         .animation(.spring(duration: 0.25), value: attachments.count)
         .animation(.spring(duration: 0.25), value: documents.count)
-        .onChange(of: imageMode) { _, on in if on { speechMode = false } }
-        .onChange(of: speechMode) { _, on in if on { imageMode = false } }
+        .onChange(of: imageMode) { _, on in if on { speechMode = false; videoMode = false } }
+        .onChange(of: speechMode) { _, on in if on { imageMode = false; videoMode = false } }
+        .onChange(of: videoMode) { _, on in if on { imageMode = false; speechMode = false } }
         .padding(.horizontal)
         .padding(.bottom, 8)
         .padding(.top, 4)
@@ -839,6 +846,9 @@ private struct ComposerView: View {
             Toggle(isOn: $imageMode) {
                 Label("Create or edit image", systemImage: "paintbrush.pointed")
             }
+            Toggle(isOn: $videoMode) {
+                Label("Create video", systemImage: "film")
+            }
             Toggle(isOn: $speechMode) {
                 Label("Speak", systemImage: "waveform")
             }
@@ -857,6 +867,44 @@ private struct ComposerView: View {
         .menuStyle(.button)
         .buttonStyle(.plain)
         .accessibilityLabel("Add")
+    }
+
+    private var videoModeChip: some View {
+        HStack(spacing: 6) {
+            Menu {
+                Picker("Length", selection: Binding(get: { store.videoSeconds }, set: { store.videoSeconds = $0 })) {
+                    ForEach(BlabladorAPI.videoDurations, id: \.self) { Text("\($0) seconds").tag($0) }
+                }
+                Picker("Shape", selection: Binding(get: { store.videoAspect }, set: { store.videoAspect = $0 })) {
+                    ForEach(BlabladorAPI.videoAspects, id: \.id) { Text("\($0.name) \($0.id)").tag($0.id) }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "film.fill")
+                    Text("Video · \(store.videoSeconds) s · \(store.videoAspectName)")
+                    Image(systemName: "chevron.down")
+                        .imageScale(.small)
+                }
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .fixedSize()
+            .accessibilityLabel("Video length and shape")
+            Button {
+                videoMode = false
+            } label: {
+                Image(systemName: "xmark")
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Leave video mode")
+        }
+        .font(.caption.weight(.medium))
+        .foregroundStyle(.white)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(Theme.gradient, in: Capsule())
+        .padding(.leading, 8)
+        .padding(.top, 4)
     }
 
     private var imageModeChip: some View {

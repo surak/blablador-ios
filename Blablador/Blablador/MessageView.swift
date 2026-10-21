@@ -105,11 +105,14 @@ struct MessageView: View {
                     ForEach(message.audio, id: \.self) { name in
                         SpeechClip(name: name)
                     }
+                    ForEach(message.videos, id: \.self) { name in
+                        VideoClip(name: name)
+                    }
                     if !message.steps.isEmpty {
                         AgentStepsView(steps: message.steps)
                     }
                     if message.content.isEmpty {
-                        if message.status == nil && message.images.isEmpty && message.audio.isEmpty && message.steps.isEmpty && message.reasoning.isEmpty { TypingIndicator() }
+                        if message.status == nil && message.images.isEmpty && message.audio.isEmpty && message.videos.isEmpty && message.steps.isEmpty && message.reasoning.isEmpty { TypingIndicator() }
                     } else if message.isError {
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
                             Image(systemName: "exclamationmark.triangle")
@@ -126,7 +129,7 @@ struct MessageView: View {
                     if !message.sources.isEmpty {
                         SourcesView(sources: message.sources)
                     }
-                    if !(isLast && isStreaming) && (!message.content.isEmpty || !message.images.isEmpty || !message.audio.isEmpty) {
+                    if !(isLast && isStreaming) && (!message.content.isEmpty || !message.images.isEmpty || !message.audio.isEmpty || !message.videos.isEmpty) {
                         actions
                     }
                 }

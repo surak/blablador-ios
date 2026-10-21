@@ -79,6 +79,11 @@ final class ChatStore: ObservableObject {
         willSet { objectWillChange.send() }
     }
 
+    @AppStorage("videoSeconds") var videoSeconds = 4
+    @AppStorage("videoAspect") var videoAspect = "16:9"
+    var videoAspectName: String {
+        BlabladorAPI.videoAspects.first { $0.id == videoAspect }?.name ?? videoAspect
+    }
     @AppStorage("imageToolsEnabled") var imageToolsEnabled = true {
         willSet { objectWillChange.send() }
     }
@@ -185,6 +190,7 @@ final class ChatStore: ObservableObject {
         if conversation.id == currentID { newChat() }
         ImageStore.delete(conversation.messages.flatMap(\.images))
         AudioStore.delete(conversation.messages.flatMap(\.audio))
+        VideoStore.delete(conversation.messages.flatMap(\.videos))
         conversations.removeAll { $0.id == conversation.id }
         persist()
     }
@@ -193,6 +199,7 @@ final class ChatStore: ObservableObject {
         newChat()
         ImageStore.delete(conversations.flatMap { $0.messages.flatMap(\.images) })
         AudioStore.delete(conversations.flatMap { $0.messages.flatMap(\.audio) })
+        VideoStore.delete(conversations.flatMap { $0.messages.flatMap(\.videos) })
         conversations.removeAll()
         persist()
     }
@@ -201,7 +208,7 @@ final class ChatStore: ObservableObject {
 
     /// Sends a chat message. With `createImage`, the text is used directly as an image prompt;
     /// with `speak`, it is read aloud with Drama 3.
-    func send(_ text: String, attachments: [Data] = [], documents: [DocumentAttachment] = [], createImage: Bool = false, speak: Bool = false) {
+    func send(_ text: String, attachments: [Data] = [], documents: [DocumentAttachment] = [], createImage: Bool = false, createVideo: Bool = false, speak: Bool = false) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty || !attachments.isEmpty || !documents.isEmpty, !isStreaming else { return }
 
@@ -220,6 +227,8 @@ final class ChatStore: ObservableObject {
 
         if speak, !trimmed.isEmpty {
             makeSpeech(script: trimmed)
+        } else if createVideo, !trimmed.isEmpty {
+            makeVideo(prompt: trimmed)
         } else if createImage {
             makeImage(prompt: trimmed, editing: images.last)
         } else {
@@ -269,6 +278,32 @@ final class ChatStore: ObservableObject {
             data = try await api.generateImage(model: imageModel, prompt: prompt)
         }
         return ImageStore.save(data)
+    }
+
+    /// Video mode: make a clip with sound from the prompt.
+    private func makeVideo(prompt: String) {
+        let reply = ChatMessage(role: .assistant, content: "")
+        update { $0.messages.append(reply) }
+        isStreaming = true
+        let seconds = videoSeconds, aspect = videoAspect
+        streamTask = Task {
+            do {
+                updateMessage(reply.id) { $0.status = "Making a \(seconds)-second video with MiniMax-H3… This takes a few minutes." }
+                let data = try await api.generateVideo(prompt: prompt, seconds: seconds, aspect: aspect)
+                let name = VideoStore.save(data)
+                updateMessage(reply.id) { $0.videos.append(name) }
+            } catch is CancellationError {
+            } catch let error as URLError where error.code == .cancelled {
+            } catch {
+                updateMessage(reply.id) {
+                    $0.content = error.localizedDescription
+                    $0.isError = true
+                }
+            }
+            updateMessage(reply.id) { $0.status = nil }
+            isStreaming = false
+            persist()
+        }
     }
 
     /// Speech mode: speak the user's text with the selected voice and delivery settings.
@@ -482,7 +517,7 @@ final class ChatStore: ObservableObject {
             }
             updateMessage(reply.id) { message in
                 message.status = nil
-                if message.content.isEmpty, message.images.isEmpty, message.audio.isEmpty, message.steps.isEmpty, !Task.isCancelled {
+                if message.content.isEmpty, message.images.isEmpty, message.audio.isEmpty, message.videos.isEmpty, message.steps.isEmpty, !Task.isCancelled {
                     message.content = "No response from the model."
                     message.isError = true
                 }

@@ -1,7 +1,37 @@
 import SwiftUI
+import AVKit
 import UniformTypeIdentifiers
 
 /// Play button for generated speech in a reply.
+/// A generated video with its sound, playable in the chat.
+struct VideoClip: View {
+    let name: String
+    @State private var player: AVPlayer?
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 6) {
+            VideoPlayer(player: player)
+                .aspectRatio(aspectRatio, contentMode: .fit)
+                .frame(maxWidth: 520, maxHeight: 420)
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+            ShareLink(item: VideoStore.url(for: name)) {
+                Label("Save or share", systemImage: "square.and.arrow.up")
+                    .font(.caption)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+        }
+        .onAppear { if player == nil { player = AVPlayer(url: VideoStore.url(for: name)) } }
+        .onDisappear { player?.pause() }
+    }
+
+    private var aspectRatio: CGFloat {
+        guard let track = AVAsset(url: VideoStore.url(for: name)).tracks(withMediaType: .video).first else { return 16 / 9 }
+        let size = track.naturalSize.applying(track.preferredTransform)
+        return size.height == 0 ? 16 / 9 : abs(size.width / size.height)
+    }
+}
+
 struct SpeechClip: View {
     let name: String
     @ObservedObject private var playback = AudioPlayback.shared

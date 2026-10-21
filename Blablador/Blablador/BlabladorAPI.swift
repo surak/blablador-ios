@@ -15,7 +15,15 @@ enum BlabladorAPIError: LocalizedError {
 }
 
 struct BlabladorAPI {
-    static let baseURL = URL(string: "https://api.blablador.fz-juelich.de/v1")!
+    static let defaultEndpoint = "https://api.blablador.fz-juelich.de/v1"
+    /// The OpenAI-compatible endpoint, Blablador unless changed in Settings.
+    static var endpoint: String {
+        get { UserDefaults.standard.string(forKey: "apiEndpoint") ?? defaultEndpoint }
+        set { UserDefaults.standard.set(newValue, forKey: "apiEndpoint") }
+    }
+    static var baseURL: URL {
+        URL(string: endpoint.trimmingCharacters(in: .whitespacesAndNewlines)) ?? URL(string: defaultEndpoint)!
+    }
     static let defaultModel = "deepseek-v4.1-flash-at-hzdr"
 
     /// Image models available on Blablador. Only Qwen-Image can edit images.
@@ -32,6 +40,10 @@ struct BlabladorAPI {
     /// Used for a new knowledge base when the default embedding model doesn't respond.
     static let fallbackEmbeddingModel = "alias-embeddings"
     static let rerankModel = "alias-qwen3-4b-reranker"
+    /// MiniMax-H3: text to video with sound, at 24 fps. A 4-second clip takes about 3–4 minutes.
+    static let videoModel = "alias-video"
+    static let videoDurations = [4, 6, 8, 10]
+    static let videoAspects: [(id: String, name: String)] = [("16:9", "Landscape"), ("9:16", "Portrait"), ("1:1", "Square")]
 
     var apiKey: String
 
@@ -67,6 +79,32 @@ struct BlabladorAPI {
         request.timeoutInterval = 300
         request.httpBody = try JSONSerialization.data(withJSONObject: ["model": model, "prompt": prompt, "n": 1, "size": "1024x1024"])
         return try await imageResponse(for: request)
+    }
+
+    /// Makes a video with sound from a text prompt and returns the MP4.
+    func generateVideo(prompt: String, seconds: Int, aspect: String) async throws -> Data {
+        let boundary = "Boundary-\(UUID().uuidString)"
+        var request = try request(path: "videos/sync")
+        request.httpMethod = "POST"
+        request.timeoutInterval = 2 * 60 * 60
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        let size = switch aspect {
+        case "9:16": (768, 1344)
+        case "1:1": (768, 768)
+        default: (1344, 768)
+        }
+        var body = Data()
+        for (name, value) in [
+            ("model", Self.videoModel), ("prompt", prompt), ("aspect_ratio", aspect),
+            ("width", "\(size.0)"), ("height", "\(size.1)"), ("extra_params", "{\"duration\":\(seconds)}")
+        ] {
+            body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(name)\"\r\n\r\n\(value)\r\n".utf8))
+        }
+        body.append(Data("--\(boundary)--\r\n".utf8))
+        request.httpBody = body
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try Self.validate(response, body: String(data: data.prefix(500), encoding: .utf8) ?? "")
+        return data
     }
 
     func editImage(prompt: String, image: Data) async throws -> Data {

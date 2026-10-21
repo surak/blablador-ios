@@ -41,6 +41,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Brush
+import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.outlined.Movie
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.automirrored.outlined.LibraryBooks
@@ -149,6 +151,7 @@ fun ChatScreen(vm: ChatViewModel) {
     val documents = remember { mutableStateListOf<DocumentAttachment>() }
     var imageMode by remember { mutableStateOf(false) }
     var speechMode by remember { mutableStateOf(false) }
+    var videoMode by remember { mutableStateOf(false) }
     val focus = remember { FocusRequester() }
 
     val speaker = rememberSpeaker()
@@ -206,8 +209,9 @@ fun ChatScreen(vm: ChatViewModel) {
                 ActiveKnowledge(vm, onOpen = { open(Page.Knowledge(it)) })
                 Composer(
                     vm, draft, { draft = it }, attachments, documents,
-                    imageMode, { imageMode = it; if (it) speechMode = false },
-                    speechMode, { speechMode = it; if (it) imageMode = false },
+                    imageMode, { imageMode = it; if (it) { speechMode = false; videoMode = false } },
+                    speechMode, { speechMode = it; if (it) { imageMode = false; videoMode = false } },
+                    videoMode, { videoMode = it; if (it) { imageMode = false; speechMode = false } },
                     focus,
                     onNavigate = ::open,
                 ) {
@@ -215,7 +219,7 @@ fun ChatScreen(vm: ChatViewModel) {
                     val images = attachments.toList()
                     val docs = documents.toList()
                     draft = ""; attachments.clear(); documents.clear()
-                    vm.send(text, images, docs, imageMode, speechMode)
+                    vm.send(text, images, docs, createImage = imageMode, createVideo = videoMode, speak = speechMode)
                 }
             }
         }
@@ -335,6 +339,7 @@ private fun MessageList(conversation: Conversation, vm: ChatViewModel, speaker: 
                 onRegenerate = vm::regenerate,
                 onEditImage = onEditImage,
                 speechClip = { SpeechClip(vm, it) },
+                videoFile = vm.videos::file,
             )
         }
     }
@@ -351,6 +356,8 @@ private fun Composer(
     onImageMode: (Boolean) -> Unit,
     speechMode: Boolean,
     onSpeechMode: (Boolean) -> Unit,
+    videoMode: Boolean,
+    onVideoMode: (Boolean) -> Unit,
     focus: FocusRequester,
     onNavigate: (Page) -> Unit,
     onSend: () -> Unit,
@@ -427,6 +434,7 @@ private fun Composer(
             }
         }
         AnimatedVisibility(imageMode) { ImageModeChip(vm, editing = attachments.isNotEmpty()) { onImageMode(false) } }
+        AnimatedVisibility(videoMode) { VideoModeChip(vm) { onVideoMode(false) } }
         AnimatedVisibility(speechMode) {
             Row(Modifier.padding(start = 8.dp, top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 SpeechModeChip(vm, onCloneVoice = { onNavigate(Page.AddVoice) }) { onSpeechMode(false) }
@@ -469,6 +477,9 @@ private fun Composer(
                     DropdownMenuItem(text = { Text("Create or edit image") }, leadingIcon = { Icon(Icons.Outlined.Brush, null) },
                         trailingIcon = { if (imageMode) Icon(Icons.Outlined.Check, null) },
                         onClick = { menu = false; onImageMode(!imageMode) })
+                    DropdownMenuItem(text = { Text("Create video") }, leadingIcon = { Icon(Icons.Outlined.Movie, null) },
+                        trailingIcon = { if (videoMode) Icon(Icons.Outlined.Check, null) },
+                        onClick = { menu = false; onVideoMode(!videoMode) })
                     DropdownMenuItem(text = { Text("Speak (Drama 3)") }, leadingIcon = { Icon(Icons.Outlined.GraphicEq, null) },
                         trailingIcon = { if (speechMode) Icon(Icons.Outlined.Check, null) },
                         onClick = { menu = false; onSpeechMode(!speechMode) })
@@ -498,6 +509,7 @@ private fun Composer(
                 placeholder = {
                     Text(when {
                         imageMode -> if (attachments.isEmpty()) "Describe an image" else "Describe the change"
+                        videoMode -> "Describe a video, with its sounds"
                         speechMode -> "What should ${vm.voices.selected.name} say?"
                         else -> "Ask Blablador"
                     })
@@ -519,8 +531,8 @@ private fun Composer(
                         tint = MaterialTheme.colorScheme.surface)
                 }
                 canSend -> IconButton(onClick = onSend) {
-                    Icon(when { imageMode -> Icons.Filled.Brush; speechMode -> Icons.Filled.GraphicEq; else -> Icons.Filled.ArrowUpward },
-                        when { imageMode -> "Create image"; speechMode -> "Speak"; else -> "Send" },
+                    Icon(when { imageMode -> Icons.Filled.Brush; videoMode -> Icons.Filled.Movie; speechMode -> Icons.Filled.GraphicEq; else -> Icons.Filled.ArrowUpward },
+                        when { imageMode -> "Create image"; videoMode -> "Create video"; speechMode -> "Speak"; else -> "Send" },
                         Modifier.clip(CircleShape).background(Brand.gradient).padding(8.dp), tint = Color.White)
                 }
             }
@@ -560,6 +572,33 @@ private fun ActiveKnowledge(vm: ChatViewModel, onOpen: (String) -> Unit) {
                 Icon(Icons.Filled.Close, "Stop using ${base.name}", Modifier.size(16.dp).clickable { vm.toggleKnowledge(base.id) })
             }
         }
+    }
+}
+
+@Composable
+private fun VideoModeChip(vm: ChatViewModel, onClose: () -> Unit) {
+    var menu by remember { mutableStateOf(false) }
+    Row(
+        Modifier.padding(start = 8.dp, top = 6.dp).clip(CircleShape).background(Brand.gradient).padding(horizontal = 10.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(Icons.Filled.Movie, null, Modifier.size(14.dp), tint = Color.White)
+        Box {
+            Text("Video · ${vm.videoSeconds} s · ${vm.videoAspectName} ▾", color = Color.White,
+                style = MaterialTheme.typography.labelMedium, modifier = Modifier.clickable { menu = true })
+            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                BlabladorApi.VIDEO_DURATIONS.forEach { seconds ->
+                    DropdownMenuItem(text = { Text("$seconds seconds") }, onClick = { vm.chooseVideoSeconds(seconds); menu = false },
+                        leadingIcon = { if (seconds == vm.videoSeconds) Icon(Icons.Outlined.Check, null) else Spacer(Modifier.size(24.dp)) })
+                }
+                HorizontalDivider()
+                BlabladorApi.VIDEO_ASPECTS.forEach { (id, name) ->
+                    DropdownMenuItem(text = { Text("$name $id") }, onClick = { vm.chooseVideoAspect(id); menu = false },
+                        leadingIcon = { if (id == vm.videoAspect) Icon(Icons.Outlined.Check, null) else Spacer(Modifier.size(24.dp)) })
+                }
+            }
+        }
+        Icon(Icons.Filled.Close, "Leave video mode", Modifier.size(14.dp).clickable(onClick = onClose), tint = Color.White)
     }
 }
 

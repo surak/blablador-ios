@@ -73,7 +73,7 @@ uninstalling first.
 ## Requirements
 
 - Android 8.0 (API 26) or later
-- A Blablador API key: https://sdlaml.pages.jsc.fz-juelich.de/ai/guides/blablador_api_access/
+- A Blablador API key: a Helmholtz Codebase personal access token with the `read_user` scope (https://codebase.helmholtz.cloud/-/user_settings/personal_access_tokens/legacy/new)
 
 ## Building
 
@@ -122,6 +122,7 @@ app/src/main/java/de/fz_juelich/blablador/
 ## Version history
 The Android and Apple apps share one version number and one release.
 
+- **2.5.0**: videos with sound (MiniMax-H3), choose another OpenAI-compatible endpoint, API-key link with the read_user scope
 - **2.4.0**: thinking trace, configurable reply timeout, paste images
 - **2.3.0**: attach images from files; version shown in Settings
 - **2.2.1**: version in step with the Mac and iPhone fix for the Decide window

@@ -5,6 +5,7 @@ struct SettingsView: View {
     @EnvironmentObject private var store: ChatStore
     @Environment(\.dismiss) private var dismiss
     @State private var apiKey = ""
+    @State private var endpoint = BlabladorAPI.endpoint
     @State private var confirmDelete = false
     @AppStorage("ocrEngine") private var ocrEngine: OCREngine = .onDevice
 
@@ -12,20 +13,38 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section {
+                    HStack {
+                        TextField("Endpoint", text: $endpoint)
+                            .autocorrectionDisabled()
+#if os(iOS)
+                            .textInputAutocapitalization(.never)
+                            .keyboardType(.URL)
+#endif
+                        if endpoint != BlabladorAPI.defaultEndpoint {
+                            Button("Blablador") {
+                                endpoint = BlabladorAPI.defaultEndpoint
+                                save()
+                            }
+                            .help("Use Blablador again")
+                        }
+                    }
                     SecureField("API key", text: $apiKey)
                         .textContentType(.password)
                         .autocorrectionDisabled()
 #if os(iOS)
                         .textInputAutocapitalization(.never)
 #endif
-                    Link("Get an API key", destination: URL(string: "https://sdlaml.pages.jsc.fz-juelich.de/ai/guides/blablador_api_access/")!)
+                    Link("Get an API key (read_user scope)", destination: URL(string: "https://codebase.helmholtz.cloud/-/user_settings/personal_access_tokens/legacy/new")!)
                 } header: {
                     Text("Blablador API")
                 } footer: {
-                    if let error = store.modelsError {
-                        Text(error).foregroundStyle(.red).textSelection(.enabled)
-                    } else if !store.models.isEmpty {
-                        Text("Connected – \(store.chatModels.count) chat models available.")
+                    VStack(alignment: .leading, spacing: 4) {
+                        if let error = store.modelsError {
+                            Text(error).foregroundStyle(.red).textSelection(.enabled)
+                        } else if !store.models.isEmpty {
+                            Text("Connected – \(store.chatModels.count) chat models available.")
+                        }
+                        Text("The endpoint is Blablador unless you change it. For Blablador, create a Helmholtz Codebase personal access token with the read_user scope and paste it as the API key.")
                     }
                 }
 
@@ -146,6 +165,10 @@ struct SettingsView: View {
 
     private func save() {
         let trimmed = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let newEndpoint = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        let endpointChanged = newEndpoint != BlabladorAPI.endpoint
+        if endpointChanged { BlabladorAPI.endpoint = newEndpoint.isEmpty ? BlabladorAPI.defaultEndpoint : newEndpoint }
         if trimmed != store.apiKey { store.apiKey = trimmed }
+        else if endpointChanged { Task { await store.loadModels() } }
     }
 }

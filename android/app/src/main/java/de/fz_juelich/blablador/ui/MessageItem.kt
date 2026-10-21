@@ -90,6 +90,7 @@ fun MessageItem(
     onRegenerate: () -> Unit,
     onEditImage: (String) -> Unit,
     speechClip: @Composable (String) -> Unit,
+    videoFile: (String) -> File = { File(it) },
 ) {
     when (message.role) {
         ChatRole.user -> Column(Modifier.fillMaxWidth().padding(start = 48.dp), horizontalAlignment = Alignment.End,
@@ -123,8 +124,9 @@ fun MessageItem(
                 if (message.reasoning.isNotEmpty()) Thinking(message.reasoning, isLast && isStreaming && message.content.isEmpty())
                 message.images.forEach { ChatImage(imageFile(it), 420, square = false) { onEditImage(it) } }
                 message.audio.forEach { speechClip(it) }
+                message.videos.forEach { VideoClip(videoFile(it)) }
                 when {
-                    message.content.isEmpty() -> if (message.status == null && message.images.isEmpty() && message.audio.isEmpty() && message.reasoning.isEmpty()) TypingIndicator()
+                    message.content.isEmpty() -> if (message.status == null && message.images.isEmpty() && message.audio.isEmpty() && message.videos.isEmpty() && message.reasoning.isEmpty()) TypingIndicator()
                     message.isError -> SelectionContainer {
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             Icon(Icons.Outlined.WarningAmber, null, tint = MaterialTheme.colorScheme.error)
@@ -302,4 +304,21 @@ private fun Thinking(text: String, thinking: Boolean) {
             }
         }
     }
+}
+
+/** A generated video with its sound, with play controls. */
+@Composable
+private fun VideoClip(file: File) {
+    androidx.compose.ui.viewinterop.AndroidView(
+        factory = { context ->
+            android.widget.VideoView(context).apply {
+                val controls = android.widget.MediaController(context)
+                controls.setAnchorView(this)
+                setMediaController(controls)
+                setVideoPath(file.path)
+                setOnPreparedListener { seekTo(1) }
+            }
+        },
+        modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp).clip(RoundedCornerShape(14.dp)),
+    )
 }

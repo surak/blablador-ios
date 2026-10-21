@@ -77,3 +77,25 @@ struct StoredImage: View {
         }
     }
 }
+
+/// Generated videos, kept next to the images.
+enum VideoStore {
+    private static var directory: URL {
+        let url = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Videos", isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
+    static func url(for name: String) -> URL { directory.appendingPathComponent(name) }
+
+    static func save(_ data: Data) -> String {
+        let name = UUID().uuidString + ".mp4"
+        try? data.write(to: url(for: name), options: .atomic)
+        return name
+    }
+
+    static func delete(_ names: [String]) {
+        for name in names { try? FileManager.default.removeItem(at: url(for: name)) }
+    }
+}
