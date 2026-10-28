@@ -573,6 +573,7 @@ private struct ComposerView: View {
 
                 TextField(placeholder, text: $draft, axis: .vertical)
                     .textFieldStyle(.plain)
+                    .scaledFont(.body)
                     .lineLimit(1...6)
                     .focused(focused)
                     .padding(.vertical, 10)

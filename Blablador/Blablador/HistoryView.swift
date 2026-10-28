@@ -21,6 +21,7 @@ struct HistoryView: View {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
                 TextField("Search chats", text: $search)
                     .textFieldStyle(.plain)
+                    .scaledFont(.body)
                     .submitLabel(.search)
             }
             .padding(10)
@@ -46,6 +47,7 @@ struct HistoryView: View {
                 onClose()
             } label: {
                 Label("New chat", systemImage: "square.and.pencil")
+                    .scaledFont(.body)
                     .padding(.vertical, 10)
                     .padding(.horizontal, 14)
                     .background(Theme.surface, in: Capsule())
@@ -64,6 +66,7 @@ struct HistoryView: View {
                         onClose()
                     } label: {
                         Text(conversation.title)
+                            .scaledFont(.body)
                             .lineLimit(1)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .contentShape(Rectangle())
@@ -88,6 +91,7 @@ struct HistoryView: View {
             .overlay {
                 if filtered.isEmpty {
                     Text(search.isEmpty ? "No chats yet" : "No results")
+                        .scaledFont(.body)
                         .foregroundStyle(.secondary)
                 }
             }

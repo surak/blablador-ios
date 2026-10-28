@@ -81,6 +81,7 @@ struct MessageView: View {
                     }
                     if !message.content.isEmpty {
                         Text(message.content)
+                            .scaledFont(.body)
                             .textSelection(.enabled)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 10)
@@ -119,6 +120,7 @@ struct MessageView: View {
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
                             Image(systemName: "exclamationmark.triangle")
                             Text(message.content)
+                                .scaledFont(.body)
                                 .textSelection(.enabled)
                         }
                         .foregroundStyle(.red)
@@ -352,6 +354,7 @@ private struct TypingIndicator: View {
 
 /// Lightweight markdown renderer: fenced code blocks, headings, bullets and inline styles.
 struct MarkdownText: View {
+    @Environment(\.textScale) private var textScale
     let text: String
 
     private enum Block {
@@ -448,6 +451,7 @@ struct MarkdownText: View {
                 case let .text(body):
                     // One Text per block so a selection can span lines.
                     Text(attributed(body))
+                        .scaledFont(.body)
                 case let .code(language, body):
                     CodeBlock(language: language, code: body)
                 case let .table(header, alignments, rows):
@@ -494,6 +498,14 @@ struct MarkdownText: View {
             .gridColumnAlignment(alignment)
     }
 
+    private static func headingFont(_ style: Font.TextStyle, scale: CGFloat) -> Font {
+#if os(macOS)
+        .system(size: (style == .title3 ? 15 : 13) * scale, weight: .bold)
+#else
+        .system(style, weight: .bold)
+#endif
+    }
+
     private func attributed(_ body: String) -> AttributedString {
         let lines = body.components(separatedBy: "\n").filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
         var result = AttributedString()
@@ -509,7 +521,7 @@ struct MarkdownText: View {
         if let heading = trimmed.range(of: #"^#{1,6}\s+"#, options: .regularExpression) {
             let level = trimmed[heading].filter { $0 == "#" }.count
             var text = inline(String(trimmed[heading.upperBound...]))
-            text.font = level <= 2 ? .title3.bold() : .headline
+            text.font = Self.headingFont(level <= 2 ? .title3 : .headline, scale: textScale)
             return text
         }
         if let bullet = trimmed.range(of: #"^([-*+]|\d+\.)\s+"#, options: .regularExpression) {

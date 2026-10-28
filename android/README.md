@@ -122,6 +122,7 @@ app/src/main/java/de/fz_juelich/blablador/
 ## Version history
 The Android and Apple apps share one version number and one release.
 
+- **2.6.4**: Mac: ⌘+ / ⌘− now also resize reply text, your messages, the text field and the chat list
 - **2.6.3**: Mac: bigger and smaller text with ⌘+ / ⌘− / ⌘0 (View menu); also on iPad with a keyboard
 - **2.6.2**: share and copy generated speech as an audio file (for example into Messages); speech replies drop Read aloud and Select text
 - **2.6.1**: security fixes: the API key stays out of backups and is never stored unencrypted, only web and email links open, update links limited to this project's releases, the Codebase name lookup only with Blablador keys
