@@ -30,7 +30,7 @@ struct HistoryView: View {
                 if closable {
                     Button(action: onClose) {
                         Image(systemName: "chevron.left")
-                            .font(.headline)
+                            .scaledFont(.headline)
                             .frame(width: 40, height: 40)
                             .background(Theme.surface, in: Circle())
                     }
@@ -53,7 +53,7 @@ struct HistoryView: View {
             .buttonStyle(.plain)
 
             Text("Recent")
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline, weight: .semibold)
                 .foregroundStyle(.secondary)
                 .padding(.top, 8)
 

@@ -19,14 +19,14 @@ struct AgentStepsView: View {
                             icon(step)
                                 .frame(width: 16)
                             Text(step.title)
-                                .font(.system(.caption, design: .monospaced))
+                                .scaledFont(.caption, design: .monospaced)
                                 .lineLimit(1)
                                 .truncationMode(.middle)
                                 .foregroundStyle(step.state == .denied ? .secondary : .primary)
                             Spacer(minLength: 0)
                             if !step.detail.isEmpty {
                                 Image(systemName: expanded.contains(step.id) ? "chevron.down" : "chevron.right")
-                                    .font(.caption2)
+                                    .scaledFont(.caption2)
                                     .foregroundStyle(.secondary)
                             }
                         }
@@ -36,7 +36,7 @@ struct AgentStepsView: View {
                     if expanded.contains(step.id), !step.detail.isEmpty {
                         ScrollView([.horizontal, .vertical]) {
                             Text(highlighted(step.detail))
-                                .font(.system(.caption2, design: .monospaced))
+                                .scaledFont(.caption2, design: .monospaced)
                                 .textSelection(.enabled)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(8)
@@ -110,7 +110,7 @@ struct WorkspaceChip: View {
                     Text("Agent · \(folder.lastPathComponent)")
                     Image(systemName: "chevron.down").imageScale(.small)
                 }
-                .font(.caption.weight(.medium))
+                .scaledFont(.caption, weight: .medium)
                 .foregroundStyle(.white)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
@@ -134,10 +134,10 @@ struct CommandApprovalCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Label("Run this command in \(approval.folder)?", systemImage: "terminal")
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline, weight: .semibold)
             ScrollView(.horizontal, showsIndicators: false) {
                 Text(approval.command)
-                    .font(.system(.callout, design: .monospaced))
+                    .scaledFont(.callout, design: .monospaced)
                     .textSelection(.enabled)
                     .padding(8)
             }

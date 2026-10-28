@@ -17,7 +17,7 @@ struct KnowledgeListView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(base.name)
                             Text(library.progress[base.id] ?? summary(base))
-                                .font(.caption)
+                                .scaledFont(.caption)
                                 .foregroundStyle(.secondary)
                         }
                     }
@@ -73,7 +73,7 @@ struct KnowledgeBaseView: View {
                                 .foregroundStyle(Theme.gradient)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(document.name).lineLimit(1)
-                                Text(detail(document)).font(.caption).foregroundStyle(.secondary)
+                                Text(detail(document)).scaledFont(.caption).foregroundStyle(.secondary)
                             }
                         }
 #if os(macOS)
@@ -167,7 +167,7 @@ struct ActiveKnowledgeStrip: View {
                             .buttonStyle(.plain)
                             .accessibilityLabel("Stop using \(base.name)")
                         }
-                        .font(.caption.weight(.medium))
+                        .scaledFont(.caption, weight: .medium)
                         .foregroundStyle(.white)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
@@ -222,13 +222,13 @@ struct CitationsView: View {
                     } label: {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(citation.text)
-                                .font(.caption)
+                                .scaledFont(.caption)
                                 .lineLimit(2)
                                 .multilineTextAlignment(.leading)
                                 .foregroundStyle(.primary)
                             Spacer(minLength: 0)
                             Text("K\(index + 1) · \(citation.document)\(citation.page.map { " · p. \($0)" } ?? "")")
-                                .font(.caption2)
+                                .scaledFont(.caption2)
                                 .lineLimit(1)
                                 .foregroundStyle(.secondary)
                         }
@@ -284,7 +284,7 @@ struct KnowledgeSuggestions: View {
             if matches.isEmpty {
                 Text(library.bases.isEmpty ? "No knowledge bases yet. Create one with the books button at the top."
                                            : "No knowledge base matches “\(query)”.")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                     .padding(8)
             }
@@ -298,7 +298,7 @@ struct KnowledgeSuggestions: View {
                         Text(base.name)
                         Spacer()
                         Text(base.documents.count == 1 ? "1 document" : "\(base.documents.count) documents")
-                            .font(.caption)
+                            .scaledFont(.caption)
                             .foregroundStyle(.secondary)
                     }
                     .padding(.horizontal, 10)

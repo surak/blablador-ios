@@ -35,7 +35,7 @@ struct VideoClip: View {
                     Label("Share", systemImage: "square.and.arrow.up")
                 }
             }
-            .font(.caption)
+            .scaledFont(.caption)
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
             .fileExporter(isPresented: $saving, document: VideoFile(url: VideoStore.url(for: name)),
@@ -88,7 +88,7 @@ struct SpeechClip: View {
                 playback.toggle(name)
             } label: {
                 Image(systemName: playing ? "stop.fill" : "play.fill")
-                    .font(.body)
+                    .scaledFont(.body)
                     .frame(width: 36, height: 36)
                     .foregroundStyle(.white)
                     .background(Theme.gradient, in: Circle())
@@ -97,7 +97,7 @@ struct SpeechClip: View {
             .accessibilityLabel(playing ? "Stop" : "Play speech")
             Image(systemName: "waveform")
                 .symbolEffect(.variableColor.iterative, isActive: playing)
-                .font(.title2)
+                .scaledFont(.title2)
                 .foregroundStyle(Theme.gradient)
             Button {
                 saving = true
@@ -184,7 +184,7 @@ struct SpeechModeChip: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Leave speech mode")
         }
-        .font(.caption.weight(.medium))
+        .scaledFont(.caption, weight: .medium)
         .foregroundStyle(.white)
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
@@ -217,7 +217,7 @@ struct SpeechMarkupMenu: View {
             }
         } label: {
             Label("Expressions", systemImage: "theatermasks")
-                .font(.caption.weight(.medium))
+                .scaledFont(.caption, weight: .medium)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
                 .background(Theme.surface, in: Capsule())
@@ -310,7 +310,7 @@ struct VoicesView: View {
                 VStack(alignment: .leading) {
                     Text(voice.name).foregroundStyle(.primary)
                     if voice.isCloned {
-                        Text(voice.transcript).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        Text(voice.transcript).scaledFont(.caption).foregroundStyle(.secondary).lineLimit(1)
                     }
                 }
                 Spacer()

@@ -10,20 +10,50 @@ struct BlabladorApp: App {
         WindowGroup(id: "chat") {
             ChatWindow()
         }
+        .commands {
+            TextSizeCommands()
 #if os(macOS)
-        .commands { AppCommands() }
+            AppCommands()
 #endif
+        }
+    }
+}
+
+/// View → Bigger Text (⌘+), Smaller Text (⌘−), Actual Size (⌘0).
+private struct TextSizeCommands: Commands {
+    @AppStorage(TextSize.key) private var step = 0
+
+    var body: some Commands {
+        CommandGroup(before: .toolbar) {
+            Button("Bigger Text") { step = min(step + 1, TextSize.range.upperBound) }
+                .keyboardShortcut("+", modifiers: .command)
+                .disabled(step >= TextSize.range.upperBound)
+            Button("Smaller Text") { step = max(step - 1, TextSize.range.lowerBound) }
+                .keyboardShortcut("-", modifiers: .command)
+                .disabled(step <= TextSize.range.lowerBound)
+            Button("Actual Size") { step = 0 }
+                .keyboardShortcut("0", modifiers: .command)
+                .disabled(step == 0)
+            Divider()
+        }
     }
 }
 
 /// One window (or tab) with its own open conversation; the chat history is shared.
 private struct ChatWindow: View {
     @StateObject private var store = ChatStore()
+    @AppStorage(TextSize.key) private var textSizeStep = 0
 
     var body: some View {
         ChatView()
             .environmentObject(store)
             .focusedSceneObject(store)
+#if os(macOS)
+            .environment(\.textScale, pow(1.1, CGFloat(textSizeStep)))
+            .scaledFont(.body)
+#else
+            .dynamicTypeSize(TextSize.dynamicType(textSizeStep))
+#endif
 #if os(macOS)
             .frame(minWidth: 700, minHeight: 600)
 #endif

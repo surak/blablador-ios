@@ -151,7 +151,7 @@ struct ChatView: View {
                 RoundedRectangle(cornerRadius: 20)
                     .strokeBorder(Theme.gradient, style: StrokeStyle(lineWidth: 3, dash: [10, 6]))
                     .background(Theme.background.opacity(0.6), in: RoundedRectangle(cornerRadius: 20))
-                    .overlay { Label("Drop images or PDFs to attach", systemImage: "paperclip").font(.title3.weight(.semibold)) }
+                    .overlay { Label("Drop images or PDFs to attach", systemImage: "paperclip").scaledFont(.title3, weight: .semibold) }
                     .padding()
                     .allowsHitTesting(false)
             }
@@ -386,7 +386,7 @@ private struct ModelMenu: View {
                         .interpolation(.high)
                         .frame(width: 20, height: 20)
                     Text("Blablador")
-                        .font(.headline)
+                        .scaledFont(.headline)
                         .foregroundStyle(.primary)
                 }
                 HStack(spacing: 2) {
@@ -395,7 +395,7 @@ private struct ModelMenu: View {
                     Image(systemName: "chevron.down")
                         .imageScale(.small)
                 }
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
             }
             .frame(maxWidth: 220)
@@ -454,7 +454,7 @@ private struct WelcomeView: View {
                             Button { onPick(suggestion.text) } label: {
                                 VStack(alignment: .leading) {
                                     Text(suggestion.text)
-                                        .font(.subheadline)
+                                        .scaledFont(.subheadline)
                                         .multilineTextAlignment(.leading)
                                         .foregroundStyle(.primary)
                                     Spacer()
@@ -584,7 +584,7 @@ private struct ComposerView: View {
                 } label: {
                     Image(systemName: speech.isRecording ? "waveform" : "mic")
                         .symbolEffect(.variableColor.iterative, isActive: speech.isRecording)
-                        .font(.title3)
+                        .scaledFont(.title3)
                         .frame(width: 40, height: 40)
                         .foregroundStyle(speech.isRecording ? AnyShapeStyle(Theme.gradient) : AnyShapeStyle(.primary))
                 }
@@ -594,7 +594,7 @@ private struct ComposerView: View {
                 if store.isStreaming {
                     Button(action: store.stop) {
                         Image(systemName: "stop.fill")
-                            .font(.body)
+                            .scaledFont(.body)
                             .frame(width: 40, height: 40)
                             .foregroundStyle(Theme.background)
                             .background(.primary, in: Circle())
@@ -604,7 +604,7 @@ private struct ComposerView: View {
                 } else if canSend {
                     Button(action: onSend) {
                         Image(systemName: speechMode ? "waveform" : imageMode ? "paintbrush.pointed.fill" : videoMode ? "film.fill" : "arrow.up")
-                            .font(.body.weight(.semibold))
+                            .scaledFont(.body, weight: .semibold)
                             .frame(width: 40, height: 40)
                             .foregroundStyle(.white)
                             .background(Theme.gradient, in: Circle())
@@ -724,7 +724,7 @@ private struct ComposerView: View {
     private var pasteBar: some View {
         HStack(spacing: 10) {
             Image(systemName: "photo.on.rectangle").foregroundStyle(.secondary)
-            Text("Image on the clipboard").font(.subheadline).foregroundStyle(.secondary)
+            Text("Image on the clipboard").scaledFont(.subheadline).foregroundStyle(.secondary)
             Spacer()
             PasteButton(supportedContentTypes: [.image]) { providers in
                 Task { await attach(providers) }
@@ -733,7 +733,7 @@ private struct ComposerView: View {
             .buttonBorderShape(.capsule)
             .controlSize(.small)
             Button { dismissedClipboard = UIPasteboard.general.changeCount; clipboardHasImage = false } label: {
-                Image(systemName: "xmark").font(.caption.weight(.semibold))
+                Image(systemName: "xmark").scaledFont(.caption, weight: .semibold)
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
@@ -872,7 +872,7 @@ private struct ComposerView: View {
             }
         } label: {
             Image(systemName: "plus")
-                .font(.title3)
+                .scaledFont(.title3)
                 .frame(width: 40, height: 40)
                 .foregroundStyle(.primary)
         }
@@ -912,7 +912,7 @@ private struct ComposerView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Leave video mode")
         }
-        .font(.caption.weight(.medium))
+        .scaledFont(.caption, weight: .medium)
         .foregroundStyle(.white)
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
@@ -961,7 +961,7 @@ private struct ComposerView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Leave image mode")
         }
-        .font(.caption.weight(.medium))
+        .scaledFont(.caption, weight: .medium)
         .foregroundStyle(.white)
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
@@ -1011,7 +1011,7 @@ extension ComposerView {
                         ProgressView().controlSize(.small)
                         Text("Reading text…")
                     }
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 8)
@@ -1036,14 +1036,14 @@ struct DocumentChip: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "doc.richtext")
-                .font(.title3)
+                .scaledFont(.title3)
                 .foregroundStyle(Theme.gradient)
             VStack(alignment: .leading, spacing: 1) {
                 Text(document.name)
-                    .font(.caption.weight(.medium))
+                    .scaledFont(.caption, weight: .medium)
                     .lineLimit(1)
                 Text(detail)
-                    .font(.caption2)
+                    .scaledFont(.caption2)
                     .foregroundStyle(.secondary)
             }
             .frame(maxWidth: 180, alignment: .leading)

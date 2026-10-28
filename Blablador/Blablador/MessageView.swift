@@ -32,7 +32,7 @@ private struct EditImageButton: View {
                 edit(name)
             } label: {
                 Label("Edit", systemImage: "paintbrush.pointed.fill")
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption, weight: .semibold)
                     .foregroundStyle(.white)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
@@ -94,7 +94,7 @@ struct MessageView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     if let status = message.status {
                         Label(status, systemImage: status.hasPrefix("Search") ? "globe" : status.contains("image") ? "paintbrush.pointed" : status.hasPrefix("Speaking") ? "waveform" : status.contains("nowledge") ? "books.vertical" : status.hasPrefix("Running") || status.hasPrefix("Waiting") ? "terminal" : "ellipsis")
-                            .font(.subheadline)
+                            .scaledFont(.subheadline)
                             .foregroundStyle(.secondary)
                             .symbolEffect(.pulse)
                     }
@@ -203,7 +203,7 @@ struct MessageView: View {
             }
         }
         .buttonStyle(.plain)
-        .font(.subheadline)
+        .scaledFont(.subheadline)
         .foregroundStyle(.secondary)
     }
 }
@@ -316,13 +316,13 @@ private struct SourcesView: View {
                         Link(destination: url) {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(source.title)
-                                    .font(.caption.weight(.medium))
+                                    .scaledFont(.caption, weight: .medium)
                                     .lineLimit(2)
                                     .multilineTextAlignment(.leading)
                                     .foregroundStyle(.primary)
                                 Spacer(minLength: 0)
                                 Text("\(index + 1) · \(url.host() ?? source.url)")
-                                    .font(.caption2)
+                                    .scaledFont(.caption2)
                                     .lineLimit(1)
                                     .foregroundStyle(.secondary)
                             }
@@ -485,7 +485,7 @@ struct MarkdownText: View {
         // Models put <br> in cells for line breaks.
         let text = markdown.replacingOccurrences(of: #"<br\s*/?>"#, with: "\n", options: [.regularExpression, .caseInsensitive])
         return Text(inline(text))
-            .font(.subheadline)
+            .scaledFont(.subheadline)
             .multilineTextAlignment(alignment == .trailing ? .trailing : alignment == .center ? .center : .leading)
             .frame(minWidth: 40, maxWidth: 320, alignment: Alignment(horizontal: alignment, vertical: .top))
             .fixedSize(horizontal: false, vertical: true)
@@ -546,14 +546,14 @@ private struct CodeBlock: View {
                 }
                 .buttonStyle(.plain)
             }
-            .font(.caption)
+            .scaledFont(.caption)
             .foregroundStyle(.secondary)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 Text(code)
-                    .font(.system(.footnote, design: .monospaced))
+                    .scaledFont(.footnote, design: .monospaced)
                     .padding(12)
             }
         }
@@ -610,10 +610,10 @@ private struct ThinkingView: View {
                         .symbolEffect(.pulse, isActive: isThinking)
                     Text(isThinking ? "Thinking…" : "Thought process")
                     Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
+                        .scaledFont(.caption, weight: .semibold)
                         .rotationEffect(.degrees(isExpanded ? 90 : 0))
                 }
-                .font(.subheadline)
+                .scaledFont(.subheadline)
                 .foregroundStyle(.secondary)
                 .contentShape(Rectangle())
             }
@@ -624,7 +624,7 @@ private struct ThinkingView: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         Text(text.trimmingCharacters(in: .whitespacesAndNewlines))
-                            .font(.callout)
+                            .scaledFont(.callout)
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)

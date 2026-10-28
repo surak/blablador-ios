@@ -175,7 +175,7 @@ struct DecisionView: View {
                 Section {
                     picker
                     if let description = decision.description {
-                        Text(description).font(.callout).foregroundStyle(.secondary)
+                        Text(description).scaledFont(.callout).foregroundStyle(.secondary)
                     }
                 } header: {
                     Text("Decision")
@@ -186,7 +186,7 @@ struct DecisionView: View {
                 Section {
                     TextField("Describe the situation: a message, a record, a request…", text: $decision.state, axis: .vertical)
                         .lineLimit(3...12)
-                        .font(decision.json ? .system(.callout, design: .monospaced) : .body)
+                        .scaledFont(decision.json ? .callout : .body, design: decision.json ? .monospaced : nil)
                         .autocorrectionDisabled()
                         .onChange(of: decision.state) { _, _ in answers = [:] }
                 } header: {
@@ -314,7 +314,7 @@ struct DecisionView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(decision.name).foregroundStyle(.primary)
-                    Text(decision.category).font(.caption).foregroundStyle(.secondary)
+                    Text(decision.category).scaledFont(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
                 Image(systemName: "chevron.up.chevron.down").foregroundStyle(.secondary)
@@ -522,15 +522,15 @@ private struct QuestionRow: View {
             HStack(alignment: .firstTextBaseline) {
                 Image(systemName: question.type == "noul" ? "checkmark.circle" : question.type == "choice" ? "list.bullet" : "gauge.medium")
                     .foregroundStyle(Theme.gradient)
-                Text(question.instructions).font(.subheadline.weight(.medium))
+                Text(question.instructions).scaledFont(.subheadline, weight: .medium)
             }
             if let summary {
-                Text(summary).font(.headline).foregroundStyle(Theme.gradient)
+                Text(summary).scaledFont(.headline).foregroundStyle(Theme.gradient)
                 ForEach(bars, id: \.label) { bar in
                     ProbabilityBar(label: bar.label, probability: bar.probability, highlighted: bar.winner)
                 }
             } else {
-                Text(optionsText).font(.caption).foregroundStyle(.secondary)
+                Text(optionsText).scaledFont(.caption).foregroundStyle(.secondary)
             }
         }
         .padding(.vertical, 4)
@@ -555,7 +555,7 @@ private struct ProbabilityBar: View {
     var body: some View {
         HStack(spacing: 8) {
             Text(label)
-                .font(.caption)
+                .scaledFont(.caption)
                 .lineLimit(1)
                 .frame(width: 130, alignment: .leading)
             GeometryReader { proxy in
@@ -568,7 +568,7 @@ private struct ProbabilityBar: View {
             }
             .frame(height: 8)
             Text("\(Int((probability * 100).rounded()))%")
-                .font(.caption.monospacedDigit())
+                .scaledFont(.caption).monospacedDigit()
                 .foregroundStyle(.secondary)
                 .frame(width: 40, alignment: .trailing)
         }

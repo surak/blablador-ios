@@ -202,12 +202,12 @@ struct UpdateBanner: View {
         if updater.showsBanner, let release = updater.available {
             HStack(spacing: 12) {
                 Image(systemName: "arrow.down.circle.fill")
-                    .font(.title2)
+                    .scaledFont(.title2)
                     .foregroundStyle(.tint)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Blablador \(release.version) is available")
-                        .font(.subheadline.weight(.semibold))
-                    Text(detail).font(.caption).foregroundStyle(.secondary)
+                        .scaledFont(.subheadline, weight: .semibold)
+                    Text(detail).scaledFont(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
                 action(release)
