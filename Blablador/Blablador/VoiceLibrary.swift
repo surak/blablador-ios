@@ -1,6 +1,7 @@
 import AVFoundation
 import Foundation
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// A Drama 3 voice: a built-in Fish Audio voice, or one cloned from a short recording.
 struct Voice: Identifiable, Codable, Hashable {
@@ -256,6 +257,47 @@ enum AudioStore {
 
     static func url(for name: String) -> URL { directory.appendingPathComponent(name) }
 
+    /// A copy named "Blablador speech.mp3", so Messages and other apps show a readable file name.
+    static func shareURL(for name: String) -> URL {
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Share-" + (name as NSString).deletingPathExtension, isDirectory: true)
+        let target = folder.appendingPathComponent("Blablador speech.mp3")
+        if !FileManager.default.fileExists(atPath: target.path) {
+            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try? FileManager.default.copyItem(at: url(for: name), to: target)
+        }
+        return target
+    }
+
+    /// Puts the audio on the clipboard as a file, so it can be pasted into Messages, Mail or Finder.
+    static func copyToClipboard(_ name: String) {
+        let file = shareURL(for: name)
+        #if os(iOS)
+        guard let data = try? Data(contentsOf: file) else { return }
+        UIPasteboard.general.setItems([[UTType.mp3.identifier: data]])
+        #else
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.writeObjects([file as NSURL])
+        #endif
+    }
+
+    #if os(iOS)
+    /// UIKit's share sheet; SwiftUI's ShareLink bounces back from Messages the first time.
+    static func presentShareSheet(_ names: [String]) {
+        let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState == .foregroundActive }
+        guard var top = scene?.keyWindow?.rootViewController else { return }
+        while let presented = top.presentedViewController { top = presented }
+        let sheet = UIActivityViewController(activityItems: names.map(shareURL), applicationActivities: nil)
+        if let popover = sheet.popoverPresentationController {
+            popover.sourceView = top.view
+            popover.sourceRect = CGRect(x: top.view.bounds.midX, y: top.view.bounds.midY, width: 0, height: 0)
+            popover.permittedArrowDirections = []
+        }
+        top.present(sheet, animated: true)
+    }
+    #endif
+
     static func save(_ data: Data) -> String {
         let name = UUID().uuidString + ".mp3"
         try? data.write(to: url(for: name), options: .atomic)
@@ -264,6 +306,17 @@ enum AudioStore {
 
     static func delete(_ names: [String]) {
         for name in names { try? FileManager.default.removeItem(at: url(for: name)) }
+    }
+}
+
+/// Generated speech handed to the share sheet as an MP3 file.
+struct SpeechAudio: Transferable {
+    let name: String
+
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(exportedContentType: .mp3) { audio in
+            SentTransferredFile(AudioStore.shareURL(for: audio.name))
+        }
     }
 }
 

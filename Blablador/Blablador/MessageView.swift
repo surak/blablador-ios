@@ -143,7 +143,11 @@ struct MessageView: View {
     private var actions: some View {
         HStack(spacing: 18) {
             Button {
-                Clipboard.copy(message.content)
+                if let audio = message.audio.last {
+                    AudioStore.copyToClipboard(audio)
+                } else {
+                    Clipboard.copy(message.content)
+                }
                 copied = true
                 Task {
                     try? await Task.sleep(for: .seconds(1.5))
@@ -152,24 +156,43 @@ struct MessageView: View {
             } label: {
                 Image(systemName: copied ? "checkmark" : "doc.on.doc")
             }
-            .accessibilityLabel("Copy")
+            .accessibilityLabel(message.audio.isEmpty ? "Copy" : "Copy audio")
 
-            Button {
-                synthesizer.toggle(message)
-            } label: {
-                Image(systemName: synthesizer.speakingID == message.id ? "stop.circle" : "speaker.wave.2")
+            if message.audio.isEmpty {
+                Button {
+                    synthesizer.toggle(message)
+                } label: {
+                    Image(systemName: synthesizer.speakingID == message.id ? "stop.circle" : "speaker.wave.2")
+                }
+                .accessibilityLabel("Read aloud")
+
+                Button {
+                    selectingText = true
+                } label: {
+                    Image(systemName: "selection.pin.in.out")
+                }
+                .accessibilityLabel("Select text")
             }
-            .accessibilityLabel("Read aloud")
 
-            Button {
-                selectingText = true
-            } label: {
-                Image(systemName: "selection.pin.in.out")
-            }
-            .accessibilityLabel("Select text")
-
-            ShareLink(item: message.content) {
-                Image(systemName: "square.and.arrow.up")
+            if message.audio.isEmpty {
+                ShareLink(item: message.content) {
+                    Image(systemName: "square.and.arrow.up")
+                }
+            } else {
+                #if os(iOS)
+                Button {
+                    AudioStore.presentShareSheet(message.audio)
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
+                }
+                .accessibilityLabel("Share audio")
+                #else
+                ShareLink(items: message.audio.map(SpeechAudio.init),
+                          preview: { _ in SharePreview("Blablador speech") }) {
+                    Image(systemName: "square.and.arrow.up")
+                }
+                .accessibilityLabel("Share audio")
+                #endif
             }
 
             if isLast {

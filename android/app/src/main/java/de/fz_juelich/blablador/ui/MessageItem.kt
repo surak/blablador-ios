@@ -269,15 +269,25 @@ private fun Actions(message: ChatMessage, isLast: Boolean, speaking: Boolean, on
     LaunchedEffect(copied) { if (copied) { delay(1500); copied = false } }
     val tint = MaterialTheme.colorScheme.onSurfaceVariant
     Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-        IconButton(onClick = { clipboard.setText(AnnotatedString(message.content)); copied = true }) {
-            Icon(if (copied) Icons.Outlined.Check else Icons.Outlined.ContentCopy, "Copy", Modifier.size(18.dp), tint = tint)
+        // Generated speech: Copy and Share hand over the audio file; reading the text aloud makes no sense there.
+        val audio = message.audio.map { androidx.core.content.FileProvider.getUriForFile(context, context.packageName + ".files", File(File(context.filesDir, "audio"), it)) }
+        IconButton(onClick = {
+            if (audio.isEmpty()) clipboard.setText(AnnotatedString(message.content))
+            else context.getSystemService(android.content.ClipboardManager::class.java)
+                .setPrimaryClip(android.content.ClipData.newUri(context.contentResolver, "Blablador speech", audio.last()))
+            copied = true
+        }) {
+            Icon(if (copied) Icons.Outlined.Check else Icons.Outlined.ContentCopy, if (audio.isEmpty()) "Copy" else "Copy audio", Modifier.size(18.dp), tint = tint)
         }
-        IconButton(onClick = onSpeak) {
+        if (audio.isEmpty()) IconButton(onClick = onSpeak) {
             Icon(if (speaking) Icons.Outlined.StopCircle else Icons.AutoMirrored.Outlined.VolumeUp, "Read aloud", Modifier.size(18.dp), tint = tint)
         }
         IconButton(onClick = {
-            context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, message.content), null))
-        }) { Icon(Icons.Outlined.Share, "Share", Modifier.size(18.dp), tint = tint) }
+            val intent = if (audio.isEmpty()) Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, message.content)
+            else Intent(Intent.ACTION_SEND_MULTIPLE).setType("audio/mpeg")
+                .putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(audio)).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            context.startActivity(Intent.createChooser(intent, null))
+        }) { Icon(Icons.Outlined.Share, if (audio.isEmpty()) "Share" else "Share audio", Modifier.size(18.dp), tint = tint) }
         if (isLast) IconButton(onClick = onRegenerate) { Icon(Icons.Outlined.Refresh, "Regenerate", Modifier.size(18.dp), tint = tint) }
     }
 }
