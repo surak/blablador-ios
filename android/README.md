@@ -94,6 +94,7 @@ echo "sdk.dir=$ANDROID_HOME" > local.properties
 
 ./gradlew assembleDebug        # app/build/outputs/apk/debug/app-debug.apk
 ./gradlew installDebug         # onto a connected device or emulator
+./gradlew testDebugUnitTest    # unit tests (skills, memory, chat search, web pages, maths, history, MCP, streaming)
 ./gradlew assembleRelease      # app/build/outputs/apk/release/app-release.apk (signed with the debug key)
 ```
 

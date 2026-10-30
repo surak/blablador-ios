@@ -30,6 +30,27 @@ class MemoryStore(private val context: Context) {
         /** Lowercased words of three letters or more, for matching memories and chats to a question. */
         fun words(text: String): Set<String> =
             text.lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.length >= 3 }.toSet()
+
+        /**
+         * The memory part of the system prompt. With many memories, only those sharing words with the
+         * question plus the newest are sent, keeping their numbers so forget still works.
+         */
+        fun systemPrompt(memories: List<Memory>, question: String): String {
+            var prompt = "You have a long-term memory of the user that lasts across chats. Call remember when the user shares something lasting about themselves (name, job, preferences, ongoing projects) or asks you to remember something; save one short fact per call, written in the third person. Call forget with a number when the user says a memory is wrong or asks you to forget it. Never save passwords, keys or other secrets."
+            if (memories.isEmpty()) return "$prompt You don't remember anything yet."
+            val numbered = memories.withIndex().toList()
+            var shown = numbered
+            if (numbered.size > ALWAYS_SENT) {
+                val words = words(question)
+                val relevant = numbered.map { it to (words(it.value.text) intersect words).size }
+                    .filter { it.second > 0 }.sortedByDescending { it.second }.take(20).map { it.first.index }
+                val keep = relevant.toSet() + numbered.takeLast(10).map { it.index }
+                shown = numbered.filter { it.index in keep }
+            }
+            prompt += " What you remember:\n" + shown.joinToString("\n") { "${it.index + 1}. ${it.value.text}" }
+            if (shown.size < numbered.size) prompt += "\n(${numbered.size - shown.size} other memories aren't shown because they don't seem related to this message.)"
+            return prompt
+        }
     }
 
     private val prefs = context.getSharedPreferences("memory", Context.MODE_PRIVATE)
@@ -108,22 +129,7 @@ class MemoryStore(private val context: Context) {
      * Added to the system prompt when memory is on. With many memories, only those sharing words with the
      * question plus the newest are sent, keeping their numbers so forget still works.
      */
-    fun systemPrompt(question: String): String {
-        var prompt = "You have a long-term memory of the user that lasts across chats. Call remember when the user shares something lasting about themselves (name, job, preferences, ongoing projects) or asks you to remember something; save one short fact per call, written in the third person. Call forget with a number when the user says a memory is wrong or asks you to forget it. Never save passwords, keys or other secrets."
-        if (memories.isEmpty()) return "$prompt You don't remember anything yet."
-        val numbered = memories.withIndex().toList()
-        var shown = numbered
-        if (numbered.size > ALWAYS_SENT) {
-            val words = words(question)
-            val relevant = numbered.map { it to (words(it.value.text) intersect words).size }
-                .filter { it.second > 0 }.sortedByDescending { it.second }.take(20).map { it.first.index }
-            val keep = relevant.toSet() + numbered.takeLast(10).map { it.index }
-            shown = numbered.filter { it.index in keep }
-        }
-        prompt += " What you remember:\n" + shown.joinToString("\n") { "${it.index + 1}. ${it.value.text}" }
-        if (shown.size < numbered.size) prompt += "\n(${numbered.size - shown.size} other memories aren't shown because they don't seem related to this message.)"
-        return prompt
-    }
+    fun systemPrompt(question: String): String = systemPrompt(memories.toList(), question)
 
     private fun persist() = EncryptedStorage.write(context, file, BlabladorApi.json.encodeToString(serializer, memories.toList()))
 }

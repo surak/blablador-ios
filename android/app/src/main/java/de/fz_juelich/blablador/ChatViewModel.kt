@@ -829,24 +829,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     // MARK: Long chats
 
-    /** The system prompt (with the summary of older messages, if any) and the messages after the summary. */
-    private fun history(system: String, conversation: Conversation): List<JsonObject> {
-        val covered = minOf(conversation.summaryCount ?: 0, conversation.messages.size)
-        val summary = conversation.summary
-        val text = if (summary != null && covered > 0)
-            "$system\n\nSummary of the earlier part of this chat (those messages are not shown):\n$summary" else system
-        return listOf(buildJsonObject { put("role", "system"); put("content", text) }) +
-            conversation.messages.drop(covered).filter { !it.isError }.map { wireMessage(it) }
-    }
+    private fun history(system: String, conversation: Conversation) = chatHistory(system, conversation, ::wireMessage)
 
-    /** Rough size of a request: text, plus about 3,000 characters per image. */
-    private fun size(wire: List<JsonObject>): Int = wire.sumOf { message ->
-        when (val content = message["content"]) {
-            is JsonPrimitive -> content.content.length
-            is kotlinx.serialization.json.JsonArray -> content.sumOf { part -> jsonString((part as? JsonObject)?.get("text"))?.length ?: 3_000 }
-            else -> 0
-        }
-    }
+    private fun size(wire: List<JsonObject>) = requestSize(wire)
 
     /**
      * Summarises everything but the most recent messages with the helper model when the chat got too long;
@@ -890,5 +875,24 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private fun title(text: String): String {
         val first = text.lineSequence().first()
         return if (first.length > 40) first.take(40) + "…" else first
+    }
+}
+
+/** The system prompt (with the summary of older messages, if any) and the messages after the summary. */
+internal fun chatHistory(system: String, conversation: Conversation, wireMessage: (ChatMessage) -> JsonObject): List<JsonObject> {
+    val covered = minOf(conversation.summaryCount ?: 0, conversation.messages.size)
+    val summary = conversation.summary
+    val text = if (summary != null && covered > 0)
+        "$system\n\nSummary of the earlier part of this chat (those messages are not shown):\n$summary" else system
+    return listOf(buildJsonObject { put("role", "system"); put("content", text) }) +
+        conversation.messages.drop(covered).filter { !it.isError }.map(wireMessage)
+}
+
+/** Rough size of a request: text, plus about 3,000 characters per image. */
+internal fun requestSize(wire: List<JsonObject>): Int = wire.sumOf { message ->
+    when (val content = message["content"]) {
+        is JsonPrimitive -> content.content.length
+        is kotlinx.serialization.json.JsonArray -> content.sumOf { part -> jsonString((part as? JsonObject)?.get("text"))?.length ?: 3_000 }
+        else -> 0
     }
 }
