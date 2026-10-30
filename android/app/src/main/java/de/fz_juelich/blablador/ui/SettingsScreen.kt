@@ -126,6 +126,10 @@ fun SettingsScreen(vm: ChatViewModel, onOpenKnowledge: () -> Unit, onOpenVoices:
                 Toggle("Web search", vm.webSearchEnabled, vm::setWebSearch)
             }
 
+            Section("Python", footer = "Lets the model run Python on this device for calculations, data analysis and plots, with numpy, pandas and matplotlib. The code runs in a sandbox without access to your files; the first run downloads about 20 MB.") {
+                Toggle("Run Python code", vm.pythonEnabled, vm::setPython)
+            }
+
             Section("Custom instructions", footer = "Sent as a system prompt with every chat.") {
                 OutlinedTextField(vm.systemPrompt, vm::updateSystemPrompt, Modifier.fillMaxWidth(),
                     placeholder = { Text("e.g. Answer concisely.") }, minLines = 2, maxLines = 6)

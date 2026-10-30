@@ -106,6 +106,13 @@ object Tools {
         listOf("name", "description", "instructions"),
     )
 
+    val runPython = function(
+        "run_python",
+        "Run Python code on the user's device (Pyodide: numpy, pandas, matplotlib, scipy, sympy, scikit-learn and more; other pure-Python packages via micropip). Use it for calculations, data analysis and plots. Print what you need to see; the value of the last line is returned too. Matplotlib figures are shown to the user automatically. Variables don't persist between calls.",
+        buildJsonObject { put("code", stringProperty("The Python code to run.")) },
+        listOf("code"),
+    )
+
     val generateImage = function(
         "generate_image",
         "Create a new image from a text description. Use when the user asks to draw, create, generate or imagine a picture.",

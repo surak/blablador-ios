@@ -23,6 +23,7 @@ import de.fz_juelich.blablador.data.ImageStore
 import de.fz_juelich.blablador.data.EncryptedStorage
 import de.fz_juelich.blablador.data.KnowledgeLibrary
 import de.fz_juelich.blablador.data.ChatSearch
+import de.fz_juelich.blablador.data.PythonRunner
 import de.fz_juelich.blablador.data.complete
 import de.fz_juelich.blablador.data.McpLibrary
 import de.fz_juelich.blablador.data.McpTool
@@ -159,6 +160,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setWebSearch(on: Boolean) { webSearchEnabled = on; settings.webSearchEnabled = on }
+
+    var pythonEnabled by mutableStateOf(settings.pythonEnabled)
+        private set
+    fun setPython(on: Boolean) { pythonEnabled = on; settings.pythonEnabled = on }
+    private val python by lazy { PythonRunner(getApplication()) }
     fun setImageTools(on: Boolean) { imageToolsEnabled = on; settings.imageToolsEnabled = on }
     fun updateSystemPrompt(text: String) { systemPrompt = text; settings.systemPrompt = text }
     fun chooseOcrEngine(engine: String) { ocrEngine = engine; settings.ocrEngine = engine }
@@ -389,6 +395,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         if (webSearchEnabled) {
             system += WebSearch.SYSTEM_PROMPT
         }
+        if (pythonEnabled) system += " " + PythonRunner.SYSTEM_PROMPT
         if (imageToolsEnabled) {
             system += " You can create images with generate_image and modify the latest image in the chat with edit_image. Never describe an image as created unless the tool succeeded."
         }
@@ -410,6 +417,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
         val tools = buildList {
             if (webSearchEnabled) { add(Tools.webSearch); add(Tools.imageSearch); add(Tools.readPage) }
+            if (pythonEnabled) add(Tools.runPython)
             if (imageToolsEnabled) { add(Tools.generateImage); add(Tools.editImage) }
             if (voices.toolsEnabled) add(Tools.generateSpeech)
             if (memory.enabled) { add(Tools.remember); add(Tools.forget) }
@@ -608,6 +616,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                             "Image search failed: ${e.message}"
                         }
                     }
+                    call.name == "run_python" && !jsonString(arguments?.get("code")).isNullOrBlank() -> {
+                        outsideContent = true
+                        runPython(jsonString(arguments?.get("code")).orEmpty(), replyId)
+                    }
                     mcpTools.any { it.qualifiedName == call.name } -> {
                         outsideContent = true
                         runMcpTool(mcpTools.first { it.qualifiedName == call.name }, arguments ?: JsonObject(emptyMap()), replyId)
@@ -732,6 +744,31 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private fun persist() {
         val snapshot = conversations.toList()
         viewModelScope.launch(saveDispatcher) { conversationStore.save(snapshot) }
+    }
+
+    /** Runs Python with Pyodide; figures are added to the reply as images. */
+    private suspend fun runPython(code: String, replyId: String): String {
+        updateMessage(replyId) { it.copy(status = "Running Python…", toolCalls = it.toolCalls + "Python") }
+        // Attached documents, as text files in /data.
+        val files = current?.messages.orEmpty().flatMap { it.documents }.associate { document ->
+            val name = document.name.replace("/", "_")
+            (if (name.endsWith(".txt")) name else "$name.txt") to document.text
+        }
+        return try {
+            val result = python.run(code, files)
+            val names = result.images.map(images::save)
+            if (names.isNotEmpty()) updateMessage(replyId) { it.copy(images = it.images + names) }
+            var output = result.output.trim()
+            result.value?.takeIf { it.isNotEmpty() && it != "None" }?.let { output += (if (output.isEmpty()) "" else "\n") + "Result: " + it }
+            result.error?.let { output += (if (output.isEmpty()) "" else "\n") + it }
+            if (names.isNotEmpty()) output += "\n[${names.size} figure(s) shown to the user]"
+            output = output.trim()
+            if (output.isEmpty()) "The code ran without output." else output.takeLast(20_000)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            "Python failed: ${e.message}"
+        }
     }
 
     /** Replaces a new chat's provisional title (its first words) with a short name from the helper model. */

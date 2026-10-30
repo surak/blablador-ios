@@ -234,6 +234,11 @@ class Settings(context: Context) {
         get() = prefs.getInt("responseTimeoutMinutes", 10)
         set(value) = prefs.edit().putInt("responseTimeoutMinutes", value).apply()
 
+    /** Lets the model run Python on the device (Pyodide) for calculations and plots. */
+    var pythonEnabled: Boolean
+        get() = prefs.getBoolean("pythonEnabled", true)
+        set(value) = prefs.edit().putBoolean("pythonEnabled", value).apply()
+
     var webSearchEnabled: Boolean
         get() = prefs.getBoolean("webSearchEnabled", true)
         set(value) = prefs.edit().putBoolean("webSearchEnabled", value).apply()
