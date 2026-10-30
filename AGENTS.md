@@ -45,11 +45,16 @@ release tagged `v<version>` with the Mac DMG and zip, the Android APK and `SHA25
 - `MCP.swift`: MCP client (Streamable HTTP, JSON or SSE answers, `Mcp-Session-Id`), servers in Settings → Connected tools (encrypted `mcp.json`, optional bearer token). Tools appear as `<server>__<tool>`; calls wait for the user's OK in `CommandApprovalCard` unless the server's "Ask before each tool call" is off or the user chose Allow for this chat; shown as agent steps; outside content
 - `RichContent.swift`: `WebBlock` (WKWebView, content pushed in with JavaScript) renders maths with KaTeX and Mermaid diagrams from jsDelivr; `ArtifactBlock` previews closed html/svg/mermaid fences; `CodeActions` copy and save code blocks
 - `PythonRunner.swift`: `run_python` tool (Settings: Run Python code): Pyodide 0.26.4 from jsDelivr in a hidden WKWebView, `callAsyncJavaScript` runs the code with attached documents as text files in /data; stdout, last value and tracebacks go back to the model, matplotlib figures (MPLBACKEND=AGG) are saved as reply images; 3-minute timeout resets the web view; shown as a "Ran Python" step
+- Data files (CSV, Excel, JSON…, `DataFiles` in `PythonRunner.swift`): attached as a `DocumentAttachment` with `dataFile` (encrypted original in `DataFiles/`, `text` describes it with the first 40 lines); Python gets the real bytes in /data; Excel via openpyxl installed with micropip on demand
+- Versions: editing a message (`ChatStore.edit`) or regenerating keeps the old tail in `ChatMessage.alternatives` with `version` numbers; `showVersion` switches (`ChatStore.messages(_:showingVersion:at:)`); `Conversation.allMessages` covers every version when deleting files
 - `Skills.swift`: skills (`SkillLibrary`, encrypted `skills.json`): names and descriptions in the system prompt, `use_skill` loads instructions, `suggest_skill` shows a card the user saves; Settings → Skills with import/share as Markdown with front matter. Android: `data/Skills.kt`, `ui/SkillsScreen.kt`
 - `SiriIntents.swift`, `SiriCommandCenter.swift`: "Ask Blablador" Siri shortcut, which starts a new chat
 - `Info.plist`: App configuration, microphone/speech permission strings
 
 ## Testing
+
+- Unit tests: `swift test` at the repository root (Package.swift builds the app's sources, except `BlabladorApp.swift`, as `BlabladorCore`; tests in `Tests/BlabladorTests`, using their own Keychain service and a fake server for MCP and streaming). `BLABLADOR_NETWORK_TESTS=1 swift test --filter PythonTests` also runs real Pyodide. Android: `cd android && ./gradlew :app:testDebugUnitTest`.
+- Keep app types the tests need out of `BlabladorApp.swift`.
 
 Before making changes:
 1. Build the project: `xcodebuild -project Blablador/Blablador.xcodeproj -scheme Blablador -sdk iphonesimulator -configuration Debug`
