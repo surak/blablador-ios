@@ -19,7 +19,7 @@ data class Memory(
 )
 
 /** Long-term memory: facts saved on the device with the remember tool and sent with every chat. */
-class MemoryStore(context: Context) {
+class MemoryStore(private val context: Context) {
     companion object {
         /** Most memories kept; the oldest are dropped first. */
         const val MAX_MEMORIES = 100
@@ -30,7 +30,7 @@ class MemoryStore(context: Context) {
     private val serializer = ListSerializer(Memory.serializer())
 
     val memories = mutableStateListOf<Memory>().apply {
-        addAll(runCatching { BlabladorApi.json.decodeFromString(serializer, file.readText()) }.getOrDefault(emptyList()))
+        addAll(runCatching { BlabladorApi.json.decodeFromString(serializer, EncryptedStorage.read(context, file)!!) }.getOrDefault(emptyList()))
     }
 
     var enabled by mutableStateOf(prefs.getBoolean("memoryEnabled", true))
@@ -74,5 +74,5 @@ class MemoryStore(context: Context) {
             return prompt
         }
 
-    private fun persist() { file.writeText(BlabladorApi.json.encodeToString(serializer, memories.toList())) }
+    private fun persist() = EncryptedStorage.write(context, file, BlabladorApi.json.encodeToString(serializer, memories.toList()))
 }

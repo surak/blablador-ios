@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import androidx.security.crypto.EncryptedFile
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import kotlinx.serialization.builtins.ListSerializer
@@ -11,19 +12,56 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.UUID
 
-/** Chat history as one JSON file in app storage. */
-class ConversationStore(context: Context) {
+/** Chat history as one encrypted JSON file in app storage. */
+class ConversationStore(private val context: Context) {
     private val file = File(context.filesDir, "conversations.json")
     private val serializer = ListSerializer(Conversation.serializer())
 
     fun load(): List<Conversation> = runCatching {
-        BlabladorApi.json.decodeFromString(serializer, file.readText())
+        BlabladorApi.json.decodeFromString(serializer, EncryptedStorage.read(context, file)!!)
     }.getOrDefault(emptyList())
 
-    fun save(conversations: List<Conversation>) {
-        val temp = File(file.parentFile, "conversations.json.tmp")
-        temp.writeText(BlabladorApi.json.encodeToString(serializer, conversations))
-        temp.renameTo(file)
+    fun save(conversations: List<Conversation>) =
+        EncryptedStorage.write(context, file, BlabladorApi.json.encodeToString(serializer, conversations))
+}
+
+/**
+ * App files encrypted with AES-GCM under a key in the Android Keystore. Used for chat history and memories.
+ * Files saved by older versions in plain JSON are read as they are and rewritten encrypted; a file that can't be
+ * decrypted is moved aside (".unreadable") rather than overwritten. Nothing is written in plain text.
+ */
+object EncryptedStorage {
+    private var masterKey: MasterKey? = null
+
+    private fun masterKey(context: Context): MasterKey? = masterKey ?: runCatching {
+        MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build()
+    }.getOrNull()?.also { masterKey = it }
+
+    private fun encrypted(context: Context, file: File, key: MasterKey) =
+        EncryptedFile.Builder(context, file, key, EncryptedFile.FileEncryptionScheme.AES256_GCM_HKDF_4KB).build()
+
+    @Synchronized
+    fun read(context: Context, file: File): String? {
+        if (!file.exists()) return null
+        val key = masterKey(context)
+        if (key != null) runCatching { encrypted(context, file, key).openFileInput().use { return it.readBytes().decodeToString() } }
+        val plain = runCatching { file.readText() }.getOrNull()
+        if (plain != null && (plain.startsWith("[") || plain.startsWith("{")) && runCatching { BlabladorApi.json.parseToJsonElement(plain) }.isSuccess) {
+            if (key != null) write(context, file, plain)
+            return plain
+        }
+        if (key != null) file.renameTo(File(file.parentFile, file.name + ".unreadable"))
+        return null
+    }
+
+    @Synchronized
+    fun write(context: Context, file: File, text: String) {
+        val key = masterKey(context) ?: return
+        val temp = File(file.parentFile, file.name + ".tmp").apply { delete() }
+        runCatching {
+            encrypted(context, temp, key).openFileOutput().use { it.write(text.encodeToByteArray()) }
+            temp.renameTo(file)
+        }
     }
 }
 

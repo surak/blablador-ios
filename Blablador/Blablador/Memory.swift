@@ -21,7 +21,7 @@ final class MemoryStore: ObservableObject {
     }
 
     private init() {
-        if let data = try? Data(contentsOf: Self.fileURL),
+        if let data = EncryptedStorage.read(Self.fileURL),
            let memories = try? JSONDecoder().decode([Memory].self, from: data) {
             self.memories = memories
         }
@@ -74,7 +74,8 @@ final class MemoryStore: ObservableObject {
     }
 
     private func persist() {
-        try? JSONEncoder().encode(memories).write(to: Self.fileURL, options: .atomic)
+        guard let data = try? JSONEncoder().encode(memories) else { return }
+        EncryptedStorage.write(data, to: Self.fileURL)
     }
 
     private static var fileURL: URL {

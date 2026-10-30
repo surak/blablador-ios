@@ -28,7 +28,7 @@ release tagged `v<version>` with the Mac DMG and zip, the Android APK and `SHA25
 - `ChatModels.swift`: `ChatMessage`, `Conversation`, `RemoteModel`
 - `BlabladorAPI.swift`: `/models` and streaming `/chat/completions` client
 - `ChatStore.swift`: Conversations, persistence, model selection, sending/streaming
-- `KeychainHelper.swift`: API key storage
+- `KeychainHelper.swift`: API key storage; `EncryptedStorage` encrypts chat history and memories (AES-GCM, key in the Keychain; plain files from older versions are converted). Android: `EncryptedStorage` in `data/Storage.kt` (Keystore, `EncryptedFile`), excluded from backups
 - `PDFExtractor.swift`: PDF and photo text extraction (PDFKit; OCR with Vision or Blablador's `alias-ocr` LightOnOCR, chosen in Settings, HTML tables converted to Markdown)
 - `AgentTools.swift`, `AgentViews.swift`: agent mode (macOS). Tools list/read/search/write/edit files confined to `Conversation.workspace` (paths resolved through symlinks) and `run_command` via `zsh -lc` after the user approves (`ChatStore.commandApproval`); up to `AgentTools.maxRounds` tool rounds, steps stored in `ChatMessage.steps`
 - `AppUpdater.swift`: checks `api.github.com/repos/surak/blablador-ios/releases/latest`; on macOS downloads `Blablador-<version>-macOS.zip`, verifies it against `SHA256SUMS.txt`, the exact asset name and checksum line, the bundle id, a newer version and a signature from the same Apple developer team as the running app (`verifySignature`), then swaps the bundle after quitting and relaunches. iOS shows `UpdateBanner` with a link. Releases must keep these asset names

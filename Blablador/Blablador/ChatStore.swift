@@ -16,7 +16,7 @@ final class ConversationLibrary: ObservableObject {
     }
 
     private init() {
-        if let data = try? Data(contentsOf: Self.storageURL),
+        if let data = EncryptedStorage.read(Self.storageURL),
            let saved = try? JSONDecoder().decode([Conversation].self, from: data) {
             conversations = saved
         }
@@ -24,7 +24,7 @@ final class ConversationLibrary: ObservableObject {
 
     func persist() {
         guard let data = try? JSONEncoder().encode(conversations) else { return }
-        try? data.write(to: Self.storageURL, options: .atomic)
+        EncryptedStorage.write(data, to: Self.storageURL)
     }
 }
 
