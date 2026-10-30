@@ -120,7 +120,8 @@ enum ShortcutRunner {
         if let file {
             document = try await attachment(from: file, api: api)
             if let document { prompt = "<document name=\"\(document.name)\">\n\(document.text.prefix(60_000))\n</document>\n\n" + question }
-        } else if let link = question.firstMatch(of: /https?:\/\/[^\s]+/), let page = try? await WebPage.read(String(link.output)) {
+        } else if let link = question.range(of: #"https?://\S+"#, options: .regularExpression),
+                  let page = try? await WebPage.read(String(question[link])) {
             prompt = "<page url=\"\(page.url.absoluteString)\" title=\"\(page.title)\">\n\(page.text)\n</page>\n\n" + question
         }
 

@@ -8,6 +8,10 @@ struct ChatView: View {
     @StateObject private var speech = SpeechRecognizer()
     @StateObject private var synthesizer = SpeechSynthesizer()
     @ObservedObject private var siri = SiriCommandCenter.shared
+#if os(macOS)
+    /// Only the front window takes shared items and Siri commands.
+    @Environment(\.controlActiveState) private var windowState
+#endif
 
     @State private var draft = ""
     @State private var attachments: [Data] = []
@@ -18,6 +22,9 @@ struct ChatView: View {
     @State private var showHistory = false
     @State private var drawerDrag: CGFloat = 0
     @State private var droppedFiles: [URL] = []
+    /// When a share last filled the composer: macOS submits a text field when its text is replaced while it is
+    /// being edited, which must not send the previous draft.
+    @State private var shareArrived = Date.distantPast
     @State private var dropTargeted = false
     @State private var showSettings = false
     @ObservedObject private var knowledge = KnowledgeLibrary.shared
@@ -109,8 +116,14 @@ struct ChatView: View {
             handleSiri(siri.pendingCommand)
         }
         .onChange(of: siri.pendingCommand) { _, command in handleSiri(command) }
-        .onChange(of: siri.pendingShare) { _, share in handleShare(share) }
-        .onAppear { handleShare(siri.pendingShare) }
+        .onChange(of: siri.pendingShare) { _, _ in handleShare() }
+        .onAppear { handleShare() }
+#if os(macOS)
+        .onChange(of: windowState) { _, _ in
+            handleShare()
+            handleSiri(siri.pendingCommand)
+        }
+#endif
         .onChange(of: speech.transcript) { _, text in
             if speech.isRecording { draft = text }
         }
@@ -340,6 +353,7 @@ struct ChatView: View {
     }
 
     private func send() {
+        guard Date().timeIntervalSince(shareArrived) > 1 else { return }
         if speech.isRecording { speech.stop() }
         inputFocused = false
         let text = draft
@@ -352,17 +366,25 @@ struct ChatView: View {
     }
 
     /// Something shared with or opened in Blablador: a new chat with it in the composer, ready to ask about.
-    private func handleShare(_ share: SiriCommandCenter.Share?) {
-        guard let share else { return }
-        SiriCommandCenter.shared.consumeShare()
+    private func handleShare() {
+        guard isFrontWindow, siri.pendingShare != nil, let share = SiriCommandCenter.shared.claimShare() else { return }
+        shareArrived = Date()
         store.newChat()
         draft = share.text
         droppedFiles += share.files
         inputFocused = true
     }
 
+    private var isFrontWindow: Bool {
+#if os(macOS)
+        windowState == .key
+#else
+        true
+#endif
+    }
+
     private func handleSiri(_ command: String?) {
-        guard let command, !command.isEmpty else { return }
+        guard let command, !command.isEmpty, isFrontWindow else { return }
         SiriCommandCenter.shared.consumePendingCommand()
         store.newChat()
         store.send(command)

@@ -7,6 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		9B2A76A6E3E0A1B200000310 /* ShareInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000300 /* ShareInbox.swift */; };
+		9B2A76A6E3E0A1B200000311 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000301 /* ShareViewController.swift */; };
+		9B2A76A6E3E0A1B200000312 /* ShareInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000300 /* ShareInbox.swift */; };
+		9B2A76A6E3E0A1B200000313 /* BlabladorShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000307 /* BlabladorShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		9B2A76A6E3E0A1B20000000E /* BlabladorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000006 /* BlabladorApp.swift */; };
 		9B2A76A6E3E0A1B200000010 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000008 /* Assets.xcassets */; };
 		9B2A76A6E3E0A1B200000023 /* SiriCommandCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000021 /* SiriCommandCenter.swift */; };
@@ -42,7 +46,39 @@
 		9B2A76A6E3E0A1B2000000F3 /* VoiceLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B2000000F2 /* VoiceLibrary.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		9B2A76A6E3E0A1B200000333 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				9B2A76A6E3E0A1B200000313 /* BlabladorShare.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXContainerItemProxy section */
+		9B2A76A6E3E0A1B200000341 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 9B2A76A6E3E0A1B200000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 9B2A76A6E3E0A1B200000340;
+			remoteInfo = BlabladorShare;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
+		9B2A76A6E3E0A1B200000300 /* ShareInbox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Blablador/ShareInbox.swift; sourceTree = "<group>"; };
+		9B2A76A6E3E0A1B200000301 /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
+		9B2A76A6E3E0A1B200000302 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		9B2A76A6E3E0A1B200000303 /* BlabladorShare-iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "BlabladorShare-iOS.entitlements"; sourceTree = "<group>"; };
+		9B2A76A6E3E0A1B200000304 /* BlabladorShare-macOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "BlabladorShare-macOS.entitlements"; sourceTree = "<group>"; };
+		9B2A76A6E3E0A1B200000305 /* Blablador-iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "Blablador-iOS.entitlements"; sourceTree = "<group>"; };
+		9B2A76A6E3E0A1B200000306 /* Blablador-macOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "Blablador-macOS.entitlements"; sourceTree = "<group>"; };
+		9B2A76A6E3E0A1B200000307 /* BlabladorShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BlabladorShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		9B2A76A6E3E0A1B200000006 /* BlabladorApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlabladorApp.swift; sourceTree = "<group>"; };
 		9B2A76A6E3E0A1B200000008 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		9B2A76A6E3E0A1B200000009 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -81,6 +117,13 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		9B2A76A6E3E0A1B200000331 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		9B2A76A6E3E0A1B20000000D /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -91,11 +134,24 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		9B2A76A6E3E0A1B200000320 /* BlabladorShare */ = {
+			isa = PBXGroup;
+			children = (
+				9B2A76A6E3E0A1B200000300 /* ShareInbox.swift */,
+				9B2A76A6E3E0A1B200000301 /* ShareViewController.swift */,
+				9B2A76A6E3E0A1B200000302 /* Info.plist */,
+				9B2A76A6E3E0A1B200000303 /* BlabladorShare-iOS.entitlements */,
+				9B2A76A6E3E0A1B200000304 /* BlabladorShare-macOS.entitlements */,
+			);
+			path = BlabladorShare;
+			sourceTree = "<group>";
+		};
 		9B2A76A6E3E0A1B200000003 = {
 			isa = PBXGroup;
 			children = (
 				9B2A76A6E3E0A1B200000005 /* Blablador */,
 				9B2A76A6E3E0A1B200000004 /* Products */,
+				9B2A76A6E3E0A1B200000320 /* BlabladorShare */,
 			);
 			sourceTree = "<group>";
 		};
@@ -103,6 +159,7 @@
 			isa = PBXGroup;
 			children = (
 				9B2A76A6E3E0A1B20000000A /* Blablador.app */,
+				9B2A76A6E3E0A1B200000307 /* BlabladorShare.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -111,6 +168,8 @@
 			isa = PBXGroup;
 			children = (
 				9B2A76A6E3E0A1B200000006 /* BlabladorApp.swift */,
+				9B2A76A6E3E0A1B200000305 /* Blablador-iOS.entitlements */,
+				9B2A76A6E3E0A1B200000306 /* Blablador-macOS.entitlements */,
 				9B2A76A6E3E0A1B20000004C /* CameraPicker.swift */,
 				9B2A76A6E3E0A1B2000000F0 /* PDFExtractor.swift */,
 				9B2A76A6E3E0A1B200000102 /* AgentViews.swift */,
@@ -158,15 +217,34 @@
 				9B2A76A6E3E0A1B20000000B /* Sources */,
 				9B2A76A6E3E0A1B20000000C /* Resources */,
 				9B2A76A6E3E0A1B20000000D /* Frameworks */,
+				9B2A76A6E3E0A1B200000333 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				9B2A76A6E3E0A1B200000342 /* PBXTargetDependency */,
 			);
 			name = Blablador;
 			productName = Blablador;
 			productReference = 9B2A76A6E3E0A1B20000000A /* Blablador.app */;
 			productType = "com.apple.product-type.application";
+		};
+		9B2A76A6E3E0A1B200000340 /* BlabladorShare */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9B2A76A6E3E0A1B200000343 /* Build configuration list for PBXNativeTarget "BlabladorShare" */;
+			buildPhases = (
+				9B2A76A6E3E0A1B200000330 /* Sources */,
+				9B2A76A6E3E0A1B200000331 /* Frameworks */,
+				9B2A76A6E3E0A1B200000332 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = BlabladorShare;
+			productName = BlabladorShare;
+			productReference = 9B2A76A6E3E0A1B200000307 /* BlabladorShare.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -195,11 +273,19 @@
 			projectRoot = "";
 			targets = (
 				9B2A76A6E3E0A1B200000002 /* Blablador */,
+				9B2A76A6E3E0A1B200000340 /* BlabladorShare */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		9B2A76A6E3E0A1B200000332 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		9B2A76A6E3E0A1B20000000C /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -211,6 +297,15 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		9B2A76A6E3E0A1B200000330 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9B2A76A6E3E0A1B200000310 /* ShareInbox.swift in Sources */,
+				9B2A76A6E3E0A1B200000311 /* ShareViewController.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		9B2A76A6E3E0A1B20000000B /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -231,6 +326,7 @@
 				9B2A76A6E3E0A1B200000207 /* RichContent.swift in Sources */,
 				9B2A76A6E3E0A1B200000209 /* PythonRunner.swift in Sources */,
 				9B2A76A6E3E0A1B20000020B /* Recall.swift in Sources */,
+				9B2A76A6E3E0A1B200000312 /* ShareInbox.swift in Sources */,
 				9B2A76A6E3E0A1B2000000F3 /* VoiceLibrary.swift in Sources */,
 				9B2A76A6E3E0A1B20000006B /* ImageStore.swift in Sources */,
 				9B2A76A6E3E0A1B20000006A /* WebSearch.swift in Sources */,
@@ -252,6 +348,14 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		9B2A76A6E3E0A1B200000342 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 9B2A76A6E3E0A1B200000340 /* BlabladorShare */;
+			targetProxy = 9B2A76A6E3E0A1B200000341 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
 		9B2A76A6E3E0A1B200000011 /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -267,6 +371,8 @@
 				CURRENT_PROJECT_VERSION = 29;
 				DEVELOPMENT_TEAM = 4Q84Z7RZ3Z;
 				GENERATE_INFOPLIST_FILE = NO;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]" = "Blablador/Blablador-iOS.entitlements";
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "Blablador/Blablador-macOS.entitlements";
 				INFOPLIST_FILE = Blablador/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.6;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
@@ -295,6 +401,8 @@
 				CURRENT_PROJECT_VERSION = 29;
 				DEVELOPMENT_TEAM = 4Q84Z7RZ3Z;
 				GENERATE_INFOPLIST_FILE = NO;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]" = "Blablador/Blablador-iOS.entitlements";
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "Blablador/Blablador-macOS.entitlements";
 				INFOPLIST_FILE = Blablador/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.6;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
@@ -330,6 +438,69 @@
 			};
 			name = Release;
 		};
+		9B2A76A6E3E0A1B200000344 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]" = "BlabladorShare/BlabladorShare-iOS.entitlements";
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "BlabladorShare/BlabladorShare-macOS.entitlements";
+				CODE_SIGN_IDENTITY = "-";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 29;
+				DEVELOPMENT_TEAM = 4Q84Z7RZ3Z;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = BlabladorShare/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.6;
+				"LD_RUNPATH_SEARCH_PATHS[sdk=iphoneos*]" = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "$(inherited) @executable_path/../Frameworks @executable_path/../../../../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 3.0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = "de.fz-juelich.blablador.share";
+				PRODUCT_NAME = BlabladorShare;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		9B2A76A6E3E0A1B200000345 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]" = "BlabladorShare/BlabladorShare-iOS.entitlements";
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "BlabladorShare/BlabladorShare-macOS.entitlements";
+				CODE_SIGN_IDENTITY = "-";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 29;
+				DEVELOPMENT_TEAM = 4Q84Z7RZ3Z;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = BlabladorShare/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.6;
+				"LD_RUNPATH_SEARCH_PATHS[sdk=iphoneos*]" = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "$(inherited) @executable_path/../Frameworks @executable_path/../../../../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 3.0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = "de.fz-juelich.blablador.share";
+				PRODUCT_NAME = BlabladorShare;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_OPTIMIZATION_LEVEL = "-Owholemodule";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -350,6 +521,15 @@
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
+		};
+		9B2A76A6E3E0A1B200000343 /* Build configuration list for PBXNativeTarget "BlabladorShare" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9B2A76A6E3E0A1B200000344 /* Debug */,
+				9B2A76A6E3E0A1B200000345 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};

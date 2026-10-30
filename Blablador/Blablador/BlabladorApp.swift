@@ -10,6 +10,9 @@ struct BlabladorApp: App {
         WindowGroup(id: "chat") {
             ChatWindow()
                 .onOpenURL { SiriCommandCenter.shared.open($0) }
+                // Links and opened files go to an open window instead of a new one.
+                .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
+                .modifier(ShareInboxPickup())
         }
         .commands {
             TextSizeCommands()
@@ -17,6 +20,19 @@ struct BlabladorApp: App {
             AppCommands()
 #endif
         }
+    }
+}
+
+/// Takes items from the share extension whenever the app comes to the front.
+private struct ShareInboxPickup: ViewModifier {
+    @Environment(\.scenePhase) private var phase
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear { SiriCommandCenter.shared.takeInbox() }
+            .onChange(of: phase) { _, phase in
+                if phase == .active { SiriCommandCenter.shared.takeInbox() }
+            }
     }
 }
 

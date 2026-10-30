@@ -30,8 +30,17 @@ final class SiriCommandCenter: ObservableObject {
         pendingShare = Share(text: text, files: files)
     }
 
-    func consumeShare() {
-        pendingShare = nil
+    /// Takes the waiting share, so only one window gets it once.
+    func claimShare() -> Share? {
+        defer { pendingShare = nil }
+        return pendingShare
+    }
+
+    /// Picks up what the share extension left (everything shared since the app was last open goes into one chat).
+    func takeInbox() {
+        let items = ShareInbox.take()
+        guard !items.isEmpty else { return }
+        share(text: items.map(\.text).filter { !$0.isEmpty }.joined(separator: "\n\n"), files: items.flatMap(\.files))
     }
 
     /// Opened files, and links: blablador://ask?q=… sends a question, blablador://new?text=… fills a new chat.
@@ -43,6 +52,7 @@ final class SiriCommandCenter: ObservableObject {
         guard url.scheme == "blablador", let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return }
         let value = { (name: String) in components.queryItems?.first { $0.name == name }?.value ?? "" }
         switch url.host() {
+        case "inbox": takeInbox()
         case "ask": if !value("q").isEmpty { handle(command: value("q")) }
         case "new": share(text: [value("text"), value("url")].filter { !$0.isEmpty }.joined(separator: "\n"))
         default: break
