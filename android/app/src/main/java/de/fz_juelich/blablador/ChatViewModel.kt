@@ -20,6 +20,7 @@ import de.fz_juelich.blablador.data.Conversation
 import de.fz_juelich.blablador.data.ConversationStore
 import de.fz_juelich.blablador.data.DocumentAttachment
 import de.fz_juelich.blablador.data.ImageStore
+import de.fz_juelich.blablador.data.EncryptedStorage
 import de.fz_juelich.blablador.data.KnowledgeLibrary
 import de.fz_juelich.blablador.data.MemoryStore
 import de.fz_juelich.blablador.data.PdfExtractor
@@ -102,6 +103,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         refresh()
+        EncryptedStorage.removeDecryptedCopies(application)
+        viewModelScope.launch(Dispatchers.IO) { EncryptedStorage.encryptOldFiles(application) }
     }
 
     // MARK: Settings
@@ -415,7 +418,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         updateMessage(reply.id) { it.copy(status = "Knowledge search failed, answering without it…") }
                     }
                 }
-                runTurn(model, messages, tools, reply.id)
+                // PDFs and knowledge excerpts come from outside the chat; see runTurn's memory lock.
+                val outsideContent = conversation.messages.any { it.documents.isNotEmpty() } ||
+                    current?.messages?.firstOrNull { it.id == reply.id }?.citations?.isNotEmpty() == true
+                runTurn(model, messages, tools, reply.id, outsideContent)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: BlabladorException) {
@@ -436,8 +442,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Streams the reply, running tools whenever the model asks for them. */
-    private suspend fun runTurn(model: String, initial: List<JsonObject>, initialTools: List<JsonObject>, replyId: String) {
+    /**
+     * Streams the reply, running tools whenever the model asks for them. Memory changes are refused once the reply
+     * has read outside content (web results, PDFs, knowledge bases), so text planted there can't write itself into
+     * every future chat.
+     */
+    private suspend fun runTurn(model: String, initial: List<JsonObject>, initialTools: List<JsonObject>, replyId: String, outside: Boolean) {
+        var outsideContent = outside
         val messages = initial.toMutableList()
         var tools = initialTools
 
@@ -517,6 +528,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     } catch (e: Exception) {
                         "Speech tool failed: ${e.message}"
                     }
+                    (call.name == "remember" || call.name == "forget") && outsideContent ->
+                        "Memory can't be changed in a reply that used web results, documents or knowledge bases, because they could contain planted instructions. " +
+                            "Tell the user they can ask again in a new message without them, or edit memories in Settings → Memory."
                     call.name == "remember" && memory.enabled -> {
                         val fact = jsonString(arguments?.get("fact")).orEmpty().trim()
                         if (memory.add(fact)) {
@@ -533,6 +547,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         } else "There is no memory number $number."
                     }
                     call.name == "image_search" && query.isNotEmpty() -> {
+                        outsideContent = true
                         updateMessage(replyId) { it.copy(status = "Searching pictures of “$query”") }
                         try {
                             val images = WebSearch.searchImages(query)
@@ -548,6 +563,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     }
                     call.name == "web_search" && query.isNotEmpty() -> {
+                        outsideContent = true
                         updateMessage(replyId) { it.copy(status = "Searching “$query”") }
                         try {
                             val results = WebSearch.search(query, jsonString(arguments?.get("category")), jsonString(arguments?.get("time_range")))

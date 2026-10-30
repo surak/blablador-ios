@@ -299,7 +299,7 @@ private fun Actions(message: ChatMessage, isLast: Boolean, speaking: Boolean, on
     val tint = MaterialTheme.colorScheme.onSurfaceVariant
     Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
         // Generated speech: Copy and Share hand over the audio file; reading the text aloud makes no sense there.
-        val audio = message.audio.map { androidx.core.content.FileProvider.getUriForFile(context, context.packageName + ".files", File(File(context.filesDir, "audio"), it)) }
+        val audio = message.audio.map { androidx.core.content.FileProvider.getUriForFile(context, context.packageName + ".files", de.fz_juelich.blablador.data.EncryptedStorage.decryptedCopy(context, File(File(context.filesDir, "audio"), it))) }
         IconButton(onClick = {
             if (audio.isEmpty()) clipboard.setText(AnnotatedString(message.content))
             else context.getSystemService(android.content.ClipboardManager::class.java)

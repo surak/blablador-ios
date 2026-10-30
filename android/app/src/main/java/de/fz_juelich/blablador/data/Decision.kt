@@ -98,19 +98,24 @@ data class DecisionExample(
     }
 }
 
-/** The user's own decisions, kept in shared preferences. */
+/** The user's own decisions, in an encrypted file (shared preferences before 2.6.6). */
 object SavedDecisions {
     private const val KEY = "decisions"
 
+    private fun file(context: Context) = java.io.File(context.filesDir, "decisions.json")
+
     fun load(context: Context): List<DecisionExample> = runCatching {
-        val text = context.getSharedPreferences("decisions", Context.MODE_PRIVATE).getString(KEY, null) ?: return emptyList()
+        val prefs = context.getSharedPreferences("decisions", Context.MODE_PRIVATE)
+        prefs.getString(KEY, null)?.let { old ->
+            EncryptedStorage.write(context, file(context), old)
+            prefs.edit().remove(KEY).apply()
+        }
+        val text = EncryptedStorage.read(context, file(context)) ?: return emptyList()
         BlabladorApi.json.decodeFromString(ListSerializer(DecisionExample.serializer()), text)
     }.getOrDefault(emptyList())
 
-    fun save(context: Context, decisions: List<DecisionExample>) {
-        context.getSharedPreferences("decisions", Context.MODE_PRIVATE).edit()
-            .putString(KEY, BlabladorApi.json.encodeToString(ListSerializer(DecisionExample.serializer()), decisions)).apply()
-    }
+    fun save(context: Context, decisions: List<DecisionExample>) =
+        EncryptedStorage.write(context, file(context), BlabladorApi.json.encodeToString(ListSerializer(DecisionExample.serializer()), decisions))
 }
 
 /** One answer from `/v1/systemone`. */

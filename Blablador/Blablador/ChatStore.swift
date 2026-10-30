@@ -2,6 +2,37 @@ import Combine
 import Foundation
 import SwiftUI
 
+/// Custom instructions, in an encrypted file (UserDefaults before 2.6.6).
+@MainActor
+enum CustomInstructions {
+    private static let key = "systemPrompt"
+    private static var cached: String?
+
+    private static var fileURL: URL {
+        let url = AppFolder.url
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url.appendingPathComponent("instructions.json")
+    }
+
+    static var text: String {
+        get {
+            if let cached { return cached }
+            if let old = UserDefaults.standard.string(forKey: key) {
+                text = old
+                UserDefaults.standard.removeObject(forKey: key)
+                return old
+            }
+            let saved = EncryptedStorage.read(fileURL).flatMap { try? JSONDecoder().decode([String].self, from: $0).first } ?? ""
+            cached = saved
+            return saved
+        }
+        set {
+            cached = newValue
+            if let data = try? JSONEncoder().encode([newValue]) { EncryptedStorage.write(data, to: fileURL) }
+        }
+    }
+}
+
 /// Chat history shared by every window, so each window can show its own conversation.
 @MainActor
 final class ConversationLibrary: ObservableObject {
@@ -10,12 +41,14 @@ final class ConversationLibrary: ObservableObject {
     @Published var conversations: [Conversation] = []
 
     private static var storageURL: URL {
-        let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let directory = AppFolder.url
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory.appendingPathComponent("conversations.json")
     }
 
     private init() {
+        EncryptedStorage.removeDecryptedCopies()
+        Task.detached(priority: .utility) { EncryptedStorage.encryptOldFiles() }
         if let data = EncryptedStorage.read(Self.storageURL),
            let saved = try? JSONDecoder().decode([Conversation].self, from: data) {
             conversations = saved
@@ -67,8 +100,12 @@ final class ChatStore: ObservableObject {
         willSet { objectWillChange.send() }
     }
 
-    @AppStorage("systemPrompt") var systemPrompt: String = "" {
-        willSet { objectWillChange.send() }
+    var systemPrompt: String {
+        get { CustomInstructions.text }
+        set {
+            objectWillChange.send()
+            CustomInstructions.text = newValue
+        }
     }
 
     @AppStorage("webSearchEnabled") var webSearchEnabled = true {
@@ -523,7 +560,10 @@ final class ChatStore: ObservableObject {
                         updateMessage(reply.id) { $0.status = "Knowledge search failed, answering without it…" }
                     }
                 }
-                try await runTurn(model: model, messages: wire, tools: tools, replyID: reply.id, workspace: folder)
+                // PDFs and knowledge excerpts come from outside the chat; see runTurn's memory lock.
+                let outsideContent = conversation.messages.contains { !$0.documents.isEmpty }
+                    || current?.messages.first { $0.id == reply.id }?.citations.isEmpty == false
+                try await runTurn(model: model, messages: wire, tools: tools, replyID: reply.id, workspace: folder, outsideContent: outsideContent)
             } catch is CancellationError {
             } catch let error as URLError where error.code == .cancelled {
             } catch BlabladorAPIError.http(let status, let body) where status == 400 && body.localizedCaseInsensitiveContains("image") {
@@ -550,7 +590,10 @@ final class ChatStore: ObservableObject {
     }
 
     /// Streams the reply, running web searches whenever the model asks for them.
-    private func runTurn(model: String, messages: [[String: Any]], tools: [[String: Any]], replyID: UUID, workspace: URL? = nil) async throws {
+    /// Memory changes are refused once the reply has read outside content (web results, PDFs, knowledge bases,
+    /// files), so text planted there can't write itself into every future chat.
+    private func runTurn(model: String, messages: [[String: Any]], tools: [[String: Any]], replyID: UUID, workspace: URL? = nil, outsideContent: Bool = false) async throws {
+        var outsideContent = outsideContent
         var messages = messages
         var tools = tools
         let maxRounds = workspace == nil ? Self.maxToolRounds : AgentTools.maxRounds
@@ -636,7 +679,10 @@ final class ChatStore: ObservableObject {
                         output = "Speech tool failed: \(error.localizedDescription)"
                     }
                 } else if let workspace, AgentTools.names.contains(call.name) {
+                    outsideContent = true
                     output = await runAgentTool(call.name, arguments ?? [:], in: workspace, replyID: replyID)
+                } else if call.name == "remember" || call.name == "forget", outsideContent {
+                    output = "Memory can't be changed in a reply that used web results, documents, knowledge bases or files, because they could contain planted instructions. Tell the user they can ask again in a new message without them, or edit memories in Settings → Memory."
                 } else if call.name == "remember", let fact = arguments?["fact"] as? String, MemoryStore.shared.enabled {
                     if MemoryStore.shared.add(fact) {
                         updateMessage(replyID) { $0.remembered.append(fact.trimmingCharacters(in: .whitespacesAndNewlines)) }
@@ -653,6 +699,7 @@ final class ChatStore: ObservableObject {
                         output = "There is no memory number \(number)."
                     }
                 } else if call.name == "image_search", !query.isEmpty {
+                    outsideContent = true
                     updateMessage(replyID) { $0.status = "Searching pictures of “\(query)”" }
                     do {
                         let images = try await WebSearch.searchImages(query)
@@ -666,6 +713,7 @@ final class ChatStore: ObservableObject {
                         output = "Image search failed: \(error.localizedDescription)"
                     }
                 } else if call.name == "web_search", !query.isEmpty {
+                    outsideContent = true
                     updateMessage(replyID) { $0.status = "Searching “\(query)”" }
                     do {
                         let results = try await WebSearch.search(

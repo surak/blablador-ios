@@ -55,7 +55,7 @@ private data class Chunk(val document: String, val page: Int? = null, val text: 
 private class VectorStore(val chunks: List<Chunk>, val vectors: FloatArray, val dimension: Int)
 
 /** Knowledge bases (RAG): chunks and normalized vectors stored per base on the device. */
-class KnowledgeLibrary(context: Context, private val scope: CoroutineScope, private val pdf: PdfExtractor) {
+class KnowledgeLibrary(private val context: Context, private val scope: CoroutineScope, private val pdf: PdfExtractor) {
     companion object {
         /** Passages retrieved per question, before and after re-ranking. */
         const val CANDIDATE_COUNT = 24
@@ -150,7 +150,7 @@ class KnowledgeLibrary(context: Context, private val scope: CoroutineScope, priv
     private val cache = mutableMapOf<String, VectorStore>()
 
     val bases = mutableStateListOf<KnowledgeBase>().apply {
-        addAll(runCatching { BlabladorApi.json.decodeFromString(serializer, indexFile.readText()) }.getOrDefault(emptyList()))
+        addAll(runCatching { BlabladorApi.json.decodeFromString(serializer, EncryptedStorage.read(context, indexFile)!!) }.getOrDefault(emptyList()))
     }
     /** Indexing progress per base, e.g. "Indexing report.pdf · 40%". */
     val progress = mutableStateMapOf<String, String>()
@@ -306,9 +306,9 @@ class KnowledgeLibrary(context: Context, private val scope: CoroutineScope, priv
     private fun load(id: String): VectorStore = cache.getOrPut(id) {
         val directory = directory(id)
         val chunks = runCatching {
-            BlabladorApi.json.decodeFromString(ListSerializer(Chunk.serializer()), File(directory, "chunks.json").readText())
+            BlabladorApi.json.decodeFromString(ListSerializer(Chunk.serializer()), EncryptedStorage.read(context, File(directory, "chunks.json"))!!)
         }.getOrDefault(emptyList())
-        val bytes = File(directory, "vectors.bin").takeIf { it.exists() }?.readBytes() ?: ByteArray(0)
+        val bytes = EncryptedStorage.readBytes(context, File(directory, "vectors.bin")) { it.size % 4 == 0 } ?: ByteArray(0)
         val vectors = FloatArray(bytes.size / 4).also { ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer().get(it) }
         VectorStore(chunks, vectors, if (chunks.isEmpty()) 0 else vectors.size / chunks.size)
     }
@@ -325,9 +325,5 @@ class KnowledgeLibrary(context: Context, private val scope: CoroutineScope, priv
 
     private fun persist() = writeAtomically(indexFile, BlabladorApi.json.encodeToString(serializer, bases.toList()).toByteArray())
 
-    private fun writeAtomically(file: File, data: ByteArray) {
-        val temp = File(file.parentFile, file.name + ".tmp")
-        temp.writeBytes(data)
-        temp.renameTo(file)
-    }
+    private fun writeAtomically(file: File, data: ByteArray) = EncryptedStorage.writeBytes(context, file, data)
 }

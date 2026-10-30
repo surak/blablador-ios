@@ -79,7 +79,7 @@ final class MemoryStore: ObservableObject {
     }
 
     private static var fileURL: URL {
-        let url = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let url = AppFolder.url
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url.appendingPathComponent("memories.json")
     }

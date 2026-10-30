@@ -75,7 +75,7 @@ object SpeechMarkup {
 }
 
 /** Built-in and cloned voices plus delivery settings. */
-class VoiceLibrary(context: Context) {
+class VoiceLibrary(private val context: Context) {
     companion object {
         val builtIn = listOf(
             Voice("bf322df2096a46f18c579d0baa36f41d", "Adrian", "bf322df2096a46f18c579d0baa36f41d"),
@@ -92,7 +92,7 @@ class VoiceLibrary(context: Context) {
     private val serializer = ListSerializer(Voice.serializer())
 
     val cloned = mutableStateListOf<Voice>().apply {
-        addAll(runCatching { BlabladorApi.json.decodeFromString(serializer, indexFile.readText()) }.getOrDefault(emptyList()))
+        addAll(runCatching { BlabladorApi.json.decodeFromString(serializer, EncryptedStorage.read(context, indexFile)!!) }.getOrDefault(emptyList()))
     }
 
     var selectedId by mutableStateOf(prefs.getString("speechVoice", builtIn[0].id)!!)
@@ -130,7 +130,7 @@ class VoiceLibrary(context: Context) {
 
     fun add(name: String, wav: ByteArray, transcript: String) {
         val file = UUID.randomUUID().toString() + ".wav"
-        File(directory, file).writeBytes(wav)
+        EncryptedStorage.writeBytes(context, File(directory, file), wav)
         val voice = Voice(name = name, sampleFile = file, transcript = transcript.trim())
         cloned += voice
         select(voice.id)
@@ -138,31 +138,29 @@ class VoiceLibrary(context: Context) {
     }
 
     fun delete(voice: Voice) {
-        voice.sampleFile?.let { File(directory, it).delete() }
+        voice.sampleFile?.let { EncryptedStorage.delete(context, File(directory, it)) }
         cloned.removeAll { it.id == voice.id }
         if (selectedId == voice.id) select(builtIn[0].id)
         persist()
     }
 
-    fun sample(voice: Voice): ByteArray? = voice.sampleFile?.let { File(directory, it) }?.takeIf { it.exists() }?.readBytes()
+    fun sample(voice: Voice): ByteArray? =
+        voice.sampleFile?.let { EncryptedStorage.readBytes(context, File(directory, it), EncryptedStorage::isMedia) }
 
-    private fun persist() {
-        val temp = File(directory, "voices.json.tmp")
-        temp.writeText(BlabladorApi.json.encodeToString(serializer, cloned.toList()))
-        temp.renameTo(indexFile)
-    }
+    private fun persist() = EncryptedStorage.write(context, indexFile, BlabladorApi.json.encodeToString(serializer, cloned.toList()))
 }
 
 /** Generated speech as files, like ImageStore. */
 /** Generated videos (MP4 with sound). */
-class VideoStore(context: Context) {
+class VideoStore(private val context: Context) {
     private val directory = File(context.filesDir, "videos").apply { mkdirs() }
 
-    fun file(name: String) = File(directory, name)
+    /** A decrypted copy, for playing and sharing. */
+    fun file(name: String) = EncryptedStorage.decryptedCopy(context, File(directory, name))
 
     fun save(data: ByteArray): String {
         val name = UUID.randomUUID().toString() + ".mp4"
-        file(name).writeBytes(data)
+        EncryptedStorage.writeBytes(context, File(directory, name), data)
         return name
     }
 
@@ -183,21 +181,22 @@ class VideoStore(context: Context) {
         }
     }
 
-    fun delete(names: List<String>) = names.forEach { file(it).delete() }
+    fun delete(names: List<String>) = names.forEach { EncryptedStorage.delete(context, File(directory, it)) }
 }
 
-class AudioStore(context: Context) {
+class AudioStore(private val context: Context) {
     private val directory = File(context.filesDir, "audio").apply { mkdirs() }
 
-    fun file(name: String) = File(directory, name)
+    /** A decrypted copy, for playing and sharing. */
+    fun file(name: String) = EncryptedStorage.decryptedCopy(context, File(directory, name))
 
     fun save(data: ByteArray): String {
         val name = UUID.randomUUID().toString() + ".mp3"
-        file(name).writeBytes(data)
+        EncryptedStorage.writeBytes(context, File(directory, name), data)
         return name
     }
 
-    fun delete(names: List<String>) = names.forEach { file(it).delete() }
+    fun delete(names: List<String>) = names.forEach { EncryptedStorage.delete(context, File(directory, it)) }
 }
 
 /**

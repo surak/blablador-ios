@@ -96,17 +96,28 @@ struct DecisionExample: Codable, Identifiable, Hashable {
     }
 }
 
-/// The user's own decisions, kept in UserDefaults.
+/// The user's own decisions, in an encrypted file (UserDefaults before 2.6.6).
 enum SavedDecisions {
     private static let key = "savedDecisions"
 
+    private static var fileURL: URL {
+        let url = AppFolder.url
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url.appendingPathComponent("decisions.json")
+    }
+
     static func load() -> [DecisionExample] {
-        guard let data = UserDefaults.standard.data(forKey: key) else { return [] }
+        if let old = UserDefaults.standard.data(forKey: key) {
+            EncryptedStorage.write(old, to: fileURL)
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+        guard let data = EncryptedStorage.read(fileURL) else { return [] }
         return (try? JSONDecoder().decode([DecisionExample].self, from: data)) ?? []
     }
 
     static func save(_ decisions: [DecisionExample]) {
-        UserDefaults.standard.set(try? JSONEncoder().encode(decisions), forKey: key)
+        guard let data = try? JSONEncoder().encode(decisions) else { return }
+        EncryptedStorage.write(data, to: fileURL)
     }
 }
 

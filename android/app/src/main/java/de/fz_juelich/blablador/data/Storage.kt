@@ -26,9 +26,9 @@ class ConversationStore(private val context: Context) {
 }
 
 /**
- * App files encrypted with AES-GCM under a key in the Android Keystore. Used for chat history and memories.
- * Files saved by older versions in plain JSON are read as they are and rewritten encrypted; a file that can't be
- * decrypted is moved aside (".unreadable") rather than overwritten. Nothing is written in plain text.
+ * App files encrypted with AES-GCM under a key in the Android Keystore: chats, memories, images, audio, videos,
+ * voice samples, knowledge bases and saved decisions. Files saved unencrypted by versions before 2.6.6 are read
+ * as they are and rewritten encrypted. Nothing is written in plain text.
  */
 object EncryptedStorage {
     private var masterKey: MasterKey? = null
@@ -40,47 +40,116 @@ object EncryptedStorage {
     private fun encrypted(context: Context, file: File, key: MasterKey) =
         EncryptedFile.Builder(context, file, key, EncryptedFile.FileEncryptionScheme.AES256_GCM_HKDF_4KB).build()
 
+    /** Reads a JSON file; one that can't be decrypted is moved aside (".unreadable") rather than overwritten. */
     @Synchronized
     fun read(context: Context, file: File): String? {
         if (!file.exists()) return null
-        val key = masterKey(context)
-        if (key != null) runCatching { encrypted(context, file, key).openFileInput().use { return it.readBytes().decodeToString() } }
-        val plain = runCatching { file.readText() }.getOrNull()
-        if (plain != null && (plain.startsWith("[") || plain.startsWith("{")) && runCatching { BlabladorApi.json.parseToJsonElement(plain) }.isSuccess) {
-            if (key != null) write(context, file, plain)
-            return plain
-        }
-        if (key != null) file.renameTo(File(file.parentFile, file.name + ".unreadable"))
+        readBytes(context, file, ::isJson)?.let { return it.decodeToString() }
+        // Without a working Keystore older plain files are still read, just not converted.
+        val plain = runCatching { file.readBytes() }.getOrNull()
+        if (plain != null && isJson(plain)) return plain.decodeToString()
+        if (masterKey(context) != null) file.renameTo(File(file.parentFile, file.name + ".unreadable"))
         return null
     }
 
+    fun write(context: Context, file: File, text: String) = writeBytes(context, file, text.encodeToByteArray())
+
+    /** Reads and decrypts any file; [isPlain] recognises unencrypted files from older versions, which are converted. */
     @Synchronized
-    fun write(context: Context, file: File, text: String) {
+    fun readBytes(context: Context, file: File, isPlain: (ByteArray) -> Boolean): ByteArray? {
+        if (!file.exists()) return null
+        val key = masterKey(context) ?: return null
+        runCatching { return encrypted(context, file, key).openFileInput().use { it.readBytes() } }
+        val plain = runCatching { file.readBytes() }.getOrNull()?.takeIf(isPlain) ?: return null
+        writeBytes(context, file, plain)
+        return plain
+    }
+
+    @Synchronized
+    fun writeBytes(context: Context, file: File, data: ByteArray) {
         val key = masterKey(context) ?: return
         val temp = File(file.parentFile, file.name + ".tmp").apply { delete() }
         runCatching {
-            encrypted(context, temp, key).openFileOutput().use { it.write(text.encodeToByteArray()) }
+            encrypted(context, temp, key).openFileOutput().use { it.write(data) }
             temp.renameTo(file)
+        }
+    }
+
+    fun isJson(data: ByteArray): Boolean {
+        if (data.isEmpty() || (data[0] != '['.code.toByte() && data[0] != '{'.code.toByte())) return false
+        return runCatching { BlabladorApi.json.parseToJsonElement(data.decodeToString()) }.isSuccess
+    }
+
+    /** Recognises unencrypted JPEG, PNG, MP3, WAV and MP4 files. */
+    fun isMedia(data: ByteArray): Boolean {
+        if (data.size < 12) return false
+        fun at(offset: Int, text: String) = text.indices.all { data[offset + it] == text[it].code.toByte() }
+        return (data[0] == 0xFF.toByte() && data[1] == 0xD8.toByte()) || (data[0] == 0x89.toByte() && at(1, "PNG"))
+            || at(0, "ID3") || (data[0] == 0xFF.toByte() && data[1].toInt() and 0xE0 == 0xE0)
+            || at(0, "RIFF") || at(4, "ftyp")
+    }
+
+    /**
+     * Players, image loading and sharing need a real file: a decrypted copy in the cache,
+     * removed when the app starts and when the original is deleted.
+     */
+    fun decryptedCopy(context: Context, file: File): File {
+        val copy = File(decryptedDirectory(context), file.name)
+        if (!copy.exists()) readBytes(context, file, ::isMedia)?.let { data ->
+            val temp = File(copy.parentFile, copy.name + ".tmp")
+            temp.writeBytes(data)
+            temp.renameTo(copy)
+        }
+        return copy
+    }
+
+    fun delete(context: Context, file: File) {
+        file.delete()
+        File(decryptedDirectory(context), file.name).delete()
+    }
+
+    fun removeDecryptedCopies(context: Context) { File(context.cacheDir, "decrypted").deleteRecursively() }
+
+    private fun decryptedDirectory(context: Context) = File(context.cacheDir, "decrypted").apply { mkdirs() }
+
+    /** Encrypts files saved unencrypted by versions before 2.6.6. */
+    fun encryptOldFiles(context: Context) {
+        for (folder in listOf("images", "audio", "videos", "voices")) {
+            File(context.filesDir, folder).listFiles()?.forEach { file ->
+                if (file.name.endsWith(".json")) read(context, file)
+                else readBytes(context, file, ::isMedia)
+            }
+        }
+        val knowledge = File(context.filesDir, "knowledge")
+        read(context, File(knowledge, "bases.json"))
+        knowledge.listFiles()?.filter { it.isDirectory }?.forEach { base ->
+            val chunks = File(base, "chunks.json")
+            val plain = runCatching { chunks.readBytes() }.getOrNull()
+            if (plain != null && isJson(plain)) {
+                File(base, "vectors.bin").takeIf { it.exists() }?.let { writeBytes(context, it, it.readBytes()) }
+                writeBytes(context, chunks, plain)
+            }
         }
     }
 }
 
 /** Chat images as files, so the conversation JSON stays small. */
-class ImageStore(context: Context) {
+class ImageStore(private val context: Context) {
     private val directory = File(context.filesDir, "images").apply { mkdirs() }
 
-    fun file(name: String) = File(directory, name)
+    /** A decrypted copy, for showing and sharing. */
+    fun file(name: String) = EncryptedStorage.decryptedCopy(context, File(directory, name))
 
     fun save(data: ByteArray): String {
         val isPng = data.size > 4 && data[0] == 0x89.toByte() && data[1] == 0x50.toByte()
         val name = UUID.randomUUID().toString() + if (isPng) ".png" else ".jpg"
-        file(name).writeBytes(data)
+        EncryptedStorage.writeBytes(context, File(directory, name), data)
         return name
     }
 
-    fun data(name: String): ByteArray? = file(name).takeIf { it.exists() }?.readBytes()
+    fun data(name: String): ByteArray? = EncryptedStorage.readBytes(context, File(directory, name), EncryptedStorage::isMedia)
 
-    fun delete(names: List<String>) = names.forEach { file(it).delete() }
+    fun delete(names: List<String>) = names.forEach { EncryptedStorage.delete(context, File(directory, it)) }
 
     companion object {
         /** Downscales and re-encodes as JPEG, which keeps uploads to the API small. */
@@ -146,9 +215,16 @@ class Settings(context: Context) {
         get() = prefs.getString("userName", "").orEmpty()
         set(value) = prefs.edit().putString("userName", value).apply()
 
+    /** Custom instructions, in the encrypted preferences (plain preferences before 2.6.6). */
     var systemPrompt: String
-        get() = prefs.getString("systemPrompt", "").orEmpty()
-        set(value) = prefs.edit().putString("systemPrompt", value).apply()
+        get() {
+            prefs.getString("systemPrompt", null)?.let { old ->
+                if (secure != null) { systemPrompt = old; prefs.edit().remove("systemPrompt").apply() }
+                return old
+            }
+            return secure?.getString("systemPrompt", "").orEmpty()
+        }
+        set(value) { secure?.edit()?.putString("systemPrompt", value)?.apply() }
 
     var endpoint: String
         get() = prefs.getString("apiEndpoint", null) ?: BlabladorApi.DEFAULT_ENDPOINT

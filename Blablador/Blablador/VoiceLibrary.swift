@@ -115,7 +115,7 @@ final class VoiceLibrary: ObservableObject {
     var selected: Voice { voices.first { $0.id == selectedID } ?? Self.builtIn[0] }
 
     private init() {
-        if let data = try? Data(contentsOf: Self.indexURL),
+        if let data = EncryptedStorage.read(Self.indexURL),
            let voices = try? JSONDecoder().decode([Voice].self, from: data) {
             cloned = voices
         }
@@ -133,7 +133,7 @@ final class VoiceLibrary: ObservableObject {
 
     func add(name: String, sample: Data, transcript: String) {
         let file = UUID().uuidString + ".m4a"
-        try? sample.write(to: Self.directory.appendingPathComponent(file), options: .atomic)
+        EncryptedStorage.write(sample, to: Self.directory.appendingPathComponent(file))
         let voice = Voice(name: name, sampleFile: file, transcript: transcript)
         cloned.append(voice)
         selectedID = voice.id
@@ -141,22 +141,23 @@ final class VoiceLibrary: ObservableObject {
     }
 
     func delete(_ voice: Voice) {
-        if let file = voice.sampleFile { try? FileManager.default.removeItem(at: Self.directory.appendingPathComponent(file)) }
+        if let file = voice.sampleFile { EncryptedStorage.delete(Self.directory.appendingPathComponent(file)) }
         cloned.removeAll { $0.id == voice.id }
         if selectedID == voice.id { selectedID = Self.builtIn[0].id }
         persist()
     }
 
     private func persist() {
-        try? JSONEncoder().encode(cloned).write(to: Self.indexURL, options: .atomic)
+        guard let data = try? JSONEncoder().encode(cloned) else { return }
+        EncryptedStorage.write(data, to: Self.indexURL)
     }
 
     nonisolated static func sampleData(for file: String) -> Data? {
-        try? Data(contentsOf: directory.appendingPathComponent(file))
+        EncryptedStorage.readFile(directory.appendingPathComponent(file), isPlain: EncryptedStorage.isMedia)
     }
 
     nonisolated private static var directory: URL {
-        let url = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let url = AppFolder.url
             .appendingPathComponent("Voices", isDirectory: true)
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
@@ -249,13 +250,14 @@ final class VoiceLibrary: ObservableObject {
 /// Generated speech, stored as files like ImageStore.
 enum AudioStore {
     private static var directory: URL {
-        let url = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let url = AppFolder.url
             .appendingPathComponent("Audio", isDirectory: true)
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
     }
 
-    static func url(for name: String) -> URL { directory.appendingPathComponent(name) }
+    /// A decrypted copy, for playing.
+    static func url(for name: String) -> URL { EncryptedStorage.decryptedCopy(of: directory.appendingPathComponent(name)) }
 
     /// A copy named "Blablador speech.mp3", so Messages and other apps show a readable file name.
     static func shareURL(for name: String) -> URL {
@@ -300,12 +302,15 @@ enum AudioStore {
 
     static func save(_ data: Data) -> String {
         let name = UUID().uuidString + ".mp3"
-        try? data.write(to: url(for: name), options: .atomic)
+        EncryptedStorage.write(data, to: directory.appendingPathComponent(name))
         return name
     }
 
     static func delete(_ names: [String]) {
-        for name in names { try? FileManager.default.removeItem(at: url(for: name)) }
+        for name in names {
+            EncryptedStorage.delete(directory.appendingPathComponent(name))
+            try? FileManager.default.removeItem(at: shareURL(for: name).deletingLastPathComponent())
+        }
     }
 }
 

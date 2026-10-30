@@ -7,33 +7,34 @@ import UniformTypeIdentifiers
 /// Stores chat images as files so the conversation JSON stays small.
 enum ImageStore {
     private static var directory: URL {
-        let url = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let url = AppFolder.url
             .appendingPathComponent("Images", isDirectory: true)
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
     }
 
+    /// A decrypted copy, for sharing.
     static func url(for name: String) -> URL {
-        directory.appendingPathComponent(name)
+        EncryptedStorage.decryptedCopy(of: directory.appendingPathComponent(name))
     }
 
-    /// Saves image data and returns its file name.
+    /// Saves image data encrypted and returns its file name.
     static func save(_ data: Data) -> String {
         let name = UUID().uuidString + (isPNG(data) ? ".png" : ".jpg")
-        try? data.write(to: url(for: name), options: .atomic)
+        EncryptedStorage.write(data, to: directory.appendingPathComponent(name))
         return name
     }
 
     static func data(for name: String) -> Data? {
-        try? Data(contentsOf: url(for: name))
+        EncryptedStorage.readFile(directory.appendingPathComponent(name), isPlain: EncryptedStorage.isMedia)
     }
 
     static func delete(_ names: [String]) {
-        for name in names { try? FileManager.default.removeItem(at: url(for: name)) }
+        for name in names { EncryptedStorage.delete(directory.appendingPathComponent(name)) }
     }
 
     static func cgImage(for name: String, maxPixelSize: Int? = nil) -> CGImage? {
-        guard let source = CGImageSourceCreateWithURL(url(for: name) as CFURL, nil) else { return nil }
+        guard let data = data(for: name), let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
         return cgImage(from: source, maxPixelSize: maxPixelSize)
     }
 
@@ -82,22 +83,23 @@ struct StoredImage: View {
 /// Generated videos, kept next to the images.
 enum VideoStore {
     private static var directory: URL {
-        let url = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let url = AppFolder.url
             .appendingPathComponent("Videos", isDirectory: true)
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
     }
 
-    static func url(for name: String) -> URL { directory.appendingPathComponent(name) }
+    /// A decrypted copy, for playing, sharing and saving.
+    static func url(for name: String) -> URL { EncryptedStorage.decryptedCopy(of: directory.appendingPathComponent(name)) }
 
     static func save(_ data: Data) -> String {
         let name = UUID().uuidString + ".mp4"
-        try? data.write(to: url(for: name), options: .atomic)
+        EncryptedStorage.write(data, to: directory.appendingPathComponent(name))
         return name
     }
 
     static func delete(_ names: [String]) {
-        for name in names { try? FileManager.default.removeItem(at: url(for: name)) }
+        for name in names { EncryptedStorage.delete(directory.appendingPathComponent(name)) }
     }
 
     /// The final frame as JPEG, for continuing the video.

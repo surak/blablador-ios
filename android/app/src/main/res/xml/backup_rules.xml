@@ -1,8 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The encrypted API key, chats and memories can't be restored on another device (its Keystore key stays behind), so leave them out. -->
+<!-- The API key and the encrypted chats, memories and files can't be restored on another device (its Keystore key stays behind), so leave them out. -->
 <full-backup-content>
     <exclude domain="file" path="conversations.json" />
     <exclude domain="file" path="memories.json" />
+    <exclude domain="file" path="decisions.json" />
+    <exclude domain="file" path="images" />
+    <exclude domain="file" path="audio" />
+    <exclude domain="file" path="videos" />
+    <exclude domain="file" path="voices" />
+    <exclude domain="file" path="knowledge" />
     <exclude domain="sharedpref" path="secure.xml" />
     <exclude domain="sharedpref" path="__androidx_security_crypto_encrypted_prefs__.xml" />
 </full-backup-content>

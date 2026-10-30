@@ -52,7 +52,7 @@ final class KnowledgeLibrary: ObservableObject {
     private var cache: [UUID: (chunks: [Chunk], vectors: [Float], dimension: Int)] = [:]
 
     private init() {
-        if let data = try? Data(contentsOf: Self.indexURL),
+        if let data = EncryptedStorage.read(Self.indexURL),
            let bases = try? JSONDecoder().decode([KnowledgeBase].self, from: data) {
             self.bases = bases
         }
@@ -307,9 +307,9 @@ final class KnowledgeLibrary: ObservableObject {
     private func load(_ id: UUID) -> (chunks: [Chunk], vectors: [Float], dimension: Int) {
         if let cached = cache[id] { return cached }
         let directory = Self.directory(for: id)
-        let chunks = (try? Data(contentsOf: directory.appendingPathComponent("chunks.json")))
+        let chunks = EncryptedStorage.read(directory.appendingPathComponent("chunks.json"))
             .flatMap { try? JSONDecoder().decode([Chunk].self, from: $0) } ?? []
-        let data = (try? Data(contentsOf: directory.appendingPathComponent("vectors.bin"))) ?? Data()
+        let data = EncryptedStorage.readFile(directory.appendingPathComponent("vectors.bin"), isPlain: { $0.count % 4 == 0 }) ?? Data()
         let vectors = data.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
         let store = (chunks, vectors, chunks.isEmpty ? 0 : vectors.count / chunks.count)
         cache[id] = store
@@ -319,17 +319,20 @@ final class KnowledgeLibrary: ObservableObject {
     private func save(_ store: (chunks: [Chunk], vectors: [Float], dimension: Int), for id: UUID) {
         cache[id] = store
         let directory = Self.directory(for: id)
-        try? JSONEncoder().encode(store.chunks).write(to: directory.appendingPathComponent("chunks.json"), options: .atomic)
+        if let chunks = try? JSONEncoder().encode(store.chunks) {
+            EncryptedStorage.write(chunks, to: directory.appendingPathComponent("chunks.json"))
+        }
         let data = store.vectors.withUnsafeBufferPointer { Data(buffer: $0) }
-        try? data.write(to: directory.appendingPathComponent("vectors.bin"), options: .atomic)
+        EncryptedStorage.write(data, to: directory.appendingPathComponent("vectors.bin"))
     }
 
     private func persist() {
-        try? JSONEncoder().encode(bases).write(to: Self.indexURL, options: .atomic)
+        guard let data = try? JSONEncoder().encode(bases) else { return }
+        EncryptedStorage.write(data, to: Self.indexURL)
     }
 
     private static var root: URL {
-        let url = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let url = AppFolder.url
             .appendingPathComponent("Knowledge", isDirectory: true)
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
