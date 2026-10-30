@@ -112,8 +112,9 @@ struct SettingsView: View {
 
                 Section {
                     NavigationLink("Memory") { MemoryView() }
+                    NavigationLink("Skills") { SkillsView() }
                 } footer: {
-                    Text("Facts about you the assistant remembers across chats.")
+                    Text("Facts about you the assistant remembers across chats, and instructions for tasks you repeat.")
                 }
 
                 VoiceSettingsSection()

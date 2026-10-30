@@ -44,6 +44,9 @@ data class ChatMessage(
     /** Facts saved to and deleted from long-term memory while answering. */
     val remembered: List<String> = emptyList(),
     val forgotten: List<String> = emptyList(),
+    /** Skills loaded with use_skill, and skills the model offered to save. */
+    val skillsUsed: List<String> = emptyList(),
+    val suggestedSkills: List<Skill> = emptyList(),
     /** Pictures found online with image_search. */
     val webImages: List<WebImage> = emptyList(),
     /** File names in ImageStore: attachments on user messages, generated images on replies. */

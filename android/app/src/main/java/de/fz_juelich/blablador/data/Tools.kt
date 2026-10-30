@@ -74,6 +74,31 @@ object Tools {
         listOf("number"),
     )
 
+    val searchChats = function(
+        "search_chats",
+        "Search the user's earlier chats in this app, e.g. when they refer to something discussed before (\"what did we say about…\", \"like last time\").",
+        buildJsonObject { put("query", stringProperty("Keywords to look for.")) },
+        listOf("query"),
+    )
+
+    val useSkill = function(
+        "use_skill",
+        "Load the full instructions of one of the user's saved skills.",
+        buildJsonObject { put("name", stringProperty("The skill's name as listed.")) },
+        listOf("name"),
+    )
+
+    val suggestSkill = function(
+        "suggest_skill",
+        "Offer to save a reusable procedure as a skill, when the user asks for it or after finishing a task they will likely repeat the same way. The user decides whether to save it.",
+        buildJsonObject {
+            put("name", stringProperty("Short name, e.g. \"Meeting notes\"."))
+            put("description", stringProperty("One line saying when to use it."))
+            put("instructions", stringProperty("Step-by-step instructions in Markdown, written so they work without this chat."))
+        },
+        listOf("name", "description", "instructions"),
+    )
+
     val generateImage = function(
         "generate_image",
         "Create a new image from a text description. Use when the user asks to draw, create, generate or imagine a picture.",

@@ -9,21 +9,22 @@ Blablador API. Ordered from least to most work. Each step ships in both apps.
 - Numbered list sent in the system prompt of every chat; replies show "Remembered: …" / "Forgot: …".
 - Settings → Memory: on/off, view, edit, add, delete, forget everything.
 
-## 2. Long-term memory, better recall
+## 2. Long-term memory, better recall (done, keyword version)
 
-- Search past chats: a `search_chats` tool over the chat history (keyword first, then embeddings with
-  `alias-qwen3-4b-embeddings`, reusing `KnowledgeLibrary`'s vector code).
-- When memories grow past what fits the prompt, retrieve only the relevant ones by embedding similarity.
-- Optional summary of each finished chat saved as a memory.
+- `search_chats` tool: keyword search over earlier chats, returning excerpts with chat title and date (`ChatSearch`).
+  Counts as outside content, so memory can't be changed in the same reply.
+- Over 30 memories, only the ones sharing words with the question plus the 10 newest are sent, keeping their numbers.
+- Later: embeddings (`alias-qwen3-4b-embeddings`, reusing `KnowledgeLibrary`'s vector code) instead of keywords;
+  optional summary of each finished chat saved as a memory.
 
-## 3. Skills
+## 3. Skills (done)
 
-- A skill is a named Markdown instruction document ("How I want meeting notes", "Write a Helmholtz press release").
-- Library in Settings: create, edit, import/export (`.md` with a front-matter name and description), share between devices
-  through files.
-- Only names and descriptions go in the system prompt; a `use_skill` tool loads the full text when it applies.
-- `save_skill` tool so the assistant can turn a successful procedure into a skill, after the user confirms.
-- Skills can bundle knowledge bases and a preferred model.
+- A skill is a named Markdown instruction document ("How I want meeting notes", "Write a Helmholtz press release"),
+  saved encrypted (`skills.json`).
+- Settings → Skills: create, edit, delete, import `.md` files (front matter with `name` and `description`), share as Markdown.
+- Only names and descriptions go in the system prompt; `use_skill` loads the full text; replies show "Used skill: …".
+- `suggest_skill`: the assistant offers a skill under its reply; nothing is saved until the user presses Save.
+- Later: skills that bundle knowledge bases and a preferred model.
 
 ## 4. Automation: scheduled tasks
 

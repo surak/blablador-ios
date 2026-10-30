@@ -62,15 +62,36 @@ final class MemoryStore: ObservableObject {
         persist()
     }
 
-    /// Added to the system prompt when memory is on.
-    var systemPrompt: String {
+    /// Up to this many memories are always sent; beyond it only the relevant ones.
+    static let alwaysSent = 30
+
+    /// Added to the system prompt when memory is on. With many memories, only those sharing words with the
+    /// question plus the newest are sent, keeping their numbers so forget still works.
+    func systemPrompt(for question: String) -> String {
         var prompt = "You have a long-term memory of the user that lasts across chats. Call remember when the user shares something lasting about themselves (name, job, preferences, ongoing projects) or asks you to remember something; save one short fact per call, written in the third person. Call forget with a number when the user says a memory is wrong or asks you to forget it. Never save passwords, keys or other secrets."
-        if memories.isEmpty {
-            prompt += " You don't remember anything yet."
-        } else {
-            prompt += " What you remember:\n" + memories.enumerated().map { "\($0.offset + 1). \($0.element.text)" }.joined(separator: "\n")
+        let numbered = Array(memories.enumerated())
+        guard !numbered.isEmpty else { return prompt + " You don't remember anything yet." }
+        var shown = numbered
+        if numbered.count > Self.alwaysSent {
+            let words = Self.words(question)
+            let relevant = numbered
+                .map { ($0, Self.words($0.element.text).intersection(words).count) }
+                .filter { $0.1 > 0 }
+                .sorted { $0.1 > $1.1 }
+                .prefix(20).map(\.0.offset)
+            let keep = Set(relevant).union(numbered.suffix(10).map(\.offset))
+            shown = numbered.filter { keep.contains($0.offset) }
+        }
+        prompt += " What you remember:\n" + shown.map { "\($0.offset + 1). \($0.element.text)" }.joined(separator: "\n")
+        if shown.count < numbered.count {
+            prompt += "\n(\(numbered.count - shown.count) other memories aren't shown because they don't seem related to this message.)"
         }
         return prompt
+    }
+
+    /// Lowercased words of three letters or more, for matching memories and chats to a question.
+    nonisolated static func words(_ text: String) -> Set<String> {
+        Set(text.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init).filter { $0.count >= 3 })
     }
 
     private func persist() {
@@ -115,6 +136,55 @@ enum MemoryTools {
             ]
         ]
     ]
+}
+
+/// Keyword search over earlier chats, for the search_chats tool.
+enum ChatSearch {
+    static let maxResults = 6
+
+    static let tool: [String: Any] = [
+        "type": "function",
+        "function": [
+            "name": "search_chats",
+            "description": "Search the user's earlier chats in this app, e.g. when they refer to something discussed before (\"what did we say about…\", \"like last time\").",
+            "parameters": [
+                "type": "object",
+                "properties": [
+                    "query": ["type": "string", "description": "Keywords to look for."]
+                ],
+                "required": ["query"]
+            ]
+        ]
+    ]
+
+    /// The best matching messages, with chat title, date and an excerpt around the first match.
+    static func search(_ query: String, in conversations: [Conversation], excluding current: UUID?) -> String {
+        let words = MemoryStore.words(query)
+        guard !words.isEmpty else { return "No keywords to search for." }
+        var hits: [(score: Int, conversation: Conversation, message: ChatMessage)] = []
+        for conversation in conversations where conversation.id != current {
+            for message in conversation.messages where !message.isError && !message.content.isEmpty {
+                let score = MemoryStore.words(message.content).intersection(words).count
+                    + MemoryStore.words(conversation.title).intersection(words).count
+                if score > 0 { hits.append((score, conversation, message)) }
+            }
+        }
+        let best = hits.sorted { $0.score != $1.score ? $0.score > $1.score : $0.message.date > $1.message.date }.prefix(maxResults)
+        guard !best.isEmpty else { return "No earlier chats mention \"\(query)\"." }
+        return best.map { hit in
+            let who = hit.message.role == .user ? "User" : "Assistant"
+            let date = hit.message.date.formatted(date: .abbreviated, time: .omitted)
+            return "[\(hit.conversation.title), \(date)] \(who): \(excerpt(hit.message.content, around: words))"
+        }.joined(separator: "\n\n")
+    }
+
+    private static func excerpt(_ text: String, around words: Set<String>) -> String {
+        let lower = text.lowercased()
+        let start = words.compactMap { lower.range(of: $0)?.lowerBound }.min() ?? lower.startIndex
+        let offset = max(0, lower.distance(from: lower.startIndex, to: start) - 200)
+        let slice = text.dropFirst(offset).prefix(600)
+        return (offset > 0 ? "…" : "") + slice + (slice.count == 600 ? "…" : "")
+    }
 }
 
 /// Settings screen listing what the assistant remembers.

@@ -23,6 +23,12 @@ class MemoryStore(private val context: Context) {
     companion object {
         /** Most memories kept; the oldest are dropped first. */
         const val MAX_MEMORIES = 100
+        /** Up to this many memories are always sent; beyond it only the relevant ones. */
+        const val ALWAYS_SENT = 30
+
+        /** Lowercased words of three letters or more, for matching memories and chats to a question. */
+        fun words(text: String): Set<String> =
+            text.lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.length >= 3 }.toSet()
     }
 
     private val prefs = context.getSharedPreferences("memory", Context.MODE_PRIVATE)
@@ -65,14 +71,59 @@ class MemoryStore(private val context: Context) {
 
     fun deleteAll() { memories.clear(); persist() }
 
-    /** Added to the system prompt when memory is on. */
-    val systemPrompt: String
-        get() {
-            var prompt = "You have a long-term memory of the user that lasts across chats. Call remember when the user shares something lasting about themselves (name, job, preferences, ongoing projects) or asks you to remember something; save one short fact per call, written in the third person. Call forget with a number when the user says a memory is wrong or asks you to forget it. Never save passwords, keys or other secrets."
-            prompt += if (memories.isEmpty()) " You don't remember anything yet."
-            else " What you remember:\n" + memories.mapIndexed { index, memory -> "${index + 1}. ${memory.text}" }.joinToString("\n")
-            return prompt
+    /**
+     * Added to the system prompt when memory is on. With many memories, only those sharing words with the
+     * question plus the newest are sent, keeping their numbers so forget still works.
+     */
+    fun systemPrompt(question: String): String {
+        var prompt = "You have a long-term memory of the user that lasts across chats. Call remember when the user shares something lasting about themselves (name, job, preferences, ongoing projects) or asks you to remember something; save one short fact per call, written in the third person. Call forget with a number when the user says a memory is wrong or asks you to forget it. Never save passwords, keys or other secrets."
+        if (memories.isEmpty()) return "$prompt You don't remember anything yet."
+        val numbered = memories.withIndex().toList()
+        var shown = numbered
+        if (numbered.size > ALWAYS_SENT) {
+            val words = words(question)
+            val relevant = numbered.map { it to (words(it.value.text) intersect words).size }
+                .filter { it.second > 0 }.sortedByDescending { it.second }.take(20).map { it.first.index }
+            val keep = relevant.toSet() + numbered.takeLast(10).map { it.index }
+            shown = numbered.filter { it.index in keep }
         }
+        prompt += " What you remember:\n" + shown.joinToString("\n") { "${it.index + 1}. ${it.value.text}" }
+        if (shown.size < numbered.size) prompt += "\n(${numbered.size - shown.size} other memories aren't shown because they don't seem related to this message.)"
+        return prompt
+    }
 
     private fun persist() = EncryptedStorage.write(context, file, BlabladorApi.json.encodeToString(serializer, memories.toList()))
+}
+
+/** Keyword search over earlier chats, for the search_chats tool. */
+object ChatSearch {
+    private const val MAX_RESULTS = 6
+
+    /** The best matching messages, with chat title, date and an excerpt around the first match. */
+    fun search(query: String, conversations: List<Conversation>, excluding: String?): String {
+        val words = MemoryStore.words(query)
+        if (words.isEmpty()) return "No keywords to search for."
+        data class Hit(val score: Int, val conversation: Conversation, val message: ChatMessage)
+        val hits = conversations.filter { it.id != excluding }.flatMap { conversation ->
+            conversation.messages.filter { !it.isError && it.content.isNotEmpty() }.mapNotNull { message ->
+                val score = (MemoryStore.words(message.content) intersect words).size + (MemoryStore.words(conversation.title) intersect words).size
+                if (score > 0) Hit(score, conversation, message) else null
+            }
+        }
+        val best = hits.sortedWith(compareByDescending<Hit> { it.score }.thenByDescending { it.message.date }).take(MAX_RESULTS)
+        if (best.isEmpty()) return "No earlier chats mention \"$query\"."
+        val format = java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM)
+        return best.joinToString("\n\n") { hit ->
+            val who = if (hit.message.role == ChatRole.user) "User" else "Assistant"
+            "[${hit.conversation.title}, ${format.format(java.util.Date(hit.message.date))}] $who: ${excerpt(hit.message.content, words)}"
+        }
+    }
+
+    private fun excerpt(text: String, words: Set<String>): String {
+        val lower = text.lowercase()
+        val first = words.mapNotNull { lower.indexOf(it).takeIf { index -> index >= 0 } }.minOrNull() ?: 0
+        val start = (first - 200).coerceAtLeast(0)
+        val slice = text.drop(start).take(600)
+        return (if (start > 0) "…" else "") + slice + (if (slice.length == 600) "…" else "")
+    }
 }

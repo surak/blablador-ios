@@ -78,6 +78,8 @@ import de.fz_juelich.blablador.data.ChatRole
 import de.fz_juelich.blablador.data.DocumentAttachment
 import de.fz_juelich.blablador.data.SearchResult
 import de.fz_juelich.blablador.data.WebImage
+import de.fz_juelich.blablador.data.Skill
+import androidx.compose.material.icons.outlined.AutoFixHigh
 import androidx.compose.material.icons.outlined.Psychology
 import kotlinx.coroutines.delay
 import java.io.File
@@ -95,6 +97,8 @@ fun MessageItem(
     speechClip: @Composable (String) -> Unit,
     videoFile: (String) -> File = { File(it) },
     onContinueVideo: (String) -> Unit = {},
+    isSkillSaved: (String) -> Boolean = { false },
+    onSaveSkill: (Skill) -> Unit = {},
 ) {
     when (message.role) {
         ChatRole.user -> Column(Modifier.fillMaxWidth().padding(start = 48.dp), horizontalAlignment = Alignment.End,
@@ -140,8 +144,10 @@ fun MessageItem(
                     }
                     else -> MarkdownText(message.content)
                 }
+                message.skillsUsed.forEach { MemoryNote("Used skill: $it", Icons.Outlined.AutoFixHigh) }
                 message.remembered.forEach { MemoryNote("Remembered: $it") }
                 message.forgotten.forEach { MemoryNote("Forgot: $it") }
+                message.suggestedSkills.forEach { SuggestedSkill(it, isSkillSaved(it.name)) { onSaveSkill(it) } }
                 if (message.citations.isNotEmpty()) Citations(message.citations)
                 if (message.sources.isNotEmpty()) Sources(message.sources)
                 if (!(isLast && isStreaming) && (message.content.isNotEmpty() || message.images.isNotEmpty())) {
@@ -236,10 +242,31 @@ private fun Sources(sources: List<SearchResult>) {
     }
 }
 
+/** A skill the model offered to save; the user can read it and save it. */
 @Composable
-private fun MemoryNote(text: String) {
+private fun SuggestedSkill(skill: Skill, saved: Boolean, onSave: () -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surfaceVariant).padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Icon(Icons.Outlined.AutoFixHigh, null, Modifier.size(18.dp), tint = Brand.violet)
+            Text("Suggested skill: ${skill.name}", style = MaterialTheme.typography.titleSmall)
+        }
+        Text(skill.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (expanded) MarkdownText(skill.instructions)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            androidx.compose.material3.OutlinedButton(onClick = onSave, enabled = !saved) { Text(if (saved) "Saved" else "Save skill") }
+            TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "Hide" else "Read") }
+        }
+    }
+}
+
+@Composable
+private fun MemoryNote(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector = Icons.Outlined.Psychology) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        Icon(Icons.Outlined.Psychology, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Icon(icon, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

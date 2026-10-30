@@ -16,6 +16,9 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     /// Facts saved to and deleted from long-term memory while answering.
     var remembered: [String] = []
     var forgotten: [String] = []
+    /// Skills loaded with use_skill, and skills the model offered to save.
+    var skillsUsed: [String] = []
+    var suggestedSkills: [Skill] = []
     /// Pictures found online with image_search.
     var webImages: [WebImage] = []
     /// File names in ImageStore: attachments on user messages, generated images on replies.
@@ -35,7 +38,7 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     /// Transient status shown while tools run, e.g. "Searching the web…"
     var status: String?
 
-    private enum CodingKeys: String, CodingKey { case id, role, content, date, isError, sources, webImages, remembered, forgotten, images, documents, audio, videos, citations, steps, reasoning }
+    private enum CodingKeys: String, CodingKey { case id, role, content, date, isError, sources, webImages, remembered, forgotten, skillsUsed, suggestedSkills, images, documents, audio, videos, citations, steps, reasoning }
 
     init(role: ChatRole, content: String, images: [String] = [], documents: [DocumentAttachment] = []) {
         self.role = role
@@ -54,6 +57,8 @@ struct ChatMessage: Identifiable, Codable, Equatable {
         sources = try c.decodeIfPresent([SearchResult].self, forKey: .sources) ?? []
         remembered = try c.decodeIfPresent([String].self, forKey: .remembered) ?? []
         forgotten = try c.decodeIfPresent([String].self, forKey: .forgotten) ?? []
+        skillsUsed = try c.decodeIfPresent([String].self, forKey: .skillsUsed) ?? []
+        suggestedSkills = try c.decodeIfPresent([Skill].self, forKey: .suggestedSkills) ?? []
         webImages = try c.decodeIfPresent([WebImage].self, forKey: .webImages) ?? []
         images = try c.decodeIfPresent([String].self, forKey: .images) ?? []
         documents = try c.decodeIfPresent([DocumentAttachment].self, forKey: .documents) ?? []
