@@ -23,6 +23,7 @@ import de.fz_juelich.blablador.data.ImageStore
 import de.fz_juelich.blablador.data.EncryptedStorage
 import de.fz_juelich.blablador.data.KnowledgeLibrary
 import de.fz_juelich.blablador.data.ChatSearch
+import de.fz_juelich.blablador.data.complete
 import de.fz_juelich.blablador.data.MemoryStore
 import de.fz_juelich.blablador.data.Skill
 import de.fz_juelich.blablador.data.SkillLibrary
@@ -246,6 +247,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             pendingKnowledge = emptyList()
             conversations.add(0, conversation)
             currentId = conversation.id
+            if (trimmed.isNotEmpty()) nameChat(conversation.id, trimmed, selectedModel)
         }
         val names = attachments.map(images::save)
         update { it.copy(messages = it.messages + ChatMessage(role = ChatRole.user, content = trimmed, images = names, documents = documents)) }
@@ -430,7 +432,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 // PDFs and knowledge excerpts come from outside the chat; see runTurn's memory lock.
                 val outsideContent = conversation.messages.any { it.documents.isNotEmpty() } ||
                     current?.messages?.firstOrNull { it.id == reply.id }?.citations?.isNotEmpty() == true
-                runTurn(model, messages, tools, reply.id, outsideContent)
+                val readOutside = runTurn(model, messages, tools, reply.id, outsideContent)
+                learn(question, reply.id, model, userOnly = readOutside)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: BlabladorException) {
@@ -456,7 +459,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
      * has read outside content (web results, PDFs, knowledge bases), so text planted there can't write itself into
      * every future chat.
      */
-    private suspend fun runTurn(model: String, initial: List<JsonObject>, initialTools: List<JsonObject>, replyId: String, outside: Boolean) {
+    private suspend fun runTurn(model: String, initial: List<JsonObject>, initialTools: List<JsonObject>, replyId: String, outside: Boolean): Boolean {
         var outsideContent = outside
         val messages = initial.toMutableList()
         var tools = initialTools
@@ -501,9 +504,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
             if (isFinalRound || (calls.isEmpty() && containsToolMarkup(text))) {
                 if (stripToolMarkup(text).isEmpty()) updateMessage(replyId) { it.copy(content = prefix) }
-                return
+                return outsideContent
             }
-            if (calls.isEmpty()) return
+            if (calls.isEmpty()) return outsideContent
 
             messages += buildJsonObject {
                 put("role", "assistant")
@@ -620,6 +623,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             }
             updateMessage(replyId) { it.copy(status = "Thinking…") }
         }
+        return outsideContent
     }
 
     /** User attachments are sent as base64 images and document text; generated images are only mentioned. */
@@ -689,6 +693,32 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private fun persist() {
         val snapshot = conversations.toList()
         viewModelScope.launch(saveDispatcher) { conversationStore.save(snapshot) }
+    }
+
+    /** Replaces a new chat's provisional title (its first words) with a short name from the helper model. */
+    private fun nameChat(id: String, text: String, model: String) {
+        val provisional = title(text)
+        viewModelScope.launch {
+            val system = "Give a chat a short title that says what it is about, like a heading: two to six words, in the language of the user's message, without quotes or final period. Don't copy the start of the message. Reply with only the title."
+            val name = runCatching { api.complete(BlabladorApi.helperModel(model), system, text.take(2000)) }.getOrNull()
+                ?.trim()?.trim('"', '\'', '“', '”', '«', '»', '*', '#', '.')?.trim() ?: return@launch
+            val index = conversations.indexOfFirst { it.id == id }
+            if (name.isEmpty() || name.length > 80 || '\n' in name || index < 0 || conversations[index].title != provisional) return@launch
+            conversations[index] = conversations[index].copy(title = name)
+            persist()
+        }
+    }
+
+    /** Saves what's worth keeping from the exchange to long-term memory, in the background. */
+    private fun learn(question: String, replyId: String, model: String, userOnly: Boolean) {
+        val reply = message(replyId)
+        if (!memory.enabled || !memory.learnsAutomatically || question.isEmpty() || reply == null || reply.isError || reply.content.isEmpty()) return
+        viewModelScope.launch {
+            val facts = runCatching { memory.learn(question, if (userOnly) null else reply.content, api, model) }.getOrDefault(emptyList())
+            if (facts.isEmpty()) return@launch
+            updateMessage(replyId) { it.copy(remembered = it.remembered + facts) }
+            persist()
+        }
     }
 
     private fun title(text: String): String {

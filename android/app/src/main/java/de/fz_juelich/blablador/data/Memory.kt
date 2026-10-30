@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
 import java.io.File
 import java.util.UUID
 
@@ -22,7 +23,7 @@ data class Memory(
 class MemoryStore(private val context: Context) {
     companion object {
         /** Most memories kept; the oldest are dropped first. */
-        const val MAX_MEMORIES = 100
+        const val MAX_MEMORIES = 500
         /** Up to this many memories are always sent; beyond it only the relevant ones. */
         const val ALWAYS_SENT = 30
 
@@ -43,6 +44,38 @@ class MemoryStore(private val context: Context) {
         private set
 
     fun turn(on: Boolean) { enabled = on; prefs.edit().putBoolean("memoryEnabled", on).apply() }
+
+    /** After each reply, save what's worth keeping from the exchange without being asked. */
+    var learnsAutomatically by mutableStateOf(prefs.getBoolean("memoryLearnsAutomatically", true))
+        private set
+
+    fun learnAutomatically(on: Boolean) { learnsAutomatically = on; prefs.edit().putBoolean("memoryLearnsAutomatically", on).apply() }
+
+    /**
+     * Asks the model which facts from one exchange are worth keeping and saves them; returns the new ones.
+     * With [reply] null (the reply read web pages or documents) only what the user wrote is used, so text planted
+     * there can't write itself into memory.
+     */
+    suspend fun learn(question: String, reply: String?, api: BlabladorApi, model: String): List<String> {
+        val today = java.text.DateFormat.getDateInstance(java.text.DateFormat.FULL).format(java.util.Date())
+        var system = "You keep the long-term memory of an assistant. From the exchange below, pick out what is worth remembering " +
+            "in future conversations: facts the user stated about themselves, their work, projects, people, plans and " +
+            "preferences, and decisions, results and conclusions about the topics discussed that they are likely to come " +
+            "back to. Skip general knowledge, small talk, one-off requests and anything already remembered. Never include " +
+            "passwords, keys or other secrets. Write each fact as one short sentence that makes sense on its own, naming " +
+            "things explicitly and giving dates where they matter (today is $today). Reply with only a JSON array of " +
+            "strings, or [] if there is nothing worth keeping."
+        val known = memories.takeLast(60).map { it.text }
+        if (known.isNotEmpty()) system += "\n\nAlready remembered:\n" + known.joinToString("\n") { "- $it" }
+        var exchange = "User: " + question.take(8000)
+        if (reply != null) exchange += "\n\nAssistant: " + reply.take(8000) else system += "\n\nOnly use what the user wrote."
+        val answer = api.complete(BlabladorApi.helperModel(model), system, exchange)
+        val start = answer.indexOf('['); val end = answer.lastIndexOf(']')
+        if (start < 0 || end <= start) return emptyList()
+        val facts = runCatching { BlabladorApi.json.decodeFromString(ListSerializer(String.serializer()), answer.substring(start, end + 1)) }
+            .getOrDefault(emptyList())
+        return facts.take(5).map { it.trim() }.filter { add(it) }
+    }
 
     /** Saves a fact; returns false for an empty text or one already remembered. */
     fun add(text: String): Boolean {

@@ -260,6 +260,7 @@ final class ChatStore: ObservableObject {
             pendingWorkspace = nil
             conversations.insert(conversation, at: 0)
             currentID = conversation.id
+            if !trimmed.isEmpty { nameChat(conversation.id, from: trimmed, model: selectedModel) }
         }
         let images = attachments.map(ImageStore.save)
         update { $0.messages.append(ChatMessage(role: .user, content: trimmed, images: images, documents: documents)) }
@@ -568,7 +569,8 @@ final class ChatStore: ObservableObject {
                 // PDFs and knowledge excerpts come from outside the chat; see runTurn's memory lock.
                 let outsideContent = conversation.messages.contains { !$0.documents.isEmpty }
                     || current?.messages.first { $0.id == reply.id }?.citations.isEmpty == false
-                try await runTurn(model: model, messages: wire, tools: tools, replyID: reply.id, workspace: folder, outsideContent: outsideContent)
+                let readOutside = try await runTurn(model: model, messages: wire, tools: tools, replyID: reply.id, workspace: folder, outsideContent: outsideContent)
+                learn(question: question, replyID: reply.id, model: model, userOnly: readOutside)
             } catch is CancellationError {
             } catch let error as URLError where error.code == .cancelled {
             } catch BlabladorAPIError.http(let status, let body) where status == 400 && body.localizedCaseInsensitiveContains("image") {
@@ -594,10 +596,42 @@ final class ChatStore: ObservableObject {
         }
     }
 
-    /// Streams the reply, running web searches whenever the model asks for them.
+    /// Replaces a new chat's provisional title (its first words) with a short name from the helper model.
+    private func nameChat(_ id: UUID, from text: String, model: String) {
+        let provisional = Self.title(for: text)
+        let api = api
+        Task {
+            let system = "Give a chat a short title that says what it is about, like a heading: two to six words, in the language of the user's message, without quotes or final period. Don't copy the start of the message. Reply with only the title."
+            guard let reply = try? await api.complete(model: BlabladorAPI.helperModel(else: model), system: system, user: String(text.prefix(2000))) else { return }
+            var name = Self.splitThinking(reply).answer.trimmingCharacters(in: .whitespacesAndNewlines)
+            name = name.trimmingCharacters(in: CharacterSet(charactersIn: "\"'“”«»*#.")).trimmingCharacters(in: .whitespaces)
+            guard !name.isEmpty, name.count <= 80, !name.contains("\n"),
+                  let index = conversations.firstIndex(where: { $0.id == id }), conversations[index].title == provisional else { return }
+            conversations[index].title = name
+            persist()
+        }
+    }
+
+    /// Saves what's worth keeping from the exchange to long-term memory, in the background.
+    private func learn(question: String, replyID: UUID, model: String, userOnly: Bool) {
+        let memory = MemoryStore.shared
+        guard memory.enabled, memory.learnsAutomatically, !question.isEmpty,
+              let reply = conversations.lazy.flatMap(\.messages).first(where: { $0.id == replyID }),
+              !reply.isError, !reply.content.isEmpty else { return }
+        let api = api
+        Task {
+            guard let facts = try? await memory.learn(question: question, reply: userOnly ? nil : reply.content, api: api, model: model),
+                  !facts.isEmpty else { return }
+            updateMessage(replyID) { $0.remembered += facts }
+            persist()
+        }
+    }
+
+    /// Streams the reply, running web searches whenever the model asks for them. Returns whether it read outside content.
     /// Memory changes are refused once the reply has read outside content (web results, PDFs, knowledge bases,
     /// files), so text planted there can't write itself into every future chat.
-    private func runTurn(model: String, messages: [[String: Any]], tools: [[String: Any]], replyID: UUID, workspace: URL? = nil, outsideContent: Bool = false) async throws {
+    @discardableResult
+    private func runTurn(model: String, messages: [[String: Any]], tools: [[String: Any]], replyID: UUID, workspace: URL? = nil, outsideContent: Bool = false) async throws -> Bool {
         var outsideContent = outsideContent
         var messages = messages
         var tools = tools
@@ -648,9 +682,9 @@ final class ChatStore: ObservableObject {
                 if Self.stripToolMarkup(text).isEmpty {
                     updateMessage(replyID) { $0.content = prefix }
                 }
-                return
+                return outsideContent
             }
-            guard !calls.isEmpty else { return }
+            guard !calls.isEmpty else { return outsideContent }
 
             var assistant: [String: Any] = ["role": "assistant", "tool_calls": calls.map(\.wire)]
             assistant["content"] = text.isEmpty ? NSNull() : text
@@ -764,6 +798,7 @@ final class ChatStore: ObservableObject {
             }
             updateMessage(replyID) { $0.status = "Thinking…" }
         }
+        return outsideContent
     }
 
     /// User attachments are sent as base64 images; generated images are only mentioned in text.

@@ -12,11 +12,15 @@ struct Memory: Identifiable, Codable, Hashable {
 final class MemoryStore: ObservableObject {
     static let shared = MemoryStore()
     /// Most memories kept; the oldest are dropped first.
-    static let maxMemories = 100
+    static let maxMemories = 500
 
     @Published private(set) var memories: [Memory] = []
 
     @AppStorage("memoryEnabled") var enabled = true {
+        willSet { objectWillChange.send() }
+    }
+    /// After each reply, save what's worth keeping from the exchange without being asked.
+    @AppStorage("memoryLearnsAutomatically") var learnsAutomatically = true {
         willSet { objectWillChange.send() }
     }
 
@@ -87,6 +91,33 @@ final class MemoryStore: ObservableObject {
             prompt += "\n(\(numbered.count - shown.count) other memories aren't shown because they don't seem related to this message.)"
         }
         return prompt
+    }
+
+    /// Asks the model which facts from one exchange are worth keeping and saves them; returns the new ones.
+    /// With `reply` nil (the reply read web pages or documents) only what the user wrote is used, so text planted
+    /// there can't write itself into memory.
+    func learn(question: String, reply: String?, api: BlabladorAPI, model: String) async throws -> [String] {
+        let today = Date().formatted(date: .complete, time: .omitted)
+        var system = """
+        You keep the long-term memory of an assistant. From the exchange below, pick out what is worth remembering \
+        in future conversations: facts the user stated about themselves, their work, projects, people, plans and \
+        preferences, and decisions, results and conclusions about the topics discussed that they are likely to come \
+        back to. Skip general knowledge, small talk, one-off requests and anything already remembered. Never include \
+        passwords, keys or other secrets. Write each fact as one short sentence that makes sense on its own, naming \
+        things explicitly and giving dates where they matter (today is \(today)). Reply with only a JSON array of \
+        strings, or [] if there is nothing worth keeping.
+        """
+        let known = memories.suffix(60).map(\.text)
+        if !known.isEmpty { system += "\n\nAlready remembered:\n" + known.map { "- " + $0 }.joined(separator: "\n") }
+        var exchange = "User: " + question.prefix(8000)
+        if let reply { exchange += "\n\nAssistant: " + reply.prefix(8000) }
+        else { system += "\n\nOnly use what the user wrote." }
+
+        let text = try await api.complete(model: BlabladorAPI.helperModel(else: model), system: system, user: exchange)
+        let answer = ChatStore.splitThinking(text).answer
+        guard let start = answer.firstIndex(of: "["), let end = answer.lastIndex(of: "]"), start < end,
+              let facts = try? JSONDecoder().decode([String].self, from: Data(answer[start...end].utf8)) else { return [] }
+        return facts.prefix(5).filter { add($0) }.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
     }
 
     /// Lowercased words of three letters or more, for matching memories and chats to a question.
@@ -196,9 +227,11 @@ struct MemoryView: View {
     var body: some View {
         Form {
             Section {
-                Toggle("Remember things about me", isOn: $memory.enabled)
+                Toggle("Use memory", isOn: $memory.enabled)
+                Toggle("Learn from every chat", isOn: $memory.learnsAutomatically)
+                    .disabled(!memory.enabled)
             } footer: {
-                Text("The assistant saves facts you tell it, such as your name or what you work on, and uses them in every chat. Memories stay on this device and are sent to the model with each message.")
+                Text("The assistant remembers what's worth keeping from your chats, such as facts about you, your projects, decisions and conclusions, and uses it in every chat. With Learn from every chat off, it only saves what you ask it to remember. After each reply, the exchange is sent once more to the model to pick out what to remember. Memories are encrypted on this device and sent to the model with each message.")
             }
 
             Section("Memories") {

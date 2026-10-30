@@ -13,6 +13,8 @@ Blablador API. Ordered from least to most work. Each step ships in both apps.
 
 - `search_chats` tool: keyword search over earlier chats, returning excerpts with chat title and date (`ChatSearch`).
   Counts as outside content, so memory can't be changed in the same reply.
+- After every reply, `alias-fast` picks out facts worth keeping from the exchange (about the user and about the topics
+  discussed) and saves them; only the user's own text when the reply read outside content. Can be turned off.
 - Over 30 memories, only the ones sharing words with the question plus the 10 newest are sent, keeping their numbers.
 - Later: embeddings (`alias-qwen3-4b-embeddings`, reusing `KnowledgeLibrary`'s vector code) instead of keywords;
   optional summary of each finished chat saved as a memory.

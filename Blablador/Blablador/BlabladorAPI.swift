@@ -25,6 +25,23 @@ struct BlabladorAPI {
         URL(string: endpoint.trimmingCharacters(in: .whitespacesAndNewlines)) ?? URL(string: defaultEndpoint)!
     }
     static let defaultModel = "deepseek-v4.1-flash-at-hzdr"
+    /// Blablador's quick model for small jobs: chat titles, picking out memories.
+    static let fastModel = "alias-fast"
+
+    /// The model for small jobs: alias-fast on Blablador, the chat's own model on other endpoints.
+    static func helperModel(else chatModel: String) -> String {
+        let endpoint = endpoint.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        return endpoint == defaultEndpoint ? fastModel : chatModel
+    }
+
+    /// One reply without tools, as plain text (thinking included; see ChatStore.splitThinking).
+    func complete(model: String, system: String, user: String) async throws -> String {
+        var text = ""
+        for try await event in streamChat(model: model, messages: [["role": "system", "content": system], ["role": "user", "content": user]]) {
+            if case let .content(delta) = event { text += delta }
+        }
+        return text
+    }
 
     /// Image models available on Blablador. Only Qwen-Image can edit images.
     static let imageModels: [(id: String, name: String)] = [

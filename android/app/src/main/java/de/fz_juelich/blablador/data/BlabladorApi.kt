@@ -46,6 +46,11 @@ class BlabladorApi(private val apiKey: String) {
         /** The OpenAI-compatible endpoint, Blablador unless changed in Settings. */
         @Volatile var endpoint = DEFAULT_ENDPOINT
         const val DEFAULT_MODEL = "deepseek-v4.1-flash-at-hzdr"
+        /** Blablador's quick model for small jobs: chat titles, picking out memories. */
+        const val FAST_MODEL = "alias-fast"
+
+        /** The model for small jobs: alias-fast on Blablador, the chat's own model on other endpoints. */
+        fun helperModel(chatModel: String) = if (endpoint.trim().trimEnd('/') == DEFAULT_ENDPOINT) FAST_MODEL else chatModel
         const val IMAGE_EDIT_MODEL = "alias-image"
         const val DEFAULT_IMAGE_MODEL = "alias-flux2"
         const val OCR_MODEL = "alias-ocr"
@@ -342,3 +347,13 @@ suspend fun Call.await(): Response = suspendCancellableCoroutine { continuation 
 }
 
 fun jsonString(element: JsonElement?): String? = (element as? JsonPrimitive)?.contentOrNull
+
+/** One reply without tools, as plain text with any `<think>` block removed. */
+suspend fun BlabladorApi.complete(model: String, system: String, user: String): String {
+    val text = StringBuilder()
+    streamChat(model, listOf(
+        kotlinx.serialization.json.buildJsonObject { put("role", "system"); put("content", system) },
+        kotlinx.serialization.json.buildJsonObject { put("role", "user"); put("content", user) },
+    )).collect { if (it is BlabladorApi.StreamEvent.Content) text.append(it.text) }
+    return text.toString().substringAfterLast("</think>").trim()
+}

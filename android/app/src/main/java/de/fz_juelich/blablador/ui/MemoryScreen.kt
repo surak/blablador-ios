@@ -52,9 +52,11 @@ fun MemoryScreen(vm: ChatViewModel, onClose: () -> Unit) {
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Section("Memory", footer = "The assistant saves facts you tell it, such as your name or what you work on, and uses them in every chat. " +
-                "Memories stay on this device and are sent to the model with each message.") {
-                Toggle("Remember things about me", store.enabled, store::turn)
+            Section("Memory", footer = "The assistant remembers what's worth keeping from your chats, such as facts about you, your projects, decisions and conclusions, " +
+                "and uses it in every chat. With Learn from every chat off, it only saves what you ask it to remember. After each reply, the exchange is sent " +
+                "once more to the model to pick out what to remember. Memories are encrypted on this device and sent to the model with each message.") {
+                Toggle("Use memory", store.enabled, store::turn)
+                if (store.enabled) Toggle("Learn from every chat", store.learnsAutomatically, store::learnAutomatically)
             }
             Section("Memories") {
                 if (store.memories.isEmpty()) Text("Nothing remembered yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
