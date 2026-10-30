@@ -444,11 +444,17 @@ final class ChatStore: ObservableObject {
         }
     }
 
+    /// A shell command or connected-service tool call waiting for the user's OK.
     struct CommandApproval: Identifiable {
         let id = UUID()
-        let command: String
-        let folder: String
+        let title: String
+        let detail: String
+        var icon = "terminal"
+        var confirm = "Run"
     }
+
+    /// Chat and server pairs where the user allowed MCP tool calls without asking.
+    private var mcpAllowed: Set<String> = []
 
     enum ApprovalChoice { case once, always, deny }
 
@@ -466,10 +472,49 @@ final class ChatStore: ObservableObject {
         if allowsCommands { return true }
         let choice = await withCheckedContinuation { continuation in
             approvalContinuation = continuation
-            commandApproval = CommandApproval(command: command, folder: folder.lastPathComponent)
+            commandApproval = CommandApproval(title: "Run this command in \(folder.lastPathComponent)?", detail: command)
         }
         if choice == .always { allowsCommands = true }
         return choice != .deny
+    }
+
+    /// Runs a tool of a connected MCP server after the user's OK, recording it as a step.
+    private func runMCPTool(_ tool: MCPTool, _ arguments: [String: Any], replyID: UUID) async -> String {
+        let server = MCPLibrary.shared.server(tool.server)
+        var step = AgentStep(tool: "mcp", title: "\(server?.name ?? "Server"): \(tool.name)")
+        updateMessage(replyID) { $0.steps.append(step) }
+        func finish(_ state: AgentStep.State, _ detail: String) {
+            step.state = state
+            step.detail = String(detail.prefix(8_000))
+            updateMessage(replyID) { message in
+                if let index = message.steps.firstIndex(where: { $0.id == step.id }) { message.steps[index] = step }
+            }
+        }
+        let key = "\(currentID?.uuidString ?? "")|\(tool.server)"
+        if server?.askBeforeCalls != false, !mcpAllowed.contains(key) {
+            updateMessage(replyID) { $0.status = "Waiting for approval…" }
+            let shown = (try? JSONSerialization.data(withJSONObject: arguments, options: [.prettyPrinted, .sortedKeys]))
+                .map { String(decoding: $0, as: UTF8.self) } ?? "{}"
+            let choice = await withCheckedContinuation { continuation in
+                approvalContinuation = continuation
+                commandApproval = CommandApproval(title: "Let \(server?.name ?? "this server") use \(tool.name)?", detail: String(shown.prefix(2_000)),
+                                                  icon: "puzzlepiece.extension", confirm: "Allow")
+            }
+            if choice == .always { mcpAllowed.insert(key) }
+            guard choice != .deny else {
+                finish(.denied, "Not run.")
+                return "The user declined this tool call. Ask what to do instead or continue without it."
+            }
+        }
+        updateMessage(replyID) { $0.status = "Using \(tool.name)…" }
+        do {
+            let result = try await MCPLibrary.shared.call(tool, arguments: arguments)
+            finish(result.isError ? .failed : .done, result.text)
+            return result.text.isEmpty ? "(The tool returned nothing.)" : String(result.text.prefix(30_000))
+        } catch {
+            finish(.failed, error.localizedDescription)
+            return "Tool failed: \(error.localizedDescription)"
+        }
     }
 
     /// Runs one agent tool, recording it as a step, and returns the output for the model.
@@ -530,8 +575,8 @@ final class ChatStore: ObservableObject {
         let folder = workspace
         if let folder { system += "\n\n" + AgentTools.systemPrompt(workspace: folder) }
         system = system.trimmingCharacters(in: .whitespacesAndNewlines)
-        wire.append(["role": "system", "content": system])
-        wire += conversation.messages.filter { !$0.isError }.map(Self.wireMessage)
+        let systemText = system
+        wire = Self.history(system: systemText, conversation)
 
         let reply = ChatMessage(role: .assistant, content: "")
         let model = selectedModel
@@ -543,7 +588,7 @@ final class ChatStore: ObservableObject {
 
         isStreaming = true
         var tools: [[String: Any]] = []
-        if webSearchEnabled { tools += [WebSearch.tool, WebSearch.imageTool] }
+        if webSearchEnabled { tools += [WebSearch.tool, WebSearch.imageTool, WebPage.tool] }
         if imageToolsEnabled { tools += [ImageTools.generate, ImageTools.edit] }
         if VoiceLibrary.shared.toolsEnabled { tools.append(SpeechTools.generate) }
         if memory.enabled { tools += [MemoryTools.remember, MemoryTools.forget] }
@@ -553,6 +598,9 @@ final class ChatStore: ObservableObject {
         streamTask = Task {
             do {
                 var wire = wire
+                if let compacted = await compact(conversation, model: model, wire: wire, replyID: reply.id) {
+                    wire = Self.history(system: systemText, compacted)
+                }
                 if !knowledge.isEmpty, !question.isEmpty {
                     updateMessage(reply.id) { $0.status = "Searching knowledge…" }
                     do {
@@ -569,7 +617,13 @@ final class ChatStore: ObservableObject {
                 // PDFs and knowledge excerpts come from outside the chat; see runTurn's memory lock.
                 let outsideContent = conversation.messages.contains { !$0.documents.isEmpty }
                     || current?.messages.first { $0.id == reply.id }?.citations.isEmpty == false
-                let readOutside = try await runTurn(model: model, messages: wire, tools: tools, replyID: reply.id, workspace: folder, outsideContent: outsideContent)
+                var tools = tools
+                let mcpTools = await MCPLibrary.shared.availableTools()
+                if !mcpTools.isEmpty {
+                    tools += mcpTools.map(\.definition)
+                    wire[0]["content"] = (wire[0]["content"] as? String ?? "") + "\n\nTools named <service>__<tool> belong to services the user connected (MCP). Use them when they fit the request."
+                }
+                let readOutside = try await runTurn(model: model, messages: wire, tools: tools, replyID: reply.id, workspace: folder, outsideContent: outsideContent, mcp: mcpTools)
                 learn(question: question, replyID: reply.id, model: model, userOnly: readOutside)
             } catch is CancellationError {
             } catch let error as URLError where error.code == .cancelled {
@@ -612,6 +666,63 @@ final class ChatStore: ObservableObject {
         }
     }
 
+    // MARK: - Long chats
+
+    /// Above this many characters (about 30,000 tokens) older messages are replaced by a summary.
+    private static let compactionThreshold = 120_000
+    /// Messages always sent in full.
+    private static let recentMessages = 8
+
+    /// The system prompt (with the summary of older messages, if any) and the messages after the summary.
+    private static func history(system: String, _ conversation: Conversation) -> [[String: Any]] {
+        var system = system
+        let covered = min(conversation.summaryCount ?? 0, conversation.messages.count)
+        if let summary = conversation.summary, covered > 0 {
+            system += "\n\nSummary of the earlier part of this chat (those messages are not shown):\n" + summary
+        }
+        return [["role": "system", "content": system]]
+            + conversation.messages[covered...].filter { !$0.isError }.map(Self.wireMessage)
+    }
+
+    /// Rough size of a request: text, plus about 3,000 characters per image.
+    private static func size(_ wire: [[String: Any]]) -> Int {
+        wire.reduce(0) { total, message in
+            if let text = message["content"] as? String { return total + text.count }
+            let parts = message["content"] as? [[String: Any]] ?? []
+            return total + parts.reduce(0) { $0 + (($1["text"] as? String)?.count ?? 3_000) }
+        }
+    }
+
+    /// Summarises everything but the most recent messages with the helper model when the chat got too long;
+    /// returns the conversation with the new summary, or nil when nothing changed.
+    private func compact(_ conversation: Conversation, model: String, wire: [[String: Any]], replyID: UUID) async -> Conversation? {
+        let end = conversation.messages.count - Self.recentMessages
+        let covered = conversation.summaryCount ?? 0
+        guard Self.size(wire) > Self.compactionThreshold, end > covered else { return nil }
+        updateMessage(replyID) { $0.status = "Summarizing earlier messages…" }
+        var transcript = conversation.summary.map { "Summary so far:\n\($0)\n\n" } ?? ""
+        for message in conversation.messages[covered..<end] where !message.isError {
+            let who = message.role == .user ? "User" : "Assistant"
+            var text = message.content
+            if !message.documents.isEmpty { text = message.documents.map { "[Attached \($0.name)]" }.joined(separator: " ") + "\n" + text }
+            if !message.images.isEmpty { text = "[\(message.images.count) image(s)]\n" + text }
+            transcript += "\(who): \(text.prefix(6_000))\n\n"
+        }
+        let system = "Summarize this conversation so an assistant can continue it without the original messages. Keep facts, decisions, names, numbers, code and file names, open questions and what the user wants, in the conversation's language. At most 500 words. Reply with only the summary."
+        guard let reply = try? await api.complete(model: BlabladorAPI.helperModel(else: model), system: system, user: String(transcript.suffix(300_000))) else {
+            return nil
+        }
+        let summary = Self.splitThinking(reply).answer.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !summary.isEmpty, let index = conversations.firstIndex(where: { $0.id == conversation.id }) else { return nil }
+        conversations[index].summary = summary
+        conversations[index].summaryCount = end
+        persist()
+        var compacted = conversation
+        compacted.summary = summary
+        compacted.summaryCount = end
+        return compacted
+    }
+
     /// Saves what's worth keeping from the exchange to long-term memory, in the background.
     private func learn(question: String, replyID: UUID, model: String, userOnly: Bool) {
         let memory = MemoryStore.shared
@@ -631,7 +742,7 @@ final class ChatStore: ObservableObject {
     /// Memory changes are refused once the reply has read outside content (web results, PDFs, knowledge bases,
     /// files), so text planted there can't write itself into every future chat.
     @discardableResult
-    private func runTurn(model: String, messages: [[String: Any]], tools: [[String: Any]], replyID: UUID, workspace: URL? = nil, outsideContent: Bool = false) async throws -> Bool {
+    private func runTurn(model: String, messages: [[String: Any]], tools: [[String: Any]], replyID: UUID, workspace: URL? = nil, outsideContent: Bool = false, mcp: [MCPTool] = []) async throws -> Bool {
         var outsideContent = outsideContent
         var messages = messages
         var tools = tools
@@ -766,6 +877,27 @@ final class ChatStore: ObservableObject {
                             : "\(images.count) pictures are shown to the user: " + images.map(\.title).joined(separator: "; ") + ". Don't include image links in your answer."
                     } catch {
                         output = "Image search failed: \(error.localizedDescription)"
+                    }
+                } else if let tool = mcp.first(where: { $0.qualifiedName == call.name }) {
+                    outsideContent = true
+                    output = await runMCPTool(tool, arguments ?? [:], replyID: replyID)
+                } else if call.name == "read_page", let address = arguments?["url"] as? String {
+                    outsideContent = true
+                    updateMessage(replyID) { $0.status = "Reading \(URL(string: address)?.host() ?? address)…" }
+                    do {
+                        let page = try await WebPage.read(address)
+                        var number = 0
+                        updateMessage(replyID) { message in
+                            if let index = message.sources.firstIndex(where: { $0.url == page.url.absoluteString }) {
+                                number = index + 1
+                            } else {
+                                message.sources.append(SearchResult(title: page.title, url: page.url.absoluteString, content: nil))
+                                number = message.sources.count
+                            }
+                        }
+                        output = "[\(number)] \(page.title)\nURL: \(page.url.absoluteString)\n\n\(page.text.isEmpty ? "(No readable text on this page.)" : page.text)"
+                    } catch {
+                        output = "Could not read the page: \(error.localizedDescription)"
                     }
                 } else if call.name == "web_search", !query.isEmpty {
                     outsideContent = true

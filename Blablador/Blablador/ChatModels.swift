@@ -82,6 +82,9 @@ struct Conversation: Identifiable, Codable, Equatable {
     var workspace: String?
     /// The user allowed shell commands for this chat without asking each time.
     var allowsCommands: Bool?
+    /// Summary of the first `summaryCount` messages, sent instead of them once the chat got long.
+    var summary: String?
+    var summaryCount: Int?
 
     static func new(model: String) -> Conversation {
         Conversation(title: "New chat", model: model)

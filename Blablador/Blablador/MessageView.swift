@@ -411,6 +411,10 @@ struct MarkdownText: View {
     private enum Block {
         case text(String)
         case code(language: String, body: String)
+        /// Text with maths, typeset with KaTeX.
+        case math(String)
+        /// A finished mermaid, html or svg block, shown rendered.
+        case artifact(language: String, body: String)
         case table(header: [String], alignments: [HorizontalAlignment], rows: [[String]])
     }
 
@@ -454,10 +458,15 @@ struct MarkdownText: View {
         var inCode = false
         var language = ""
 
-        func flush() {
+        func flush(closed: Bool = false) {
             guard !buffer.isEmpty else { return }
             let joined = buffer.joined(separator: "\n")
-            result.append(inCode ? .code(language: language, body: joined) : .text(joined))
+            let kind = language.lowercased().trimmingCharacters(in: .whitespaces)
+            if inCode {
+                result.append(closed && ["mermaid", "html", "svg"].contains(kind) ? .artifact(language: kind, body: joined) : .code(language: language, body: joined))
+            } else {
+                result.append(MathDetection.hasInlineMath(joined) ? .math(joined) : .text(joined))
+            }
             buffer.removeAll()
         }
 
@@ -467,9 +476,16 @@ struct MarkdownText: View {
             let line = lines[index]
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             if trimmed.hasPrefix("```") {
-                flush()
+                flush(closed: inCode)
                 if !inCode { language = String(trimmed.dropFirst(3)) }
                 inCode.toggle()
+            } else if !inCode, trimmed.hasPrefix("$$") || trimmed.hasPrefix("\\["),
+                      let end = Self.displayMathEnd(lines, from: index) {
+                // Display maths, one or more lines, up to the closing $$ or \].
+                flush()
+                result.append(.math(lines[index...end].joined(separator: "\n")))
+                index = end + 1
+                continue
             } else if !inCode, trimmed.contains("|"), index + 1 < lines.count,
                       let alignments = Self.separator(lines[index + 1]) {
                 // Table: header, separator, then rows until a line without a pipe.
@@ -505,12 +521,25 @@ struct MarkdownText: View {
                         .scaledFont(.body)
                 case let .code(language, body):
                     CodeBlock(language: language, code: body)
+                case let .math(body):
+                    WebBlock(kind: .markdown, content: body)
+                case let .artifact(language, body):
+                    ArtifactBlock(language: language, code: body)
                 case let .table(header, alignments, rows):
                     table(header: header, alignments: alignments, rows: rows)
                 }
             }
         }
         .textSelection(.enabled)
+    }
+
+    /// Index of the line that closes display maths opened on `start`, or nil while it's still being written.
+    private static func displayMathEnd(_ lines: [String], from start: Int) -> Int? {
+        let first = lines[start].trimmingCharacters(in: .whitespaces)
+        let close = first.hasPrefix("$$") ? "$$" : "\\]"
+        if first.count > 2, first.dropFirst(2).contains(close) { return start }
+        for index in (start + 1)..<lines.count where lines[index].contains(close) { return index }
+        return nil
     }
 
     private func table(header: [String], alignments: [HorizontalAlignment], rows: [[String]]) -> some View {
@@ -594,20 +623,14 @@ struct MarkdownText: View {
 private struct CodeBlock: View {
     let language: String
     let code: String
-    @State private var copied = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text(language.isEmpty ? "code" : language)
                 Spacer()
-                Button {
-                    Clipboard.copy(code)
-                    copied = true
-                } label: {
-                    Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc")
-                }
-                .buttonStyle(.plain)
+                CodeActions(language: language, code: code)
+                    .buttonStyle(.plain)
             }
             .scaledFont(.caption)
             .foregroundStyle(.secondary)

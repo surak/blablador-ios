@@ -113,6 +113,7 @@ struct SettingsView: View {
                 Section {
                     NavigationLink("Memory") { MemoryView() }
                     NavigationLink("Skills") { SkillsView() }
+                    NavigationLink("Connected tools (MCP)") { MCPServersView() }
                 } footer: {
                     Text("Facts about you the assistant remembers across chats, and instructions for tasks you repeat.")
                 }

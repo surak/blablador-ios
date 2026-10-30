@@ -69,6 +69,7 @@ struct AgentStepsView: View {
         case "search_files": "magnifyingglass"
         case "write_file": "doc.badge.plus"
         case "edit_file": "pencil"
+        case "mcp": "puzzlepiece.extension"
         default: "terminal"
         }
     }
@@ -133,10 +134,10 @@ struct CommandApprovalCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label("Run this command in \(approval.folder)?", systemImage: "terminal")
+            Label(approval.title, systemImage: approval.icon)
                 .scaledFont(.subheadline, weight: .semibold)
             ScrollView(.horizontal, showsIndicators: false) {
-                Text(approval.command)
+                Text(approval.detail)
                     .scaledFont(.callout, design: .monospaced)
                     .textSelection(.enabled)
                     .padding(8)
@@ -147,7 +148,7 @@ struct CommandApprovalCard: View {
                     .keyboardShortcut(.cancelAction)
                 Spacer()
                 Button("Allow for this chat") { onAnswer(.always) }
-                Button("Run") { onAnswer(.once) }
+                Button(approval.confirm) { onAnswer(.once) }
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
             }
