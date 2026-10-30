@@ -70,6 +70,7 @@ struct AgentStepsView: View {
         case "write_file": "doc.badge.plus"
         case "edit_file": "pencil"
         case "mcp": "puzzlepiece.extension"
+        case "python": "chart.xyaxis.line"
         default: "terminal"
         }
     }

@@ -37,6 +37,7 @@
 		9B2A76A6E3E0A1B200000203 /* Skills.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000202 /* Skills.swift */; };
 		9B2A76A6E3E0A1B200000205 /* MCP.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000204 /* MCP.swift */; };
 		9B2A76A6E3E0A1B200000207 /* RichContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000206 /* RichContent.swift */; };
+		9B2A76A6E3E0A1B200000209 /* PythonRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000208 /* PythonRunner.swift */; };
 		9B2A76A6E3E0A1B2000000F3 /* VoiceLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B2000000F2 /* VoiceLibrary.swift */; };
 /* End PBXBuildFile section */
 
@@ -73,6 +74,7 @@
 		9B2A76A6E3E0A1B200000202 /* Skills.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Skills.swift; sourceTree = "<group>"; };
 		9B2A76A6E3E0A1B200000204 /* MCP.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MCP.swift; sourceTree = "<group>"; };
 		9B2A76A6E3E0A1B200000206 /* RichContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RichContent.swift; sourceTree = "<group>"; };
+		9B2A76A6E3E0A1B200000208 /* PythonRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PythonRunner.swift; sourceTree = "<group>"; };
 		9B2A76A6E3E0A1B2000000F2 /* VoiceLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceLibrary.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -120,6 +122,7 @@
 				9B2A76A6E3E0A1B200000202 /* Skills.swift */,
 				9B2A76A6E3E0A1B200000204 /* MCP.swift */,
 				9B2A76A6E3E0A1B200000206 /* RichContent.swift */,
+				9B2A76A6E3E0A1B200000208 /* PythonRunner.swift */,
 				9B2A76A6E3E0A1B2000000F2 /* VoiceLibrary.swift */,
 				9B2A76A6E3E0A1B20000004B /* ImageStore.swift */,
 				9B2A76A6E3E0A1B20000004A /* WebSearch.swift */,
@@ -223,6 +226,7 @@
 				9B2A76A6E3E0A1B200000203 /* Skills.swift in Sources */,
 				9B2A76A6E3E0A1B200000205 /* MCP.swift in Sources */,
 				9B2A76A6E3E0A1B200000207 /* RichContent.swift in Sources */,
+				9B2A76A6E3E0A1B200000209 /* PythonRunner.swift in Sources */,
 				9B2A76A6E3E0A1B2000000F3 /* VoiceLibrary.swift in Sources */,
 				9B2A76A6E3E0A1B20000006B /* ImageStore.swift in Sources */,
 				9B2A76A6E3E0A1B20000006A /* WebSearch.swift in Sources */,

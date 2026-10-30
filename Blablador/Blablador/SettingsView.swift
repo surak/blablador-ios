@@ -130,6 +130,15 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Toggle("Run Python code", isOn: Binding(
+                        get: { store.pythonEnabled },
+                        set: { store.pythonEnabled = $0 }
+                    ))
+                } footer: {
+                    Text("Lets the model run Python on this device for calculations, data analysis and plots, with numpy, pandas and matplotlib. The code runs in a sandbox without access to your files; the first run downloads about 20 MB.")
+                }
+
+                Section {
                     TextField("e.g. Answer concisely.", text: Binding(
                         get: { store.systemPrompt },
                         set: { store.systemPrompt = $0 }

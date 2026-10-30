@@ -112,6 +112,11 @@ final class ChatStore: ObservableObject {
         willSet { objectWillChange.send() }
     }
 
+    /// Lets the model run Python on the device (Pyodide) for calculations and plots.
+    @AppStorage("pythonEnabled") var pythonEnabled = true {
+        willSet { objectWillChange.send() }
+    }
+
     @AppStorage("imageModel") var imageModel: String = BlabladorAPI.defaultImageModel {
         willSet { objectWillChange.send() }
     }
@@ -478,6 +483,41 @@ final class ChatStore: ObservableObject {
         return choice != .deny
     }
 
+    /// Runs Python with Pyodide, recording it as a step; figures are added to the reply as images.
+    private func runPython(_ code: String, replyID: UUID) async -> String {
+        var step = AgentStep(tool: "python", title: "Ran Python", detail: code)
+        updateMessage(replyID) { $0.steps.append(step) }
+        updateMessage(replyID) { $0.status = "Running Python…" }
+        // Attached documents, as text files in /data.
+        var files: [String: String] = [:]
+        for document in current?.messages.flatMap(\.documents) ?? [] {
+            let name = document.name.replacingOccurrences(of: "/", with: "_")
+            files[name.hasSuffix(".txt") ? name : name + ".txt"] = document.text
+        }
+        func finish(_ state: AgentStep.State, _ result: String) {
+            step.state = state
+            step.detail = String((code + "\n\n───\n\n" + result).prefix(8_000))
+            updateMessage(replyID) { message in
+                if let index = message.steps.firstIndex(where: { $0.id == step.id }) { message.steps[index] = step }
+            }
+        }
+        do {
+            let result = try await PythonRunner.shared.run(code, files: files)
+            let names = result.images.map(ImageStore.save)
+            updateMessage(replyID) { $0.images += names }
+            var output = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let value = result.value, !value.isEmpty, value != "None" { output += (output.isEmpty ? "" : "\n") + "Result: " + value }
+            if let error = result.error { output += (output.isEmpty ? "" : "\n") + error }
+            if !names.isEmpty { output += "\n[\(names.count) figure(s) shown to the user]" }
+            output = output.trimmingCharacters(in: .whitespacesAndNewlines)
+            finish(result.error == nil ? .done : .failed, output.isEmpty ? "(No output)" : output)
+            return output.isEmpty ? "The code ran without output." : String(output.suffix(20_000))
+        } catch {
+            finish(.failed, error.localizedDescription)
+            return "Python failed: \(error.localizedDescription)"
+        }
+    }
+
     /// Runs a tool of a connected MCP server after the user's OK, recording it as a step.
     private func runMCPTool(_ tool: MCPTool, _ arguments: [String: Any], replyID: UUID) async -> String {
         let server = MCPLibrary.shared.server(tool.server)
@@ -560,6 +600,7 @@ final class ChatStore: ObservableObject {
         if webSearchEnabled {
             system += WebSearch.systemPrompt
         }
+        if pythonEnabled { system += " " + PythonRunner.systemPrompt }
         if imageToolsEnabled {
             system += " You can create images with generate_image and modify the latest image in the chat with edit_image. Never describe an image as created unless the tool succeeded."
         }
@@ -593,6 +634,7 @@ final class ChatStore: ObservableObject {
         if VoiceLibrary.shared.toolsEnabled { tools.append(SpeechTools.generate) }
         if memory.enabled { tools += [MemoryTools.remember, MemoryTools.forget] }
         tools += [ChatSearch.tool, SkillTools.suggest]
+        if pythonEnabled { tools.append(PythonRunner.tool) }
         if !skills.skills.isEmpty { tools.append(SkillTools.use) }
         if folder != nil { tools += AgentTools.definitions }
         streamTask = Task {
@@ -878,6 +920,9 @@ final class ChatStore: ObservableObject {
                     } catch {
                         output = "Image search failed: \(error.localizedDescription)"
                     }
+                } else if call.name == "run_python", let code = arguments?["code"] as? String, !code.isEmpty {
+                    outsideContent = true
+                    output = await runPython(code, replyID: replyID)
                 } else if let tool = mcp.first(where: { $0.qualifiedName == call.name }) {
                     outsideContent = true
                     output = await runMCPTool(tool, arguments ?? [:], replyID: replyID)
