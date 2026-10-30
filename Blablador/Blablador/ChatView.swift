@@ -257,7 +257,10 @@ struct ChatView: View {
                             isLast: message.id == conversation.messages.last?.id,
                             isStreaming: store.isStreaming,
                             synthesizer: synthesizer,
-                            onRegenerate: store.regenerate
+                            models: store.chatModels,
+                            onRegenerate: { store.regenerate(with: $0) },
+                            onEdit: { store.edit(message.id, to: $0) },
+                            onShowVersion: { store.showVersion(of: message.id, offset: $0) }
                         )
                         .id(message.id)
                     }

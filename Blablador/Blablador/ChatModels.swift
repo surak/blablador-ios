@@ -35,10 +35,14 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     var steps: [AgentStep] = []
     /// The model's thinking trace, streamed separately from the answer.
     var reasoning = ""
+    /// Earlier versions of the chat from this message on (after an edit or a regenerate), each starting with its
+    /// own version of this message; `version` numbers them in the order they were made.
+    var alternatives: [[ChatMessage]] = []
+    var version = 1
     /// Transient status shown while tools run, e.g. "Searching the web…"
     var status: String?
 
-    private enum CodingKeys: String, CodingKey { case id, role, content, date, isError, sources, webImages, remembered, forgotten, skillsUsed, suggestedSkills, images, documents, audio, videos, citations, steps, reasoning }
+    private enum CodingKeys: String, CodingKey { case id, role, content, date, isError, sources, webImages, remembered, forgotten, skillsUsed, suggestedSkills, alternatives, version, images, documents, audio, videos, citations, steps, reasoning }
 
     init(role: ChatRole, content: String, images: [String] = [], documents: [DocumentAttachment] = []) {
         self.role = role
@@ -58,6 +62,8 @@ struct ChatMessage: Identifiable, Codable, Equatable {
         remembered = try c.decodeIfPresent([String].self, forKey: .remembered) ?? []
         forgotten = try c.decodeIfPresent([String].self, forKey: .forgotten) ?? []
         skillsUsed = try c.decodeIfPresent([String].self, forKey: .skillsUsed) ?? []
+        alternatives = try c.decodeIfPresent([[ChatMessage]].self, forKey: .alternatives) ?? []
+        version = try c.decodeIfPresent(Int.self, forKey: .version) ?? 1
         suggestedSkills = try c.decodeIfPresent([Skill].self, forKey: .suggestedSkills) ?? []
         webImages = try c.decodeIfPresent([WebImage].self, forKey: .webImages) ?? []
         images = try c.decodeIfPresent([String].self, forKey: .images) ?? []
@@ -85,6 +91,14 @@ struct Conversation: Identifiable, Codable, Equatable {
     /// Summary of the first `summaryCount` messages, sent instead of them once the chat got long.
     var summary: String?
     var summaryCount: Int?
+
+    /// Messages of every version, for deleting their files.
+    var allMessages: [ChatMessage] {
+        func expand(_ messages: [ChatMessage]) -> [ChatMessage] {
+            messages.flatMap { [$0] + $0.alternatives.flatMap(expand) }
+        }
+        return expand(messages)
+    }
 
     static func new(model: String) -> Conversation {
         Conversation(title: "New chat", model: model)

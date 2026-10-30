@@ -141,3 +141,51 @@ final class ChatTests: XCTestCase {
         XCTAssertEqual(ChatStore.history(system: "S", conversation).count, 2)
     }
 }
+
+@MainActor
+final class VersionTests: XCTestCase {
+    private func message(_ role: ChatRole, _ text: String) -> ChatMessage { ChatMessage(role: role, content: text) }
+
+    /// Edits the user message at `index` like ChatStore.edit, then appends a reply.
+    private func edit(_ messages: [ChatMessage], at index: Int, to text: String, reply: String) -> [ChatMessage] {
+        var edited = message(.user, text)
+        (edited.alternatives, edited.version) = ChatStore.versions(replacing: Array(messages[index...]))
+        return Array(messages[..<index]) + [edited, message(.assistant, reply)]
+    }
+
+    func testEditKeepsEarlierVersionsAndSwitchingIsLossless() throws {
+        let start = [message(.user, "Hi"), message(.assistant, "Hello"), message(.user, "Plot sin"), message(.assistant, "Here is sin")]
+        let second = edit(start, at: 2, to: "Plot cos", reply: "Here is cos")
+        let third = edit(second, at: 2, to: "Plot tan", reply: "Here is tan")
+
+        XCTAssertEqual(third.map(\.content), ["Hi", "Hello", "Plot tan", "Here is tan"])
+        XCTAssertEqual(third[2].version, 3)
+        XCTAssertEqual(third[2].alternatives.map { $0.map(\.content) }, [["Plot sin", "Here is sin"], ["Plot cos", "Here is cos"]])
+
+        // Back to version 2, then 1, then forward to 3 again.
+        let v2 = try XCTUnwrap(ChatStore.messages(third, showingVersion: -1, at: 2))
+        XCTAssertEqual(v2.map(\.content), ["Hi", "Hello", "Plot cos", "Here is cos"])
+        let v1 = try XCTUnwrap(ChatStore.messages(v2, showingVersion: -1, at: 2))
+        XCTAssertEqual(v1.map(\.content), ["Hi", "Hello", "Plot sin", "Here is sin"])
+        XCTAssertNil(ChatStore.messages(v1, showingVersion: -1, at: 2), "no version before the first")
+        let back = try XCTUnwrap(ChatStore.messages(ChatStore.messages(v1, showingVersion: 1, at: 2)!, showingVersion: 1, at: 2))
+        XCTAssertEqual(back.map(\.content), third.map(\.content))
+        XCTAssertEqual(back[2].alternatives.count, 2, "no version lost or duplicated")
+        XCTAssertNil(ChatStore.messages(back, showingVersion: 1, at: 2))
+    }
+
+    func testEditingAnOlderVersionAddsANewOneAtTheEnd() throws {
+        let start = [message(.user, "A"), message(.assistant, "a")]
+        let second = edit(start, at: 0, to: "B", reply: "b")
+        let first = try XCTUnwrap(ChatStore.messages(second, showingVersion: -1, at: 0))
+        let third = edit(first, at: 0, to: "C", reply: "c")
+        XCTAssertEqual(third[0].version, 3)
+        XCTAssertEqual(Set(third[0].alternatives.map { $0[0].content }), ["A", "B"])
+    }
+
+    func testAllMessagesIncludesEveryVersion() {
+        var conversation = Conversation(title: "t", model: "m")
+        conversation.messages = edit([message(.user, "old"), message(.assistant, "old reply")], at: 0, to: "new", reply: "new reply")
+        XCTAssertEqual(Set(conversation.allMessages.map(\.content)), ["old", "old reply", "new", "new reply"])
+    }
+}

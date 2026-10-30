@@ -50,15 +50,23 @@ struct MessageView: View {
     let isLast: Bool
     let isStreaming: Bool
     @ObservedObject var synthesizer: SpeechSynthesizer
-    let onRegenerate: () -> Void
+    var models: [RemoteModel] = []
+    /// Regenerates the reply, with another model when one is given.
+    let onRegenerate: (String?) -> Void
+    var onEdit: (String) -> Void = { _ in }
+    var onShowVersion: (Int) -> Void = { _ in }
 
     @State private var copied = false
     @State private var selectingText = false
+    @State private var editing = false
 
     var body: some View {
         content
             .sheet(isPresented: $selectingText) {
                 SelectTextView(text: message.content)
+            }
+            .sheet(isPresented: $editing) {
+                EditMessageView(text: message.content) { onEdit($0) }
             }
     }
 
@@ -83,10 +91,28 @@ struct MessageView: View {
                         Text(message.content)
                             .scaledFont(.body)
                             .textSelection(.enabled)
+                            .contextMenu {
+                                Button { editing = true } label: { Label("Edit", systemImage: "pencil") }
+                                    .disabled(isStreaming)
+                                Button { Clipboard.copy(message.content) } label: { Label("Copy", systemImage: "doc.on.doc") }
+                            }
                             .padding(.horizontal, 16)
                             .padding(.vertical, 10)
                             .background(Theme.surface, in: RoundedRectangle(cornerRadius: 20))
                     }
+                    HStack(spacing: 14) {
+                        if !message.alternatives.isEmpty {
+                            VersionSwitcher(message: message, onShow: onShowVersion)
+                        }
+                        if !message.content.isEmpty {
+                            Button { editing = true } label: { Image(systemName: "pencil") }
+                                .buttonStyle(.plain)
+                                .scaledFont(.caption)
+                                .foregroundStyle(.secondary)
+                                .accessibilityLabel("Edit")
+                        }
+                    }
+                    .disabled(isStreaming)
                 }
             }
         case .assistant, .system:
@@ -219,15 +245,89 @@ struct MessageView: View {
             }
 
             if isLast {
-                Button(action: onRegenerate) {
+                Menu {
+                    Button { onRegenerate(nil) } label: { Label("Regenerate", systemImage: "arrow.clockwise") }
+                    if !models.isEmpty {
+                        Section("Regenerate with") {
+                            ForEach(models) { model in
+                                Button(model.displayName) { onRegenerate(model.id) }
+                            }
+                        }
+                    }
+                } label: {
                     Image(systemName: "arrow.clockwise")
+                } primaryAction: {
+                    onRegenerate(nil)
                 }
+                .menuIndicator(.hidden)
+                .fixedSize()
                 .accessibilityLabel("Regenerate")
+            }
+
+            if !message.alternatives.isEmpty {
+                VersionSwitcher(message: message, onShow: onShowVersion)
+                    .disabled(isStreaming)
             }
         }
         .buttonStyle(.plain)
         .scaledFont(.subheadline)
         .foregroundStyle(.secondary)
+    }
+}
+
+/// "‹ 2/3 ›" for a message with earlier or later versions.
+struct VersionSwitcher: View {
+    let message: ChatMessage
+    let onShow: (Int) -> Void
+
+    var body: some View {
+        let versions = (message.alternatives.map { $0[0].version } + [message.version]).sorted()
+        let position = (versions.firstIndex(of: message.version) ?? 0) + 1
+        HStack(spacing: 6) {
+            Button { onShow(-1) } label: { Image(systemName: "chevron.left") }
+                .disabled(position == 1)
+                .accessibilityLabel("Previous version")
+            Text("\(position)/\(versions.count)")
+                .monospacedDigit()
+            Button { onShow(1) } label: { Image(systemName: "chevron.right") }
+                .disabled(position == versions.count)
+                .accessibilityLabel("Next version")
+        }
+        .buttonStyle(.plain)
+        .scaledFont(.caption)
+        .foregroundStyle(.secondary)
+    }
+}
+
+/// Changes a message and sends it again; the old version stays.
+private struct EditMessageView: View {
+    @State var text: String
+    let onSend: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            TextEditor(text: $text)
+                .scaledFont(.body)
+                .padding(.horizontal)
+                .navigationTitle("Edit message")
+#if os(iOS)
+                .navigationBarTitleDisplayMode(.inline)
+#endif
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Send") {
+                            onSend(text)
+                            dismiss()
+                        }
+                        .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                }
+        }
+#if os(macOS)
+        .frame(minWidth: 500, minHeight: 300)
+#endif
     }
 }
 

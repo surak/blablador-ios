@@ -232,20 +232,20 @@ final class ChatStore: ObservableObject {
 
     func delete(_ conversation: Conversation) {
         if conversation.id == currentID { newChat() }
-        ImageStore.delete(conversation.messages.flatMap(\.images))
-        DataFiles.delete(conversation.messages.flatMap(\.documents).compactMap(\.dataFile))
-        AudioStore.delete(conversation.messages.flatMap(\.audio))
-        VideoStore.delete(conversation.messages.flatMap(\.videos))
+        ImageStore.delete(conversation.allMessages.flatMap(\.images))
+        DataFiles.delete(conversation.allMessages.flatMap(\.documents).compactMap(\.dataFile))
+        AudioStore.delete(conversation.allMessages.flatMap(\.audio))
+        VideoStore.delete(conversation.allMessages.flatMap(\.videos))
         conversations.removeAll { $0.id == conversation.id }
         persist()
     }
 
     func deleteAll() {
         newChat()
-        ImageStore.delete(conversations.flatMap { $0.messages.flatMap(\.images) })
-        DataFiles.delete(conversations.flatMap { $0.messages.flatMap(\.documents).compactMap(\.dataFile) })
-        AudioStore.delete(conversations.flatMap { $0.messages.flatMap(\.audio) })
-        VideoStore.delete(conversations.flatMap { $0.messages.flatMap(\.videos) })
+        ImageStore.delete(conversations.flatMap { $0.allMessages.flatMap(\.images) })
+        DataFiles.delete(conversations.flatMap { $0.allMessages.flatMap(\.documents).compactMap(\.dataFile) })
+        AudioStore.delete(conversations.flatMap { $0.allMessages.flatMap(\.audio) })
+        VideoStore.delete(conversations.flatMap { $0.allMessages.flatMap(\.videos) })
         conversations.removeAll()
         persist()
     }
@@ -401,14 +401,74 @@ final class ChatStore: ObservableObject {
     }
 
     /// Drops the last assistant reply and asks again.
-    func regenerate() {
-        guard !isStreaming else { return }
+    /// Answers the last message again; the previous answer stays as an earlier version. With `model`, that model
+    /// becomes the chat's model first.
+    func regenerate(with model: String? = nil) {
+        guard !isStreaming, let messages = current?.messages, let last = messages.last, last.role == .assistant else { return }
+        if let model { selectedModel = model }
+        let (alternatives, version) = Self.versions(replacing: Array(messages[(messages.count - 1)...]))
         update { conversation in
-            if conversation.messages.last?.role == .assistant {
-                conversation.messages.removeLast()
-            }
+            conversation.messages.removeLast()
+            Self.dropSummary(of: &conversation, from: conversation.messages.count)
+        }
+        respond(alternatives: alternatives, version: version)
+    }
+
+    // MARK: - Edit and versions
+
+    /// Sends a changed version of an earlier message of the user; the old one and everything after it stay as an
+    /// earlier version, reachable with the arrows under the message.
+    func edit(_ messageID: UUID, to text: String) {
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !isStreaming, !text.isEmpty, let messages = current?.messages,
+              let index = messages.firstIndex(where: { $0.id == messageID }), messages[index].role == .user else { return }
+        var edited = ChatMessage(role: .user, content: text, images: messages[index].images, documents: messages[index].documents)
+        (edited.alternatives, edited.version) = Self.versions(replacing: Array(messages[index...]))
+        update { conversation in
+            conversation.messages = Array(conversation.messages[..<index]) + [edited]
+            Self.dropSummary(of: &conversation, from: index)
         }
         respond()
+    }
+
+    /// Shows the previous (-1) or next (+1) version of the chat from this message on.
+    func showVersion(of messageID: UUID, offset: Int) {
+        guard !isStreaming, let messages = current?.messages,
+              let index = messages.firstIndex(where: { $0.id == messageID }),
+              let switched = Self.messages(messages, showingVersion: offset, at: index) else { return }
+        update { conversation in
+            conversation.messages = switched
+            Self.dropSummary(of: &conversation, from: index)
+        }
+    }
+
+    /// The chat with the version `offset` steps away shown from `index` on, or nil when there is none.
+    static func messages(_ messages: [ChatMessage], showingVersion offset: Int, at index: Int) -> [ChatMessage]? {
+        var currentTail = Array(messages[index...])
+        let others = currentTail[0].alternatives
+        currentTail[0].alternatives = []
+        let all = (others + [currentTail]).sorted { $0[0].version < $1[0].version }
+        guard let position = all.firstIndex(where: { $0[0].id == messages[index].id }), all.indices.contains(position + offset) else { return nil }
+        var shown = all[position + offset]
+        shown[0].alternatives = all.enumerated().filter { $0.offset != position + offset }.map(\.element)
+        return Array(messages[..<index]) + shown
+    }
+
+    /// Versions to keep when `tail` is replaced: its own earlier versions plus itself, and the next version number.
+    static func versions(replacing tail: [ChatMessage]) -> (alternatives: [[ChatMessage]], version: Int) {
+        var old = tail
+        let earlier = old[0].alternatives
+        old[0].alternatives = []
+        let all = earlier + [old]
+        return (all, (all.map { $0[0].version }.max() ?? 0) + 1)
+    }
+
+    /// A summary of messages that changed no longer fits; long chats are summarised again when needed.
+    private static func dropSummary(of conversation: inout Conversation, from index: Int) {
+        if let count = conversation.summaryCount, count > index {
+            conversation.summary = nil
+            conversation.summaryCount = nil
+        }
     }
 
     func stop() {
@@ -596,7 +656,7 @@ final class ChatStore: ObservableObject {
         }
     }
 
-    private func respond() {
+    private func respond(alternatives: [[ChatMessage]] = [], version: Int = 1) {
         guard let conversation = current else { return }
 
         var wire: [[String: Any]] = []
@@ -625,7 +685,9 @@ final class ChatStore: ObservableObject {
         let systemText = system
         wire = Self.history(system: systemText, conversation)
 
-        let reply = ChatMessage(role: .assistant, content: "")
+        var reply = ChatMessage(role: .assistant, content: "")
+        reply.alternatives = alternatives
+        reply.version = version
         let model = selectedModel
         let knowledge = activeKnowledge
         update {
