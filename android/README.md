@@ -9,7 +9,7 @@ It is the Android counterpart of [blablador-ios](https://github.com/surak/blabla
 - **Chat** with every Blablador chat model, streaming replies; default `deepseek-v4.1-flash-at-hzdr`. Markdown with code blocks and tables
 - **Thinking**: the thinking trace of reasoning models shows in a collapsible panel above the reply
 - **Wait for a reply** (Settings): how long to wait for slow models, up to no limit
-- **Web search** through search.blablador.fz-juelich.de, with cited sources and pictures next to the answer
+- **Web search** through search.blablador.fz-juelich.de, with cited sources and pictures next to the answer; reads web pages and online PDFs in full
 - **Photos, camera and files** for vision-capable models (+ → File picks images or PDFs; + → Paste image attaches a copied image)
 - **PDFs** (+ → PDF): text extracted on the device with PdfBox; scanned pages read with OCR
 - **Text from photo** (+ → Text from photo): OCR of documents, receipts or slides
@@ -18,6 +18,9 @@ It is the Android counterpart of [blablador-ios](https://github.com/surak/blabla
 - **Dictation** (system speech recognizer) and **read-aloud** (system text-to-speech)
 - **Memory**: facts about you saved across chats, editable in Settings; searches earlier chats when you refer to them
 - **Skills**: instructions for tasks you repeat, loaded when a task matches; import and share as Markdown
+- **Connected tools (MCP)**: add MCP servers over HTTPS and the assistant uses their tools, each call approved by you
+- **Long chats** are summarised with alias-fast once they get long, so they keep working
+- **Maths, diagrams and previews**: LaTeX with KaTeX, Mermaid diagrams, live HTML/SVG previews; save code blocks as files
 - **History** with search; personalised greeting; API key stored encrypted with the Android Keystore
 - **Knowledge bases** (+ → Knowledge): collections of PDFs and text files indexed with `alias-qwen3-4b-embeddings` and re-ranked with
   `alias-qwen3-4b-reranker`; the index stays on the device and replies cite excerpts as [K1], [K2]

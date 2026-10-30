@@ -46,7 +46,7 @@ import de.fz_juelich.blablador.data.BlabladorApi
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(vm: ChatViewModel, onOpenKnowledge: () -> Unit, onOpenVoices: () -> Unit, onOpenDecision: () -> Unit, onOpenMemory: () -> Unit, onOpenSkills: () -> Unit, onClose: () -> Unit) {
+fun SettingsScreen(vm: ChatViewModel, onOpenKnowledge: () -> Unit, onOpenVoices: () -> Unit, onOpenDecision: () -> Unit, onOpenMemory: () -> Unit, onOpenSkills: () -> Unit, onOpenMcp: () -> Unit, onClose: () -> Unit) {
     var key by remember { mutableStateOf(vm.apiKey) }
     var endpoint by remember { mutableStateOf(vm.endpoint) }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -119,6 +119,7 @@ fun SettingsScreen(vm: ChatViewModel, onOpenKnowledge: () -> Unit, onOpenVoices:
             Section("Memory and skills", footer = "Facts about you the assistant remembers across chats, and instructions for tasks you repeat.") {
                 Link("Memory", if (vm.memory.enabled) "${vm.memory.memories.size}" else "Off", onOpenMemory)
                 Link("Skills", "${vm.skills.skills.size}", onOpenSkills)
+                Link("Connected tools (MCP)", "${vm.mcp.servers.size}", onOpenMcp)
             }
 
             Section("Web search", footer = "Lets the model search the web via search.blablador.fz-juelich.de when it needs current information.") {

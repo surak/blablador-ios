@@ -15,11 +15,8 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -27,7 +24,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -44,6 +40,10 @@ import androidx.compose.ui.unit.sp
 private sealed interface Block {
     data class Text(val body: String) : Block
     data class Code(val language: String, val body: String) : Block
+    /** Text with maths, typeset with KaTeX. */
+    data class Math(val body: String) : Block
+    /** A finished mermaid, html or svg block, shown rendered. */
+    data class Artifact(val language: String, val body: String) : Block
     data class Table(val header: List<String>, val alignments: List<TextAlign>, val rows: List<List<String>>) : Block
 }
 
@@ -81,10 +81,16 @@ private fun parse(text: String): List<Block> {
     val buffer = mutableListOf<String>()
     var inCode = false
     var language = ""
-    fun flush() {
+    fun flush(closed: Boolean = false) {
         if (buffer.isEmpty()) return
         val joined = buffer.joinToString("\n")
-        result += if (inCode) Block.Code(language, joined) else Block.Text(joined)
+        val kind = language.lowercase().trim()
+        result += when {
+            inCode && closed && kind in setOf("mermaid", "html", "svg") -> Block.Artifact(kind, joined)
+            inCode -> Block.Code(language, joined)
+            MathDetection.hasInlineMath(joined) -> Block.Math(joined)
+            else -> Block.Text(joined)
+        }
         buffer.clear()
     }
     val lines = text.split("\n")
@@ -92,10 +98,17 @@ private fun parse(text: String): List<Block> {
     while (index < lines.size) {
         val line = lines[index]
         val trimmed = line.trim()
+        val mathEnd = if (!inCode && (trimmed.startsWith("$$") || trimmed.startsWith("\\["))) displayMathEnd(lines, index) else null
         if (trimmed.startsWith("```")) {
-            flush()
+            flush(closed = inCode)
             if (!inCode) language = trimmed.drop(3)
             inCode = !inCode
+        } else if (mathEnd != null) {
+            // Display maths, one or more lines, up to the closing $$ or \].
+            flush()
+            result += Block.Math(lines.subList(index, mathEnd + 1).joinToString("\n"))
+            index = mathEnd + 1
+            continue
         } else if (!inCode && trimmed.contains("|") && index + 1 < lines.size && separator(lines[index + 1]) != null) {
             flush()
             val alignments = separator(lines[index + 1])!!
@@ -114,6 +127,15 @@ private fun parse(text: String): List<Block> {
     }
     flush()
     return result
+}
+
+/** Index of the line that closes display maths opened on [start], or null while it's still being written. */
+private fun displayMathEnd(lines: List<String>, start: Int): Int? {
+    val first = lines[start].trim()
+    val close = if (first.startsWith("$$")) "$$" else "\\]"
+    if (first.length > 2 && first.drop(2).contains(close)) return start
+    for (index in start + 1 until lines.size) if (lines[index].contains(close)) return index
+    return null
 }
 
 /** Inline Markdown: **bold**, *italic*, `code`, ~~strike~~ and [links](url). */
@@ -146,6 +168,8 @@ fun MarkdownText(text: String, modifier: Modifier = Modifier) {
             for (block in blocks) when (block) {
                 is Block.Text -> Text(paragraphs(block.body, codeBackground), style = MaterialTheme.typography.bodyLarge)
                 is Block.Code -> CodeBlock(block.language, block.body)
+                is Block.Math -> WebBlock(WebBlockKind.Markdown, block.body)
+                is Block.Artifact -> ArtifactBlock(block.language, block.body)
                 is Block.Table -> MarkdownTable(block, codeBackground)
             }
         }
@@ -176,16 +200,13 @@ private fun paragraphs(body: String, codeBackground: androidx.compose.ui.graphic
 
 @Composable
 private fun CodeBlock(language: String, code: String) {
-    val clipboard = LocalClipboardManager.current
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surfaceVariant)
     ) {
         Row(Modifier.fillMaxWidth().padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(language.ifEmpty { "code" }, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f))
-            IconButton(onClick = { clipboard.setText(AnnotatedString(code)) }) {
-                Icon(Icons.Outlined.ContentCopy, "Copy code", Modifier.padding(2.dp))
-            }
+            CodeActions(language, code)
         }
         Text(code, fontFamily = FontFamily.Monospace, fontSize = 13.sp,
             modifier = Modifier.horizontalScroll(rememberScrollState()).padding(start = 12.dp, end = 12.dp, bottom = 12.dp))

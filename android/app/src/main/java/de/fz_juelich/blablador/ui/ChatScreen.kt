@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -136,6 +137,7 @@ private sealed interface Page {
     data object AddVoice : Page
     data object Memory : Page
     data object Skills : Page
+    data object Mcp : Page
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -161,7 +163,7 @@ fun ChatScreen(vm: ChatViewModel) {
     when (val page = pages.lastOrNull()) {
         Page.Settings -> {
             SettingsScreen(vm, onOpenKnowledge = { open(Page.Knowledge()) }, onOpenVoices = { open(Page.Voices) },
-                onOpenDecision = { open(Page.Decision) }, onOpenMemory = { open(Page.Memory) }, onOpenSkills = { open(Page.Skills) }, onClose = ::close)
+                onOpenDecision = { open(Page.Decision) }, onOpenMemory = { open(Page.Memory) }, onOpenSkills = { open(Page.Skills) }, onOpenMcp = { open(Page.Mcp) }, onClose = ::close)
             return
         }
         is Page.Knowledge -> { KnowledgeScreen(vm, page.baseId, onClose = ::close); return }
@@ -170,7 +172,27 @@ fun ChatScreen(vm: ChatViewModel) {
         Page.AddVoice -> { AddVoiceScreen(vm, onClose = ::close); return }
         Page.Memory -> { MemoryScreen(vm, onClose = ::close); return }
         Page.Skills -> { SkillsScreen(vm, onClose = ::close); return }
+        Page.Mcp -> { McpScreen(vm, onClose = ::close); return }
         null -> {}
+    }
+
+    vm.toolApproval?.let { approval ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { vm.answerApproval(ChatViewModel.ApprovalChoice.Deny) },
+            title = { Text(approval.title) },
+            text = {
+                Text(approval.detail, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.heightIn(max = 240.dp).verticalScroll(rememberScrollState()))
+            },
+            confirmButton = {
+                Row {
+                    TextButton(onClick = { vm.answerApproval(ChatViewModel.ApprovalChoice.Always) }) { Text("Allow for this chat") }
+                    TextButton(onClick = { vm.answerApproval(ChatViewModel.ApprovalChoice.Once) }) { Text("Allow") }
+                }
+            },
+            dismissButton = { TextButton(onClick = { vm.answerApproval(ChatViewModel.ApprovalChoice.Deny) }) { Text("Deny") } },
+        )
     }
 
     ModalNavigationDrawer(

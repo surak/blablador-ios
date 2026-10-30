@@ -44,6 +44,8 @@ data class ChatMessage(
     /** Facts saved to and deleted from long-term memory while answering. */
     val remembered: List<String> = emptyList(),
     val forgotten: List<String> = emptyList(),
+    /** Tools of connected MCP servers used for this reply, as "Server: tool". */
+    val toolCalls: List<String> = emptyList(),
     /** Skills loaded with use_skill, and skills the model offered to save. */
     val skillsUsed: List<String> = emptyList(),
     val suggestedSkills: List<Skill> = emptyList(),
@@ -73,6 +75,9 @@ data class Conversation(
     /** Knowledge bases searched for this chat. */
     val knowledge: List<String> = emptyList(),
     val updatedAt: Long = System.currentTimeMillis(),
+    /** Summary of the first [summaryCount] messages, sent instead of them once the chat got long. */
+    val summary: String? = null,
+    val summaryCount: Int? = null,
 )
 
 data class RemoteModel(val id: String) {

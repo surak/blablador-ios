@@ -48,6 +48,13 @@ object Tools {
         listOf("query"),
     )
 
+    val readPage = function(
+        "read_page",
+        "Read the text of a web page or online PDF. Use it for links the user gives you and to read search results in full when the snippet is not enough.",
+        buildJsonObject { put("url", stringProperty("The full http(s) address.")) },
+        listOf("url"),
+    )
+
     val imageSearch = function(
         "image_search",
         "Find pictures online of a person, place, animal, plant, building, artwork, product or anything easier to understand when seen. The pictures are shown to the user next to your answer.",
@@ -150,7 +157,7 @@ object WebSearch {
 
     private const val MAX_IMAGES = 4
 
-    const val SYSTEM_PROMPT = " You can use the web_search tool for current or uncertain information. Cite sources inline as [1], [2] matching the search results. When asked about a person, place or thing you don't know well, search the web first instead of saying you don't know. When the user asks about something that is easier to understand with a picture, such as a person, place, animal, building or artwork, also call image_search; the pictures are shown next to your answer, so don't include image links."
+    const val SYSTEM_PROMPT = " You can use the web_search tool for current or uncertain information, and read_page to read a link the user gives you or a search result in full. Cite sources inline as [1], [2] matching the search results. When asked about a person, place or thing you don't know well, search the web first instead of saying you don't know. When the user asks about something that is easier to understand with a picture, such as a person, place, animal, building or artwork, also call image_search; the pictures are shown next to your answer, so don't include image links."
 
     /** Image search; only pictures served over HTTPS are kept. */
     suspend fun searchImages(query: String): List<WebImage> = withContext(Dispatchers.IO) {

@@ -1,0 +1,53 @@
+<!-- Generated from Blablador/Blablador/RichContent.swift (WebBlock.page); keep the two in sync. -->
+<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+%SCRIPTS%
+<style>
+:root { color-scheme: %SCHEME%; }
+html, body { margin: 0; padding: 0; background: transparent; }
+body { font: %FONT%px -apple-system, system-ui, sans-serif; line-height: 1.45; color: %COLOR%; overflow-x: auto; }
+#content > :first-child { margin-top: 0; } #content > :last-child { margin-bottom: 0; }
+a { color: %LINK%; }
+pre, code { font-family: ui-monospace, Menlo, monospace; font-size: 0.9em; }
+table { border-collapse: collapse; } td, th { border: 1px solid #8884; padding: 4px 8px; }
+.katex-display { overflow-x: auto; overflow-y: hidden; padding: 4px 0; }
+.mermaid { text-align: center; }
+</style></head><body><div id="content"></div>
+<script>
+function reportSize() {
+  const h = Math.ceil(document.getElementById('content').getBoundingClientRect().height) + 2;
+  Bridge.size(h);
+}
+new ResizeObserver(reportSize).observe(document.getElementById('content'));
+let mermaidReady = false;
+async function render(text, kind) {
+  const box = document.getElementById('content');
+  if (kind === 'markdown') {
+    // Keep maths away from the Markdown parser, then typeset it.
+    const maths = [];
+    const hold = s => { maths.push(s); return '@@MATH' + (maths.length - 1) + '@@'; };
+    // Inline $…$ is rewritten to the backslash-paren form, so prices like "$5 and $10" are never read as maths.
+    let source = text.replace(/\$\$[\s\S]+?\$\$|\\\[[\s\S]+?\\\]|\\\([\s\S]+?\\\)/g, hold)
+      .replace(/(?<![\\$\w])\$(?![\s\d])([^$\n]+?)(?<![\s\\])\$(?![\w$])/g, (_, m) => hold('\\(' + m + '\\)'));
+    let html = window.marked ? marked.parse(source) : source.replace(/</g, '&lt;');
+    html = html.replace(/@@MATH(\d+)@@/g, (_, i) => maths[i].replace(/&/g, '&amp;').replace(/</g, '&lt;'));
+    box.innerHTML = html;
+    if (window.renderMathInElement) renderMathInElement(box, { delimiters: [
+      { left: '$$', right: '$$', display: true }, { left: '\\[', right: '\\]', display: true },
+      { left: '\\(', right: '\\)', display: false }],
+      throwOnError: false });
+  } else if (kind === 'mermaid') {
+    if (!window.mermaid) { box.textContent = text; reportSize(); return; }
+    if (!mermaidReady) {
+      mermaid.initialize({ startOnLoad: false, securityLevel: 'strict',
+        theme: %DARK% ? 'dark' : 'default' });
+      mermaidReady = true;
+    }
+    try {
+      const { svg } = await mermaid.render('diagram' + Date.now(), text);
+      box.innerHTML = '<div class="mermaid">' + svg + '</div>';
+    } catch (e) { box.textContent = 'Diagram error: ' + e.message; }
+  }
+  reportSize();
+}
+</script></body></html>

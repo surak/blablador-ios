@@ -80,6 +80,7 @@ import de.fz_juelich.blablador.data.SearchResult
 import de.fz_juelich.blablador.data.WebImage
 import de.fz_juelich.blablador.data.Skill
 import androidx.compose.material.icons.outlined.AutoFixHigh
+import androidx.compose.material.icons.outlined.Extension
 import androidx.compose.material.icons.outlined.Psychology
 import kotlinx.coroutines.delay
 import java.io.File
@@ -144,6 +145,7 @@ fun MessageItem(
                     }
                     else -> MarkdownText(message.content)
                 }
+                message.toolCalls.forEach { MemoryNote("Used $it", Icons.Outlined.Extension) }
                 message.skillsUsed.forEach { MemoryNote("Used skill: $it", Icons.Outlined.AutoFixHigh) }
                 message.remembered.forEach { MemoryNote("Remembered: $it") }
                 message.forgotten.forEach { MemoryNote("Forgot: $it") }

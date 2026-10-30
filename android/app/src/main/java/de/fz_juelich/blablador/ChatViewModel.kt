@@ -24,7 +24,10 @@ import de.fz_juelich.blablador.data.EncryptedStorage
 import de.fz_juelich.blablador.data.KnowledgeLibrary
 import de.fz_juelich.blablador.data.ChatSearch
 import de.fz_juelich.blablador.data.complete
+import de.fz_juelich.blablador.data.McpLibrary
+import de.fz_juelich.blablador.data.McpTool
 import de.fz_juelich.blablador.data.MemoryStore
+import de.fz_juelich.blablador.data.WebPage
 import de.fz_juelich.blablador.data.Skill
 import de.fz_juelich.blablador.data.SkillLibrary
 import de.fz_juelich.blablador.data.PdfExtractor
@@ -63,6 +66,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val voices = VoiceLibrary(application)
     val memory = MemoryStore(application)
     val skills = SkillLibrary(application)
+    val mcp = McpLibrary(application)
     val audio = AudioStore(application)
     val videos = VideoStore(application)
     val playback = AudioPlayback()
@@ -98,6 +102,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private var streamJob: Job? = null
     private val maxToolRounds = 4
+    /** Above this many characters (about 30,000 tokens) older messages are replaced by a summary. */
+    private val compactionThreshold = 120_000
+    /** Messages always sent in full. */
+    private val recentMessages = 8
 
     val api get() = BlabladorApi(apiKey)
     val current get() = conversations.firstOrNull { it.id == currentId }
@@ -391,10 +399,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         if (memory.enabled) system += "\n\n" + memory.systemPrompt(asked)
         skills.systemPrompt?.let { system += "\n\n" + it }
         system += "\n\n" + SkillLibrary.SYSTEM_PROMPT + " Use search_chats when the user refers to an earlier conversation."
-        val wire = buildList {
-            add(buildJsonObject { put("role", "system"); put("content", system.trim()) })
-            conversation.messages.filter { !it.isError }.forEach { add(wireMessage(it)) }
-        }
+        val systemText = system.trim()
+        val wire = history(systemText, conversation)
 
         val reply = ChatMessage(role = ChatRole.assistant, content = "")
         val model = selectedModel
@@ -403,7 +409,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         update { it.copy(model = model, messages = it.messages + reply) }
 
         val tools = buildList {
-            if (webSearchEnabled) { add(Tools.webSearch); add(Tools.imageSearch) }
+            if (webSearchEnabled) { add(Tools.webSearch); add(Tools.imageSearch); add(Tools.readPage) }
             if (imageToolsEnabled) { add(Tools.generateImage); add(Tools.editImage) }
             if (voices.toolsEnabled) add(Tools.generateSpeech)
             if (memory.enabled) { add(Tools.remember); add(Tools.forget) }
@@ -414,14 +420,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         streamJob = viewModelScope.launch {
             try {
                 var messages = wire
+                compact(conversation, model, wire, reply.id)?.let { messages = history(systemText, it) }
                 if (bases.isNotEmpty() && question.isNotEmpty()) {
                     updateMessage(reply.id) { it.copy(status = "Searching knowledge…") }
                     try {
                         val citations = knowledge.search(question, bases, api)
                         if (citations.isNotEmpty()) {
                             updateMessage(reply.id) { it.copy(citations = citations) }
-                            val system = jsonString(wire[0]["content"]).orEmpty() + "\n\n" + KnowledgeLibrary.context(citations)
-                            messages = listOf(buildJsonObject { put("role", "system"); put("content", system.trim()) }) + wire.drop(1)
+                            val system = jsonString(messages[0]["content"]).orEmpty() + "\n\n" + KnowledgeLibrary.context(citations)
+                            messages = listOf(buildJsonObject { put("role", "system"); put("content", system.trim()) }) + messages.drop(1)
                         }
                     } catch (e: CancellationException) {
                         throw e
@@ -432,7 +439,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 // PDFs and knowledge excerpts come from outside the chat; see runTurn's memory lock.
                 val outsideContent = conversation.messages.any { it.documents.isNotEmpty() } ||
                     current?.messages?.firstOrNull { it.id == reply.id }?.citations?.isNotEmpty() == true
-                val readOutside = runTurn(model, messages, tools, reply.id, outsideContent)
+                val mcpTools = mcp.availableTools()
+                if (mcpTools.isNotEmpty()) {
+                    val system = jsonString(messages[0]["content"]).orEmpty() +
+                        "\n\nTools named <service>__<tool> belong to services the user connected (MCP). Use them when they fit the request."
+                    messages = listOf(buildJsonObject { put("role", "system"); put("content", system) }) + messages.drop(1)
+                }
+                val readOutside = runTurn(model, messages, tools + mcpTools.map { it.definition }, reply.id, outsideContent, mcpTools)
                 learn(question, reply.id, model, userOnly = readOutside)
             } catch (e: CancellationException) {
                 throw e
@@ -459,7 +472,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
      * has read outside content (web results, PDFs, knowledge bases), so text planted there can't write itself into
      * every future chat.
      */
-    private suspend fun runTurn(model: String, initial: List<JsonObject>, initialTools: List<JsonObject>, replyId: String, outside: Boolean): Boolean {
+    private suspend fun runTurn(model: String, initial: List<JsonObject>, initialTools: List<JsonObject>, replyId: String, outside: Boolean, mcpTools: List<McpTool> = emptyList()): Boolean {
         var outsideContent = outside
         val messages = initial.toMutableList()
         var tools = initialTools
@@ -595,6 +608,32 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                             "Image search failed: ${e.message}"
                         }
                     }
+                    mcpTools.any { it.qualifiedName == call.name } -> {
+                        outsideContent = true
+                        runMcpTool(mcpTools.first { it.qualifiedName == call.name }, arguments ?: JsonObject(emptyMap()), replyId)
+                    }
+                    call.name == "read_page" && !jsonString(arguments?.get("url")).isNullOrBlank() -> {
+                        outsideContent = true
+                        val address = jsonString(arguments?.get("url")).orEmpty()
+                        updateMessage(replyId) { it.copy(status = "Reading ${Uri.parse(address).host ?: address}…") }
+                        try {
+                            val page = WebPage.read(address)
+                            var number = 0
+                            updateMessage(replyId) { message ->
+                                val index = message.sources.indexOfFirst { it.url == page.url }
+                                if (index >= 0) { number = index + 1; message }
+                                else {
+                                    number = message.sources.size + 1
+                                    message.copy(sources = message.sources + SearchResult(page.title, page.url, null))
+                                }
+                            }
+                            "[$number] ${page.title}\nURL: ${page.url}\n\n${page.text.ifEmpty { "(No readable text on this page.)" }}"
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            "Could not read the page: ${e.message}"
+                        }
+                    }
                     call.name == "web_search" && query.isNotEmpty() -> {
                         outsideContent = true
                         updateMessage(replyId) { it.copy(status = "Searching “$query”") }
@@ -707,6 +746,96 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             conversations[index] = conversations[index].copy(title = name)
             persist()
         }
+    }
+
+    // MARK: Connected tools (MCP)
+
+    /** A shell command or connected-service tool call waiting for the user's OK. */
+    data class ToolApproval(val title: String, val detail: String, val answer: kotlinx.coroutines.CompletableDeferred<ApprovalChoice>)
+
+    enum class ApprovalChoice { Once, Always, Deny }
+
+    var toolApproval by mutableStateOf<ToolApproval?>(null)
+        private set
+
+    fun answerApproval(choice: ApprovalChoice) {
+        toolApproval?.answer?.complete(choice)
+        toolApproval = null
+    }
+
+    /** Chat and server pairs where the user allowed MCP tool calls without asking. */
+    private val mcpAllowed = mutableSetOf<String>()
+
+    /** Runs a tool of a connected MCP server after the user's OK. */
+    private suspend fun runMcpTool(tool: McpTool, arguments: JsonObject, replyId: String): String {
+        val server = mcp.server(tool.server)
+        val key = "$currentId|${tool.server}"
+        if (server?.askBeforeCalls != false && key !in mcpAllowed) {
+            updateMessage(replyId) { it.copy(status = "Waiting for approval…") }
+            val shown = kotlinx.serialization.json.Json { prettyPrint = true }.encodeToString(JsonObject.serializer(), arguments)
+            val answer = kotlinx.coroutines.CompletableDeferred<ApprovalChoice>()
+            toolApproval = ToolApproval("Let ${server?.name ?: "this server"} use ${tool.name}?", shown.take(2_000), answer)
+            val choice = try { answer.await() } finally { if (toolApproval?.answer === answer) toolApproval = null }
+            if (choice == ApprovalChoice.Always) mcpAllowed += key
+            if (choice == ApprovalChoice.Deny) return "The user declined this tool call. Ask what to do instead or continue without it."
+        }
+        updateMessage(replyId) { it.copy(status = "Using ${tool.name}…", toolCalls = it.toolCalls + "${server?.name ?: "Server"}: ${tool.name}") }
+        return try {
+            val (text, _) = mcp.call(tool, arguments)
+            if (text.isEmpty()) "(The tool returned nothing.)" else text.take(30_000)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            "Tool failed: ${e.message}"
+        }
+    }
+
+    // MARK: Long chats
+
+    /** The system prompt (with the summary of older messages, if any) and the messages after the summary. */
+    private fun history(system: String, conversation: Conversation): List<JsonObject> {
+        val covered = minOf(conversation.summaryCount ?: 0, conversation.messages.size)
+        val summary = conversation.summary
+        val text = if (summary != null && covered > 0)
+            "$system\n\nSummary of the earlier part of this chat (those messages are not shown):\n$summary" else system
+        return listOf(buildJsonObject { put("role", "system"); put("content", text) }) +
+            conversation.messages.drop(covered).filter { !it.isError }.map { wireMessage(it) }
+    }
+
+    /** Rough size of a request: text, plus about 3,000 characters per image. */
+    private fun size(wire: List<JsonObject>): Int = wire.sumOf { message ->
+        when (val content = message["content"]) {
+            is JsonPrimitive -> content.content.length
+            is kotlinx.serialization.json.JsonArray -> content.sumOf { part -> jsonString((part as? JsonObject)?.get("text"))?.length ?: 3_000 }
+            else -> 0
+        }
+    }
+
+    /**
+     * Summarises everything but the most recent messages with the helper model when the chat got too long;
+     * returns the conversation with the new summary, or null when nothing changed.
+     */
+    private suspend fun compact(conversation: Conversation, model: String, wire: List<JsonObject>, replyId: String): Conversation? {
+        val end = conversation.messages.size - recentMessages
+        val covered = conversation.summaryCount ?: 0
+        if (size(wire) <= compactionThreshold || end <= covered) return null
+        updateMessage(replyId) { it.copy(status = "Summarizing earlier messages…") }
+        val transcript = StringBuilder(conversation.summary?.let { "Summary so far:\n$it\n\n" } ?: "")
+        for (message in conversation.messages.subList(covered, end).filter { !it.isError }) {
+            val who = if (message.role == ChatRole.user) "User" else "Assistant"
+            var text = message.content
+            if (message.documents.isNotEmpty()) text = message.documents.joinToString(" ") { "[Attached ${it.name}]" } + "\n" + text
+            if (message.images.isNotEmpty()) text = "[${message.images.size} image(s)]\n$text"
+            transcript.append("$who: ${text.take(6_000)}\n\n")
+        }
+        val system = "Summarize this conversation so an assistant can continue it without the original messages. Keep facts, decisions, names, numbers, code and file names, open questions and what the user wants, in the conversation's language. At most 500 words. Reply with only the summary."
+        val summary = runCatching { api.complete(BlabladorApi.helperModel(model), system, transcript.takeLast(300_000).toString()) }
+            .getOrNull()?.trim().orEmpty()
+        val index = conversations.indexOfFirst { it.id == conversation.id }
+        if (summary.isEmpty() || index < 0) return null
+        conversations[index] = conversations[index].copy(summary = summary, summaryCount = end)
+        persist()
+        return conversation.copy(summary = summary, summaryCount = end)
     }
 
     /** Saves what's worth keeping from the exchange to long-term memory, in the background. */
