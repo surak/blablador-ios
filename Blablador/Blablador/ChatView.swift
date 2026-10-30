@@ -673,7 +673,7 @@ private struct ComposerView: View {
                 }
             }
         }
-        .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.image, .pdf], allowsMultipleSelection: true) { result in
+        .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.image, .pdf] + DataFiles.contentTypes, allowsMultipleSelection: true) { result in
             guard case .success(let urls) = result else { return }
             addFiles(urls)
         }
@@ -824,8 +824,14 @@ private struct ComposerView: View {
                         pdfError = "\(url.lastPathComponent): \(error.localizedDescription)"
                     }
                 }
+            } else if DataFiles.supports(url) {
+                do {
+                    documents.append(try DataFiles.attach(url))
+                } catch {
+                    pdfError = "\(url.lastPathComponent): \(error.localizedDescription)"
+                }
             } else {
-                pdfError = "\(url.lastPathComponent): only images and PDFs can be attached."
+                pdfError = "\(url.lastPathComponent): only images, PDFs and data files (CSV, Excel, JSON…) can be attached."
             }
         }
     }
@@ -844,7 +850,7 @@ private struct ComposerView: View {
                 Label("Paste image", systemImage: "doc.on.clipboard")
             }
             Button { showFileImporter = true } label: {
-                Label("File (image or PDF)…", systemImage: "doc")
+                Label("File (image, PDF or data)…", systemImage: "doc")
             }
             Button { showOCRPicker = true } label: {
                 Label("Text from photo", systemImage: "text.viewfinder")
@@ -1035,13 +1041,14 @@ struct DocumentChip: View {
     var onRemove: (() -> Void)?
 
     private var detail: String {
+        if document.dataFile != nil { return "Data file" }
         let pages = document.pageCount == 1 ? "1 page" : "\(document.pageCount) pages"
         return document.ocrPageCount > 0 ? "\(pages) · OCR" : pages
     }
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "doc.richtext")
+            Image(systemName: document.dataFile != nil ? "tablecells" : "doc.richtext")
                 .scaledFont(.title3)
                 .foregroundStyle(Theme.gradient)
             VStack(alignment: .leading, spacing: 1) {

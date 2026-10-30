@@ -233,6 +233,7 @@ final class ChatStore: ObservableObject {
     func delete(_ conversation: Conversation) {
         if conversation.id == currentID { newChat() }
         ImageStore.delete(conversation.messages.flatMap(\.images))
+        DataFiles.delete(conversation.messages.flatMap(\.documents).compactMap(\.dataFile))
         AudioStore.delete(conversation.messages.flatMap(\.audio))
         VideoStore.delete(conversation.messages.flatMap(\.videos))
         conversations.removeAll { $0.id == conversation.id }
@@ -242,6 +243,7 @@ final class ChatStore: ObservableObject {
     func deleteAll() {
         newChat()
         ImageStore.delete(conversations.flatMap { $0.messages.flatMap(\.images) })
+        DataFiles.delete(conversations.flatMap { $0.messages.flatMap(\.documents).compactMap(\.dataFile) })
         AudioStore.delete(conversations.flatMap { $0.messages.flatMap(\.audio) })
         VideoStore.delete(conversations.flatMap { $0.messages.flatMap(\.videos) })
         conversations.removeAll()
@@ -489,10 +491,14 @@ final class ChatStore: ObservableObject {
         updateMessage(replyID) { $0.steps.append(step) }
         updateMessage(replyID) { $0.status = "Running Python…" }
         // Attached documents, as text files in /data.
-        var files: [String: String] = [:]
+        var files: [String: Data] = [:]
         for document in current?.messages.flatMap(\.documents) ?? [] {
             let name = document.name.replacingOccurrences(of: "/", with: "_")
-            files[name.hasSuffix(".txt") ? name : name + ".txt"] = document.text
+            if let stored = document.dataFile, let data = DataFiles.data(for: stored) {
+                files[name] = data
+            } else {
+                files[name.hasSuffix(".txt") ? name : name + ".txt"] = Data(document.text.utf8)
+            }
         }
         func finish(_ state: AgentStep.State, _ result: String) {
             step.state = state

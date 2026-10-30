@@ -59,3 +59,23 @@ final class StorageTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: copy.path))
     }
 }
+
+final class DataFileTests: XCTestCase {
+    override func setUp() { EncryptedStorage.keychainService = "de.fz-juelich.blablador.tests" }
+
+    func testCSVIsStoredEncryptedAndDescribed() throws {
+        let csv = "year,nodes\n2025,10\n2026,40\n"
+        let source = FileManager.default.temporaryDirectory.appendingPathComponent("quota.csv")
+        try csv.write(to: source, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: source) }
+
+        let document = try DataFiles.attach(source)
+        defer { DataFiles.delete([document.dataFile!]) }
+        XCTAssertEqual(document.name, "quota.csv")
+        XCTAssertTrue(document.text.contains("/data/quota.csv"))
+        XCTAssertTrue(document.text.contains("year,nodes"))
+        XCTAssertEqual(DataFiles.data(for: document.dataFile!), Data(csv.utf8))
+        XCTAssertTrue(DataFiles.supports(URL(fileURLWithPath: "/x/Book.XLSX")))
+        XCTAssertFalse(DataFiles.supports(URL(fileURLWithPath: "/x/app.exe")))
+    }
+}

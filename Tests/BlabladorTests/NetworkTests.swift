@@ -133,12 +133,24 @@ final class PythonTests: XCTestCase {
         plt.plot([1, 2, 3], [1, 4, 9])
         print(open('/data/input.txt').read().upper())
         6 * 7
-        """, files: ["input.txt": "data file"])
+        """, files: ["input.txt": Data("data file".utf8)])
         XCTAssertEqual(result.output.trimmingCharacters(in: .whitespacesAndNewlines), "DATA FILE")
         XCTAssertEqual(result.value, "42")
         XCTAssertNil(result.error)
         XCTAssertEqual(result.images.count, 1)
         XCTAssertTrue(result.images[0].starts(with: [0x89, 0x50, 0x4E, 0x47]))
+
+        let csv = try await PythonRunner.shared.run("import pandas as pd\nprint(pd.read_csv('/data/q.csv')['nodes'].sum())",
+                                                    files: ["q.csv": Data("year,nodes\n2025,10\n2026,40\n".utf8)])
+        XCTAssertEqual(csv.output.trimmingCharacters(in: .whitespacesAndNewlines), "50", csv.error ?? "")
+
+        // Excel: written and read back with pandas, which needs openpyxl loaded on demand.
+        let excel = try await PythonRunner.shared.run("""
+        import pandas as pd
+        pd.DataFrame({'a': [1, 2]}).to_excel('/tmp/t.xlsx', index=False)
+        print(pd.read_excel('/tmp/t.xlsx')['a'].sum())
+        """)
+        XCTAssertEqual(excel.output.trimmingCharacters(in: .whitespacesAndNewlines), "3", excel.error ?? "")
 
         let failing = try await PythonRunner.shared.run("1 / 0")
         XCTAssertTrue(failing.error?.contains("ZeroDivisionError") == true)

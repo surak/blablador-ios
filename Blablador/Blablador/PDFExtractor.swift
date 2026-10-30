@@ -31,6 +31,9 @@ struct DocumentAttachment: Identifiable, Codable, Equatable {
     var pageCount: Int
     /// Pages that had no text layer and were read with Vision OCR.
     var ocrPageCount = 0
+    /// For data files (CSV, Excel, JSON…): the original file in DataFiles, given to Python as /data/<name>.
+    /// `text` then holds a description and the first lines.
+    var dataFile: String?
 }
 
 enum PDFExtractor {
