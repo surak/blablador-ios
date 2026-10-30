@@ -23,6 +23,8 @@ import de.fz_juelich.blablador.data.ImageStore
 import de.fz_juelich.blablador.data.EncryptedStorage
 import de.fz_juelich.blablador.data.KnowledgeLibrary
 import de.fz_juelich.blablador.data.ChatSearch
+import de.fz_juelich.blablador.data.find
+import de.fz_juelich.blablador.data.ChatIndex
 import de.fz_juelich.blablador.data.PythonRunner
 import de.fz_juelich.blablador.data.DataFiles
 import de.fz_juelich.blablador.data.complete
@@ -68,6 +70,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val voices = VoiceLibrary(application)
     val memory = MemoryStore(application)
     val skills = SkillLibrary(application)
+    val chatIndex = ChatIndex(application)
     val mcp = McpLibrary(application)
     val audio = AudioStore(application)
     val videos = VideoStore(application)
@@ -446,11 +449,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             system += " You can speak aloud with generate_speech when the user asks you to say, read or voice something. Never claim you spoke unless the tool succeeded."
         }
         val asked = conversation.messages.lastOrNull { it.role == ChatRole.user }?.content.orEmpty()
-        if (memory.enabled) system += "\n\n" + memory.systemPrompt(asked)
         skills.systemPrompt?.let { system += "\n\n" + it }
         system += "\n\n" + SkillLibrary.SYSTEM_PROMPT + " Use search_chats when the user refers to an earlier conversation."
-        val systemText = system.trim()
-        val wire = history(systemText, conversation)
+        val baseSystem = system.trim()
 
         val reply = ChatMessage(role = ChatRole.assistant, content = "", alternatives = alternatives, version = version)
         val model = selectedModel
@@ -470,6 +471,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         isStreaming = true
         streamJob = viewModelScope.launch {
             try {
+                // Memories go last in the system prompt; with many, picking the relevant ones may need an embedding.
+                val systemText = if (memory.enabled) baseSystem + "\n\n" + memory.systemPrompt(asked, api) else baseSystem
+                val wire = history(systemText, conversation)
                 var messages = wire
                 compact(conversation, model, wire, reply.id)?.let { messages = history(systemText, it) }
                 if (bases.isNotEmpty() && question.isNotEmpty()) {
@@ -623,14 +627,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     call.name == "search_chats" && query.isNotEmpty() -> {
                         outsideContent = true
                         updateMessage(replyId) { it.copy(status = "Searching earlier chats…") }
-                        ChatSearch.search(query, conversations.toList(), currentId)
+                        ChatSearch.find(query, conversations.toList(), currentId, api, chatIndex)
                     }
                     (call.name == "remember" || call.name == "forget") && outsideContent ->
                         "Memory can't be changed in a reply that used web results, documents or knowledge bases, because they could contain planted instructions. " +
                             "Tell the user they can ask again in a new message without them, or edit memories in Settings → Memory."
                     call.name == "remember" && memory.enabled -> {
                         val fact = jsonString(arguments?.get("fact")).orEmpty().trim()
-                        if (memory.add(fact)) {
+                        if (memory.add(fact, current)) {
                             updateMessage(replyId) { it.copy(remembered = it.remembered + fact) }
                             "Saved to memory."
                         } else "Already remembered or empty; nothing saved."
@@ -906,12 +910,18 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         return conversation.copy(summary = summary, summaryCount = end)
     }
 
-    /** Saves what's worth keeping from the exchange to long-term memory, in the background. */
+    /**
+     * After a reply, in the background: indexes new messages for search_chats and saves what's worth keeping
+     * from the exchange to long-term memory.
+     */
     private fun learn(question: String, replyId: String, model: String, userOnly: Boolean) {
         val reply = message(replyId)
-        if (!memory.enabled || !memory.learnsAutomatically || question.isEmpty() || reply == null || reply.isError || reply.content.isEmpty()) return
+        if (question.isEmpty() || reply == null || reply.isError || reply.content.isEmpty()) return
+        val chat = conversations.firstOrNull { c -> c.messages.any { it.id == replyId } }
         viewModelScope.launch {
-            val facts = runCatching { memory.learn(question, if (userOnly) null else reply.content, api, model) }.getOrDefault(emptyList())
+            runCatching { chatIndex.update(conversations.toList(), api) }
+            if (!memory.enabled || !memory.learnsAutomatically) return@launch
+            val facts = runCatching { memory.learn(question, if (userOnly) null else reply.content, api, model, chat) }.getOrDefault(emptyList())
             if (facts.isEmpty()) return@launch
             updateMessage(replyId) { it.copy(remembered = it.remembered + facts) }
             persist()

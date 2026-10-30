@@ -6,6 +6,7 @@
         <exclude domain="file" path="memories.json" />
         <exclude domain="file" path="decisions.json" />
         <exclude domain="file" path="skills.json" />
+        <exclude domain="file" path="chat-index.json" />
         <exclude domain="file" path="mcp.json" />
         <exclude domain="file" path="images" />
         <exclude domain="file" path="audio" />
@@ -21,6 +22,7 @@
         <exclude domain="file" path="memories.json" />
         <exclude domain="file" path="decisions.json" />
         <exclude domain="file" path="skills.json" />
+        <exclude domain="file" path="chat-index.json" />
         <exclude domain="file" path="mcp.json" />
         <exclude domain="file" path="images" />
         <exclude domain="file" path="audio" />

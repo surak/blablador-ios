@@ -17,6 +17,11 @@ data class Memory(
     val id: String = UUID.randomUUID().toString(),
     val text: String,
     val date: Long = System.currentTimeMillis(),
+    /** Embedding of the text (see Embeddings), base64, for finding the memories that matter to a question. */
+    val vector: String? = null,
+    /** The chat the memory was saved in. */
+    val sourceChat: String? = null,
+    val sourceTitle: String? = null,
 )
 
 /** Long-term memory: facts saved on the device with the remember tool and sent with every chat. */
@@ -35,15 +40,25 @@ class MemoryStore(private val context: Context) {
          * The memory part of the system prompt. With many memories, only those sharing words with the
          * question plus the newest are sent, keeping their numbers so forget still works.
          */
-        fun systemPrompt(memories: List<Memory>, question: String): String {
+        fun systemPrompt(memories: List<Memory>, question: String, questionVector: FloatArray? = null): String {
             var prompt = "You have a long-term memory of the user that lasts across chats. Call remember when the user shares something lasting about themselves (name, job, preferences, ongoing projects) or asks you to remember something; save one short fact per call, written in the third person. Call forget with a number when the user says a memory is wrong or asks you to forget it. Never save passwords, keys or other secrets."
             if (memories.isEmpty()) return "$prompt You don't remember anything yet."
             val numbered = memories.withIndex().toList()
             var shown = numbered
             if (numbered.size > ALWAYS_SENT) {
                 val words = words(question)
-                val relevant = numbered.map { it to (words(it.value.text) intersect words).size }
-                    .filter { it.second > 0 }.sortedByDescending { it.second }.take(20).map { it.first.index }
+                // Meaning (when embedded) plus a little for shared words; keywords alone otherwise. Unrelated texts
+                // still score 0.3 to 0.5 with Qwen3 embeddings, so only those close to the best match count.
+                val meanings = numbered.map { item ->
+                    questionVector?.let { q -> item.value.vector?.let { Embeddings.similarity(Embeddings.decode(it), q) } }
+                }
+                val cutoff = maxOf(0.5f, (meanings.filterNotNull().maxOrNull() ?: 0f) - 0.2f)
+                val relevant = numbered.map { item ->
+                    val keywords = (words(item.value.text) intersect words).size.toFloat()
+                    val meaning = meanings[item.index]
+                    val score = if (meaning == null) keywords else if (meaning >= cutoff || keywords >= 2) meaning + 0.05f * keywords else 0f
+                    item.index to score
+                }.filter { it.second > 0 }.sortedByDescending { it.second }.take(20).map { it.first }
                 val keep = relevant.toSet() + numbered.takeLast(10).map { it.index }
                 shown = numbered.filter { it.index in keep }
             }
@@ -77,7 +92,7 @@ class MemoryStore(private val context: Context) {
      * With [reply] null (the reply read web pages or documents) only what the user wrote is used, so text planted
      * there can't write itself into memory.
      */
-    suspend fun learn(question: String, reply: String?, api: BlabladorApi, model: String): List<String> {
+    suspend fun learn(question: String, reply: String?, api: BlabladorApi, model: String, from: Conversation? = null): List<String> {
         val today = java.text.DateFormat.getDateInstance(java.text.DateFormat.FULL).format(java.util.Date())
         var system = "You keep the long-term memory of an assistant. From the exchange below, pick out what is worth remembering " +
             "in future conversations: facts the user stated about themselves, their work, projects, people, plans and " +
@@ -95,14 +110,36 @@ class MemoryStore(private val context: Context) {
         if (start < 0 || end <= start) return emptyList()
         val facts = runCatching { BlabladorApi.json.decodeFromString(ListSerializer(String.serializer()), answer.substring(start, end + 1)) }
             .getOrDefault(emptyList())
-        return facts.take(5).map { it.trim() }.filter { add(it) }
+        val added = facts.take(5).map { it.trim() }.filter { add(it, from) }
+        if (added.isNotEmpty()) embedMissing(api)
+        return added
+    }
+
+    /** Embeds memories saved without a vector (new, edited, or from before 3.1). */
+    suspend fun embedMissing(api: BlabladorApi) {
+        val missing = memories.filter { it.vector == null }
+        if (!Embeddings.available || missing.isEmpty()) return
+        val vectors = runCatching { Embeddings.embed(missing.map { it.text }, api) }.getOrNull() ?: return
+        missing.zip(vectors).forEach { (memory, vector) ->
+            val index = memories.indexOfFirst { it.id == memory.id && it.text == memory.text }
+            if (index >= 0) memories[index] = memories[index].copy(vector = Embeddings.encode(vector))
+        }
+        persist()
+    }
+
+    /** Like [systemPrompt], but with many memories picks the relevant ones by meaning when embeddings are available. */
+    suspend fun systemPrompt(question: String, api: BlabladorApi): String {
+        if (memories.size <= ALWAYS_SENT || !Embeddings.available) return systemPrompt(question)
+        embedMissing(api)
+        val questionVector = runCatching { Embeddings.embed(listOf(question), api).firstOrNull() }.getOrNull()
+        return systemPrompt(memories.toList(), question, questionVector)
     }
 
     /** Saves a fact; returns false for an empty text or one already remembered. */
-    fun add(text: String): Boolean {
+    fun add(text: String, from: Conversation? = null): Boolean {
         val fact = text.trim()
         if (fact.isEmpty() || memories.any { it.text.equals(fact, ignoreCase = true) }) return false
-        memories += Memory(text = fact)
+        memories += Memory(text = fact, sourceChat = from?.id, sourceTitle = from?.title)
         while (memories.size > MAX_MEMORIES) memories.removeAt(0)
         persist()
         return true
@@ -111,7 +148,7 @@ class MemoryStore(private val context: Context) {
     fun update(memory: Memory, text: String) {
         val index = memories.indexOfFirst { it.id == memory.id }
         if (index < 0) return
-        memories[index] = memories[index].copy(text = text)
+        memories[index] = memories[index].copy(text = text, vector = null)
         persist()
     }
 

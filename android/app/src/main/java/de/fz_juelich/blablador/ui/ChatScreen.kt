@@ -171,7 +171,12 @@ fun ChatScreen(vm: ChatViewModel) {
         Page.Decision -> { DecisionScreen(vm, onClose = ::close); return }
         Page.Voices -> { VoicesScreen(vm, onClone = { open(Page.AddVoice) }, onClose = ::close); return }
         Page.AddVoice -> { AddVoiceScreen(vm, onClose = ::close); return }
-        Page.Memory -> { MemoryScreen(vm, onClose = ::close); return }
+        Page.Memory -> {
+            MemoryScreen(vm, onClose = ::close, onOpenChat = { id ->
+                vm.conversations.firstOrNull { it.id == id }?.let { vm.select(it); pages.clear() }
+            })
+            return
+        }
         Page.Skills -> { SkillsScreen(vm, onClose = ::close); return }
         Page.Mcp -> { McpScreen(vm, onClose = ::close); return }
         null -> {}

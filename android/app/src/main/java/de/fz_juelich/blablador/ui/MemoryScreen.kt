@@ -1,6 +1,7 @@
 package de.fz_juelich.blablador.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -36,7 +37,7 @@ import de.fz_juelich.blablador.data.Memory
 /** What the assistant remembers about the user; edit, delete or add facts. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MemoryScreen(vm: ChatViewModel, onClose: () -> Unit) {
+fun MemoryScreen(vm: ChatViewModel, onClose: () -> Unit, onOpenChat: (String) -> Unit = {}) {
     val store = vm.memory
     var newFact by remember { mutableStateOf("") }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -60,7 +61,11 @@ fun MemoryScreen(vm: ChatViewModel, onClose: () -> Unit) {
             }
             Section("Memories") {
                 if (store.memories.isEmpty()) Text("Nothing remembered yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                store.memories.forEach { memory -> MemoryRow(memory, onChange = { store.update(memory, it) }, onDelete = { store.delete(memory) }) }
+                store.memories.forEach { memory ->
+                    val chatExists = memory.sourceChat != null && vm.conversations.any { it.id == memory.sourceChat }
+                    MemoryRow(memory, onChange = { store.update(memory, it) }, onDelete = { store.delete(memory) },
+                        onOpenChat = if (chatExists) ({ onOpenChat(memory.sourceChat!!) }) else null)
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     OutlinedTextField(newFact, { newFact = it }, Modifier.weight(1f), placeholder = { Text("Add a memory") })
                     TextButton(onClick = { if (store.add(newFact)) newFact = "" }, enabled = newFact.isNotBlank()) { Text("Add") }
@@ -81,13 +86,22 @@ fun MemoryScreen(vm: ChatViewModel, onClose: () -> Unit) {
 }
 
 @Composable
-private fun MemoryRow(memory: Memory, onChange: (String) -> Unit, onDelete: () -> Unit) {
+private fun MemoryRow(memory: Memory, onChange: (String) -> Unit, onDelete: () -> Unit, onOpenChat: (() -> Unit)?) {
     var text by remember(memory.id) { mutableStateOf(memory.text) }
+    val date = java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).format(java.util.Date(memory.date))
     Row(verticalAlignment = Alignment.CenterVertically) {
-        OutlinedTextField(text, {
-            text = it
-            if (it.isNotBlank()) onChange(it.trim())
-        }, Modifier.weight(1f).padding(vertical = 4.dp))
+        Column(Modifier.weight(1f)) {
+            OutlinedTextField(text, {
+                text = it
+                if (it.isNotBlank()) onChange(it.trim())
+            }, Modifier.fillMaxWidth().padding(vertical = 4.dp))
+            // Where the memory came from: a link to its chat, or the date it was added.
+            val source = memory.sourceTitle?.let { "$it · $date" } ?: "Added $date"
+            Text(source, style = MaterialTheme.typography.bodySmall,
+                color = if (onOpenChat != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                modifier = if (onOpenChat != null) Modifier.clickable(onClick = onOpenChat) else Modifier)
+        }
         IconButton(onClick = onDelete) { Icon(Icons.Outlined.DeleteOutline, "Forget") }
     }
 }
