@@ -9,6 +9,7 @@ struct BlabladorApp: App {
     var body: some Scene {
         WindowGroup(id: "chat") {
             ChatWindow()
+                .onOpenURL { SiriCommandCenter.shared.open($0) }
         }
         .commands {
             TextSizeCommands()

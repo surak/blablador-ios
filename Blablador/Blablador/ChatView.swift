@@ -109,6 +109,8 @@ struct ChatView: View {
             handleSiri(siri.pendingCommand)
         }
         .onChange(of: siri.pendingCommand) { _, command in handleSiri(command) }
+        .onChange(of: siri.pendingShare) { _, share in handleShare(share) }
+        .onAppear { handleShare(siri.pendingShare) }
         .onChange(of: speech.transcript) { _, text in
             if speech.isRecording { draft = text }
         }
@@ -347,6 +349,16 @@ struct ChatView: View {
         attachments = []
         documents = []
         store.send(text, attachments: images, documents: pdfs, createImage: imageMode, createVideo: videoMode, speak: speechMode)
+    }
+
+    /// Something shared with or opened in Blablador: a new chat with it in the composer, ready to ask about.
+    private func handleShare(_ share: SiriCommandCenter.Share?) {
+        guard let share else { return }
+        SiriCommandCenter.shared.consumeShare()
+        store.newChat()
+        draft = share.text
+        droppedFiles += share.files
+        inputFocused = true
     }
 
     private func handleSiri(_ command: String?) {
