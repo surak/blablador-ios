@@ -38,6 +38,8 @@ enum KeychainHelper {
 /// videos, voice samples, knowledge bases and custom instructions.
 enum EncryptedStorage {
     private static let keyAccount = "storageKey"
+    /// Keychain service of the key; tests use their own.
+    nonisolated(unsafe) static var keychainService = "de.fz-juelich.blablador"
 
     /// Reads and decrypts a JSON file. Files saved by older versions in plain JSON are read as they are and
     /// rewritten encrypted. A file that can't be decrypted is moved aside (".unreadable") rather than overwritten.
@@ -154,7 +156,7 @@ enum EncryptedStorage {
     private static func query(returnData: Bool) -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "de.fz-juelich.blablador",
+            kSecAttrService as String: keychainService,
             kSecAttrAccount as String: keyAccount,
             kSecReturnData as String: returnData,
             kSecMatchLimit as String: kSecMatchLimitOne

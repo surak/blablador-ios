@@ -67,16 +67,20 @@ final class MemoryStore: ObservableObject {
     }
 
     /// Up to this many memories are always sent; beyond it only the relevant ones.
-    static let alwaysSent = 30
+    nonisolated static let alwaysSent = 30
 
     /// Added to the system prompt when memory is on. With many memories, only those sharing words with the
     /// question plus the newest are sent, keeping their numbers so forget still works.
     func systemPrompt(for question: String) -> String {
+        Self.systemPrompt(memories: memories, question: question)
+    }
+
+    nonisolated static func systemPrompt(memories: [Memory], question: String) -> String {
         var prompt = "You have a long-term memory of the user that lasts across chats. Call remember when the user shares something lasting about themselves (name, job, preferences, ongoing projects) or asks you to remember something; save one short fact per call, written in the third person. Call forget with a number when the user says a memory is wrong or asks you to forget it. Never save passwords, keys or other secrets."
         let numbered = Array(memories.enumerated())
         guard !numbered.isEmpty else { return prompt + " You don't remember anything yet." }
         var shown = numbered
-        if numbered.count > Self.alwaysSent {
+        if numbered.count > alwaysSent {
             let words = Self.words(question)
             let relevant = numbered
                 .map { ($0, Self.words($0.element.text).intersection(words).count) }

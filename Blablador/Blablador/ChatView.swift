@@ -528,7 +528,8 @@ private struct ComposerView: View {
         return "Ask Blablador"
     }
 
-    var body: some View {
+    /// The text field and its buttons; `body` adds pickers and sheets (split so the compiler can type-check it).
+    private var field: some View {
         VStack(alignment: .leading, spacing: 8) {
 #if os(iOS)
             if clipboardHasImage {
@@ -635,6 +636,10 @@ private struct ComposerView: View {
         .padding(.top, 4)
         .frame(maxWidth: 800)
         .frame(maxWidth: .infinity)
+    }
+
+    var body: some View {
+        field
         .photosPicker(isPresented: $showPhotoPicker, selection: $photoItems, maxSelectionCount: 4, matching: .images)
         .onChange(of: photoItems) { _, items in
             guard !items.isEmpty else { return }
@@ -1082,3 +1087,26 @@ private struct AttachmentThumbnail: View {
         }
     }
 }
+
+#if os(macOS)
+extension Notification.Name {
+    /// Asks the key window's composer to attach what's on the clipboard.
+    static let pasteAttachment = Notification.Name("pasteAttachment")
+}
+
+/// Lets the composer report that it took the paste, so the text field doesn't paste too.
+final class PasteRequest {
+    var handled = false
+
+    /// An image without text (a screenshot, a copied picture), or copied image/PDF files from Finder.
+    static var clipboardHasAttachment: Bool {
+        let board = NSPasteboard.general
+        let files = board.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+        if files.contains(where: { ["png", "jpg", "jpeg", "heic", "gif", "tiff", "webp", "bmp", "pdf"].contains($0.pathExtension.lowercased()) }) {
+            return true
+        }
+        let types = board.types ?? []
+        return !types.contains(.string) && NSImage.canInit(with: board)
+    }
+}
+#endif

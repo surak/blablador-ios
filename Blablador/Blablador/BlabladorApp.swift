@@ -114,25 +114,3 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 #endif
 
-#if os(macOS)
-extension Notification.Name {
-    /// Asks the key window's composer to attach what's on the clipboard.
-    static let pasteAttachment = Notification.Name("pasteAttachment")
-}
-
-/// Lets the composer report that it took the paste, so the text field doesn't paste too.
-final class PasteRequest {
-    var handled = false
-
-    /// An image without text (a screenshot, a copied picture), or copied image/PDF files from Finder.
-    static var clipboardHasAttachment: Bool {
-        let board = NSPasteboard.general
-        let files = board.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
-        if files.contains(where: { ["png", "jpg", "jpeg", "heic", "gif", "tiff", "webp", "bmp", "pdf"].contains($0.pathExtension.lowercased()) }) {
-            return true
-        }
-        let types = board.types ?? []
-        return !types.contains(.string) && NSImage.canInit(with: board)
-    }
-}
-#endif

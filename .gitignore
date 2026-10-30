@@ -5,3 +5,4 @@ xcuserdata/
 *.xcworkspace/xcuserdata/
 *.xcuserstate
 .DS_Store
+.build/

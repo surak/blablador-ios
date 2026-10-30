@@ -716,7 +716,7 @@ final class ChatStore: ObservableObject {
     private static let recentMessages = 8
 
     /// The system prompt (with the summary of older messages, if any) and the messages after the summary.
-    private static func history(system: String, _ conversation: Conversation) -> [[String: Any]] {
+    static func history(system: String, _ conversation: Conversation) -> [[String: Any]] {
         var system = system
         let covered = min(conversation.summaryCount ?? 0, conversation.messages.count)
         if let summary = conversation.summary, covered > 0 {
@@ -727,7 +727,7 @@ final class ChatStore: ObservableObject {
     }
 
     /// Rough size of a request: text, plus about 3,000 characters per image.
-    private static func size(_ wire: [[String: Any]]) -> Int {
+    static func size(_ wire: [[String: Any]]) -> Int {
         wire.reduce(0) { total, message in
             if let text = message["content"] as? String { return total + text.count }
             let parts = message["content"] as? [[String: Any]] ?? []
