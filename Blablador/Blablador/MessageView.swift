@@ -130,6 +130,16 @@ struct MessageView: View {
                     } else {
                         MarkdownText(text: message.content)
                     }
+                    ForEach(message.remembered, id: \.self) { fact in
+                        Label("Remembered: \(fact)", systemImage: "brain")
+                            .scaledFont(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    ForEach(message.forgotten, id: \.self) { fact in
+                        Label("Forgot: \(fact)", systemImage: "brain")
+                            .scaledFont(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                     if !message.citations.isEmpty {
                         CitationsView(citations: message.citations)
                     }

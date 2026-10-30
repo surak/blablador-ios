@@ -134,6 +134,7 @@ private sealed interface Page {
     data object Decision : Page
     data object Voices : Page
     data object AddVoice : Page
+    data object Memory : Page
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -159,13 +160,14 @@ fun ChatScreen(vm: ChatViewModel) {
     when (val page = pages.lastOrNull()) {
         Page.Settings -> {
             SettingsScreen(vm, onOpenKnowledge = { open(Page.Knowledge()) }, onOpenVoices = { open(Page.Voices) },
-                onOpenDecision = { open(Page.Decision) }, onClose = ::close)
+                onOpenDecision = { open(Page.Decision) }, onOpenMemory = { open(Page.Memory) }, onClose = ::close)
             return
         }
         is Page.Knowledge -> { KnowledgeScreen(vm, page.baseId, onClose = ::close); return }
         Page.Decision -> { DecisionScreen(vm, onClose = ::close); return }
         Page.Voices -> { VoicesScreen(vm, onClone = { open(Page.AddVoice) }, onClose = ::close); return }
         Page.AddVoice -> { AddVoiceScreen(vm, onClose = ::close); return }
+        Page.Memory -> { MemoryScreen(vm, onClose = ::close); return }
         null -> {}
     }
 

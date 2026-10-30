@@ -46,7 +46,7 @@ import de.fz_juelich.blablador.data.BlabladorApi
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(vm: ChatViewModel, onOpenKnowledge: () -> Unit, onOpenVoices: () -> Unit, onOpenDecision: () -> Unit, onClose: () -> Unit) {
+fun SettingsScreen(vm: ChatViewModel, onOpenKnowledge: () -> Unit, onOpenVoices: () -> Unit, onOpenDecision: () -> Unit, onOpenMemory: () -> Unit, onClose: () -> Unit) {
     var key by remember { mutableStateOf(vm.apiKey) }
     var endpoint by remember { mutableStateOf(vm.endpoint) }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -114,6 +114,10 @@ fun SettingsScreen(vm: ChatViewModel, onOpenKnowledge: () -> Unit, onOpenVoices:
             Section("Knowledge and decisions", footer = "Knowledge bases let chats answer from your documents. Decide asks Blablador's Clef model typed questions and shows probabilities.") {
                 Link("Knowledge bases", "${vm.knowledge.bases.size}", onOpenKnowledge)
                 Link("Decide (Clef)", "", onOpenDecision)
+            }
+
+            Section("Memory", footer = "Facts about you the assistant remembers across chats.") {
+                Link("Memory", if (vm.memory.enabled) "${vm.memory.memories.size}" else "Off", onOpenMemory)
             }
 
             Section("Web search", footer = "Lets the model search the web via search.blablador.fz-juelich.de when it needs current information.") {

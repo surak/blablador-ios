@@ -110,6 +110,12 @@ struct SettingsView: View {
                     Text("PDF and text collections that chats can answer from.")
                 }
 
+                Section {
+                    NavigationLink("Memory") { MemoryView() }
+                } footer: {
+                    Text("Facts about you the assistant remembers across chats.")
+                }
+
                 VoiceSettingsSection()
 
                 Section {

@@ -21,6 +21,7 @@ import de.fz_juelich.blablador.data.ConversationStore
 import de.fz_juelich.blablador.data.DocumentAttachment
 import de.fz_juelich.blablador.data.ImageStore
 import de.fz_juelich.blablador.data.KnowledgeLibrary
+import de.fz_juelich.blablador.data.MemoryStore
 import de.fz_juelich.blablador.data.PdfExtractor
 import de.fz_juelich.blablador.data.RemoteModel
 import de.fz_juelich.blablador.data.SearchResult
@@ -55,6 +56,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val pdf = PdfExtractor(application, settings)
     val knowledge = KnowledgeLibrary(application, viewModelScope, pdf)
     val voices = VoiceLibrary(application)
+    val memory = MemoryStore(application)
     val audio = AudioStore(application)
     val videos = VideoStore(application)
     val playback = AudioPlayback()
@@ -376,6 +378,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         if (voices.toolsEnabled) {
             system += " You can speak aloud with generate_speech when the user asks you to say, read or voice something. Never claim you spoke unless the tool succeeded."
         }
+        if (memory.enabled) system += "\n\n" + memory.systemPrompt
         val wire = buildList {
             add(buildJsonObject { put("role", "system"); put("content", system.trim()) })
             conversation.messages.filter { !it.isError }.forEach { add(wireMessage(it)) }
@@ -391,6 +394,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             if (webSearchEnabled) { add(Tools.webSearch); add(Tools.imageSearch) }
             if (imageToolsEnabled) { add(Tools.generateImage); add(Tools.editImage) }
             if (voices.toolsEnabled) add(Tools.generateSpeech)
+            if (memory.enabled) { add(Tools.remember); add(Tools.forget) }
         }
         isStreaming = true
         streamJob = viewModelScope.launch {
@@ -512,6 +516,21 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         throw e
                     } catch (e: Exception) {
                         "Speech tool failed: ${e.message}"
+                    }
+                    call.name == "remember" && memory.enabled -> {
+                        val fact = jsonString(arguments?.get("fact")).orEmpty().trim()
+                        if (memory.add(fact)) {
+                            updateMessage(replyId) { it.copy(remembered = it.remembered + fact) }
+                            "Saved to memory."
+                        } else "Already remembered or empty; nothing saved."
+                    }
+                    call.name == "forget" && memory.enabled -> {
+                        val number = jsonString(arguments?.get("number"))?.toIntOrNull()
+                        val forgotten = number?.let(memory::forget)
+                        if (forgotten != null) {
+                            updateMessage(replyId) { it.copy(forgotten = it.forgotten + forgotten.text) }
+                            "Forgot: ${forgotten.text}. The numbers of later memories moved up by one."
+                        } else "There is no memory number $number."
                     }
                     call.name == "image_search" && query.isNotEmpty() -> {
                         updateMessage(replyId) { it.copy(status = "Searching pictures of “$query”") }

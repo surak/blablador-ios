@@ -16,6 +16,7 @@ It is the Android counterpart of [blablador-ios](https://github.com/surak/blabla
 - **OCR engine** in Settings → Documents: on device (ML Kit) or Blablador's LightOnOCR (`alias-ocr`), which keeps tables; falls back to on-device
 - **Create and edit images** with FLUX.2-dev or Qwen-Image 2.1; tap **Edit** on any image in the chat
 - **Dictation** (system speech recognizer) and **read-aloud** (system text-to-speech)
+- **Memory**: facts about you saved across chats, editable in Settings
 - **History** with search; personalised greeting; API key stored encrypted with the Android Keystore
 - **Knowledge bases** (+ → Knowledge): collections of PDFs and text files indexed with `alias-qwen3-4b-embeddings` and re-ranked with
   `alias-qwen3-4b-reranker`; the index stays on the device and replies cite excerpts as [K1], [K2]

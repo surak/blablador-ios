@@ -41,6 +41,9 @@ data class ChatMessage(
     val date: Long = System.currentTimeMillis(),
     val isError: Boolean = false,
     val sources: List<SearchResult> = emptyList(),
+    /** Facts saved to and deleted from long-term memory while answering. */
+    val remembered: List<String> = emptyList(),
+    val forgotten: List<String> = emptyList(),
     /** Pictures found online with image_search. */
     val webImages: List<WebImage> = emptyList(),
     /** File names in ImageStore: attachments on user messages, generated images on replies. */

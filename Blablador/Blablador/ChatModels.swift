@@ -13,6 +13,9 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     var date = Date()
     var isError = false
     var sources: [SearchResult] = []
+    /// Facts saved to and deleted from long-term memory while answering.
+    var remembered: [String] = []
+    var forgotten: [String] = []
     /// Pictures found online with image_search.
     var webImages: [WebImage] = []
     /// File names in ImageStore: attachments on user messages, generated images on replies.
@@ -32,7 +35,7 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     /// Transient status shown while tools run, e.g. "Searching the web…"
     var status: String?
 
-    private enum CodingKeys: String, CodingKey { case id, role, content, date, isError, sources, webImages, images, documents, audio, videos, citations, steps, reasoning }
+    private enum CodingKeys: String, CodingKey { case id, role, content, date, isError, sources, webImages, remembered, forgotten, images, documents, audio, videos, citations, steps, reasoning }
 
     init(role: ChatRole, content: String, images: [String] = [], documents: [DocumentAttachment] = []) {
         self.role = role
@@ -49,6 +52,8 @@ struct ChatMessage: Identifiable, Codable, Equatable {
         date = try c.decode(Date.self, forKey: .date)
         isError = try c.decode(Bool.self, forKey: .isError)
         sources = try c.decodeIfPresent([SearchResult].self, forKey: .sources) ?? []
+        remembered = try c.decodeIfPresent([String].self, forKey: .remembered) ?? []
+        forgotten = try c.decodeIfPresent([String].self, forKey: .forgotten) ?? []
         webImages = try c.decodeIfPresent([WebImage].self, forKey: .webImages) ?? []
         images = try c.decodeIfPresent([String].self, forKey: .images) ?? []
         documents = try c.decodeIfPresent([DocumentAttachment].self, forKey: .documents) ?? []

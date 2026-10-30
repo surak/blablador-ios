@@ -39,6 +39,7 @@ release tagged `v<version>` with the Mac DMG and zip, the Android APK and `SHA25
 - `SpeechRecognizer.swift`: Dictation (Speech framework) and read-aloud (AVSpeechSynthesizer)
 - `ChatView.swift`, `MessageView.swift`, `HistoryView.swift`, `SettingsView.swift`, `Theme.swift`: UI
 - `WebSearch.swift`: `web_search` and `image_search` tools on Blablador's SearXNG (`search.blablador.fz-juelich.de`, `categories=images`); found pictures (HTTPS only) are stored in `ChatMessage.webImages` and shown above the answer by `WebImagesView`. `WebSearch.systemPrompt` tells the model to search before saying it doesn't know a person. Android: `WebSearch` in `data/Tools.kt`
+- `Memory.swift`: long-term memory (`MemoryStore`, `memories.json` in Application Support): `remember`/`forget` tools, numbered facts in every system prompt, `MemoryView` in Settings; replies record `ChatMessage.remembered`/`forgotten`. Android: `data/Memory.kt`, `ui/MemoryScreen.kt`. Next steps in `ROADMAP.md`
 - `SiriIntents.swift`, `SiriCommandCenter.swift`: "Ask Blablador" Siri shortcut, which starts a new chat
 - `Info.plist`: App configuration, microphone/speech permission strings
 

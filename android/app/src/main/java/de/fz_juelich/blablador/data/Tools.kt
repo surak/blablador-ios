@@ -55,6 +55,25 @@ object Tools {
         listOf("query"),
     )
 
+    val remember = function(
+        "remember",
+        "Save a lasting fact about the user to long-term memory, available in future chats.",
+        buildJsonObject { put("fact", stringProperty("One short fact in the third person, e.g. \"Works as a chemist in Jülich.\"")) },
+        listOf("fact"),
+    )
+
+    val forget = function(
+        "forget",
+        "Delete a memory that is wrong or that the user wants forgotten.",
+        buildJsonObject {
+            put("number", buildJsonObject {
+                put("type", "integer")
+                put("description", "The memory's number in the list of what you remember.")
+            })
+        },
+        listOf("number"),
+    )
+
     val generateImage = function(
         "generate_image",
         "Create a new image from a text description. Use when the user asks to draw, create, generate or imagine a picture.",

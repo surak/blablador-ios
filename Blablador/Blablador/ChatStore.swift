@@ -483,6 +483,8 @@ final class ChatStore: ObservableObject {
         if VoiceLibrary.shared.toolsEnabled {
             system += " You can speak aloud with generate_speech when the user asks you to say, read or voice something. Never claim you spoke unless the tool succeeded."
         }
+        let memory = MemoryStore.shared
+        if memory.enabled { system += "\n\n" + memory.systemPrompt }
         let folder = workspace
         if let folder { system += "\n\n" + AgentTools.systemPrompt(workspace: folder) }
         system = system.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -503,6 +505,7 @@ final class ChatStore: ObservableObject {
         if webSearchEnabled { tools += [WebSearch.tool, WebSearch.imageTool] }
         if imageToolsEnabled { tools += [ImageTools.generate, ImageTools.edit] }
         if VoiceLibrary.shared.toolsEnabled { tools.append(SpeechTools.generate) }
+        if memory.enabled { tools += [MemoryTools.remember, MemoryTools.forget] }
         if folder != nil { tools += AgentTools.definitions }
         streamTask = Task {
             do {
@@ -634,6 +637,21 @@ final class ChatStore: ObservableObject {
                     }
                 } else if let workspace, AgentTools.names.contains(call.name) {
                     output = await runAgentTool(call.name, arguments ?? [:], in: workspace, replyID: replyID)
+                } else if call.name == "remember", let fact = arguments?["fact"] as? String, MemoryStore.shared.enabled {
+                    if MemoryStore.shared.add(fact) {
+                        updateMessage(replyID) { $0.remembered.append(fact.trimmingCharacters(in: .whitespacesAndNewlines)) }
+                        output = "Saved to memory."
+                    } else {
+                        output = "Already remembered or empty; nothing saved."
+                    }
+                } else if call.name == "forget", MemoryStore.shared.enabled,
+                          let number = (arguments?["number"] as? Int) ?? Int(arguments?["number"] as? String ?? "") {
+                    if let forgotten = MemoryStore.shared.forget(number: number) {
+                        updateMessage(replyID) { $0.forgotten.append(forgotten.text) }
+                        output = "Forgot: \(forgotten.text). The numbers of later memories moved up by one."
+                    } else {
+                        output = "There is no memory number \(number)."
+                    }
                 } else if call.name == "image_search", !query.isEmpty {
                     updateMessage(replyID) { $0.status = "Searching pictures of “\(query)”" }
                     do {

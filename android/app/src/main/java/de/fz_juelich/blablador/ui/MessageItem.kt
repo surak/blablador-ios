@@ -78,6 +78,7 @@ import de.fz_juelich.blablador.data.ChatRole
 import de.fz_juelich.blablador.data.DocumentAttachment
 import de.fz_juelich.blablador.data.SearchResult
 import de.fz_juelich.blablador.data.WebImage
+import androidx.compose.material.icons.outlined.Psychology
 import kotlinx.coroutines.delay
 import java.io.File
 
@@ -139,6 +140,8 @@ fun MessageItem(
                     }
                     else -> MarkdownText(message.content)
                 }
+                message.remembered.forEach { MemoryNote("Remembered: $it") }
+                message.forgotten.forEach { MemoryNote("Forgot: $it") }
                 if (message.citations.isNotEmpty()) Citations(message.citations)
                 if (message.sources.isNotEmpty()) Sources(message.sources)
                 if (!(isLast && isStreaming) && (message.content.isNotEmpty() || message.images.isNotEmpty())) {
@@ -230,6 +233,14 @@ private fun Sources(sources: List<SearchResult>) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
+    }
+}
+
+@Composable
+private fun MemoryNote(text: String) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Icon(Icons.Outlined.Psychology, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
