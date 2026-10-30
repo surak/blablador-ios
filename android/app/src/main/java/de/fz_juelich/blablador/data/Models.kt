@@ -13,6 +13,15 @@ data class SearchResult(
     val content: String? = null,
 )
 
+/** A picture found online, shown next to the answer; [url] is the page it is on. */
+@Serializable
+data class WebImage(
+    val title: String,
+    val url: String,
+    val image: String,
+    val thumbnail: String? = null,
+)
+
 /** A PDF or photo attached to a message, reduced to its text on the device. */
 @Serializable
 data class DocumentAttachment(
@@ -32,6 +41,8 @@ data class ChatMessage(
     val date: Long = System.currentTimeMillis(),
     val isError: Boolean = false,
     val sources: List<SearchResult> = emptyList(),
+    /** Pictures found online with image_search. */
+    val webImages: List<WebImage> = emptyList(),
     /** File names in ImageStore: attachments on user messages, generated images on replies. */
     val images: List<String> = emptyList(),
     val documents: List<DocumentAttachment> = emptyList(),

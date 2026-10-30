@@ -38,6 +38,7 @@ release tagged `v<version>` with the Mac DMG and zip, the Android APK and `SHA25
 - `VoiceLibrary.swift`, `VoiceViews.swift`: Drama 3 speech (`alias-voice-drama3` via `/audio/speech`), voice cloning (reference sample as `references[].audio_path` data URI plus transcript from Whisper), delivery settings
 - `SpeechRecognizer.swift`: Dictation (Speech framework) and read-aloud (AVSpeechSynthesizer)
 - `ChatView.swift`, `MessageView.swift`, `HistoryView.swift`, `SettingsView.swift`, `Theme.swift`: UI
+- `WebSearch.swift`: `web_search` and `image_search` tools on Blablador's SearXNG (`search.blablador.fz-juelich.de`, `categories=images`); found pictures (HTTPS only) are stored in `ChatMessage.webImages` and shown above the answer by `WebImagesView`. `WebSearch.systemPrompt` tells the model to search before saying it doesn't know a person. Android: `WebSearch` in `data/Tools.kt`
 - `SiriIntents.swift`, `SiriCommandCenter.swift`: "Ask Blablador" Siri shortcut, which starts a new chat
 - `Info.plist`: App configuration, microphone/speech permission strings
 

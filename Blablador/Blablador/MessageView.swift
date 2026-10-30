@@ -102,6 +102,9 @@ struct MessageView: View {
                     if !message.reasoning.isEmpty {
                         ThinkingView(text: message.reasoning, isThinking: isLast && isStreaming && message.content.isEmpty)
                     }
+                    if !message.webImages.isEmpty {
+                        WebImagesView(images: message.webImages)
+                    }
                     ForEach(message.images, id: \.self) { name in
                         GeneratedImage(name: name)
                     }
@@ -332,6 +335,36 @@ private struct SourcesView: View {
                             .frame(width: 170, height: 72, alignment: .leading)
                             .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12))
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Pictures found online, each linking to the page it is on.
+private struct WebImagesView: View {
+    let images: [WebImage]
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(images, id: \.image) { image in
+                    if let page = URL(string: image.url), SafeLinks.allows(page),
+                       let source = URL(string: image.thumbnail ?? image.image) {
+                        Link(destination: page) {
+                            AsyncImage(url: source) { phase in
+                                if let picture = phase.image {
+                                    picture.resizable().scaledToFill()
+                                } else {
+                                    Theme.surface
+                                }
+                            }
+                            .frame(width: 150, height: 150)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
+                        .help(image.title)
+                        .accessibilityLabel(image.title)
                     }
                 }
             }

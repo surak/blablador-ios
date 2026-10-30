@@ -13,6 +13,8 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     var date = Date()
     var isError = false
     var sources: [SearchResult] = []
+    /// Pictures found online with image_search.
+    var webImages: [WebImage] = []
     /// File names in ImageStore: attachments on user messages, generated images on replies.
     var images: [String] = []
     /// PDFs attached to user messages, as extracted text.
@@ -30,7 +32,7 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     /// Transient status shown while tools run, e.g. "Searching the web…"
     var status: String?
 
-    private enum CodingKeys: String, CodingKey { case id, role, content, date, isError, sources, images, documents, audio, videos, citations, steps, reasoning }
+    private enum CodingKeys: String, CodingKey { case id, role, content, date, isError, sources, webImages, images, documents, audio, videos, citations, steps, reasoning }
 
     init(role: ChatRole, content: String, images: [String] = [], documents: [DocumentAttachment] = []) {
         self.role = role
@@ -47,6 +49,7 @@ struct ChatMessage: Identifiable, Codable, Equatable {
         date = try c.decode(Date.self, forKey: .date)
         isError = try c.decode(Bool.self, forKey: .isError)
         sources = try c.decodeIfPresent([SearchResult].self, forKey: .sources) ?? []
+        webImages = try c.decodeIfPresent([WebImage].self, forKey: .webImages) ?? []
         images = try c.decodeIfPresent([String].self, forKey: .images) ?? []
         documents = try c.decodeIfPresent([DocumentAttachment].self, forKey: .documents) ?? []
         audio = try c.decodeIfPresent([String].self, forKey: .audio) ?? []

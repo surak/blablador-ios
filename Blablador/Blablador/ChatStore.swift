@@ -475,7 +475,7 @@ final class ChatStore: ObservableObject {
         let today = Date().formatted(date: .complete, time: .omitted)
         system += "\n\nToday is \(today)."
         if webSearchEnabled {
-            system += " You can use the web_search tool for current or uncertain information. Cite sources inline as [1], [2] matching the search results."
+            system += WebSearch.systemPrompt
         }
         if imageToolsEnabled {
             system += " You can create images with generate_image and modify the latest image in the chat with edit_image. Never describe an image as created unless the tool succeeded."
@@ -500,7 +500,7 @@ final class ChatStore: ObservableObject {
 
         isStreaming = true
         var tools: [[String: Any]] = []
-        if webSearchEnabled { tools.append(WebSearch.tool) }
+        if webSearchEnabled { tools += [WebSearch.tool, WebSearch.imageTool] }
         if imageToolsEnabled { tools += [ImageTools.generate, ImageTools.edit] }
         if VoiceLibrary.shared.toolsEnabled { tools.append(SpeechTools.generate) }
         if folder != nil { tools += AgentTools.definitions }
@@ -634,6 +634,19 @@ final class ChatStore: ObservableObject {
                     }
                 } else if let workspace, AgentTools.names.contains(call.name) {
                     output = await runAgentTool(call.name, arguments ?? [:], in: workspace, replyID: replyID)
+                } else if call.name == "image_search", !query.isEmpty {
+                    updateMessage(replyID) { $0.status = "Searching pictures of “\(query)”" }
+                    do {
+                        let images = try await WebSearch.searchImages(query)
+                        updateMessage(replyID) { message in
+                            message.webImages += images.filter { image in !message.webImages.contains { $0.image == image.image } }
+                        }
+                        output = images.isEmpty
+                            ? "No pictures found for \"\(query)\"."
+                            : "\(images.count) pictures are shown to the user: " + images.map(\.title).joined(separator: "; ") + ". Don't include image links in your answer."
+                    } catch {
+                        output = "Image search failed: \(error.localizedDescription)"
+                    }
                 } else if call.name == "web_search", !query.isEmpty {
                     updateMessage(replyID) { $0.status = "Searching “\(query)”" }
                     do {

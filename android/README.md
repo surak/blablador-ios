@@ -9,7 +9,7 @@ It is the Android counterpart of [blablador-ios](https://github.com/surak/blabla
 - **Chat** with every Blablador chat model, streaming replies; default `deepseek-v4.1-flash-at-hzdr`. Markdown with code blocks and tables
 - **Thinking**: the thinking trace of reasoning models shows in a collapsible panel above the reply
 - **Wait for a reply** (Settings): how long to wait for slow models, up to no limit
-- **Web search** through search.blablador.fz-juelich.de, with cited sources
+- **Web search** through search.blablador.fz-juelich.de, with cited sources and pictures next to the answer
 - **Photos, camera and files** for vision-capable models (+ → File picks images or PDFs; + → Paste image attaches a copied image)
 - **PDFs** (+ → PDF): text extracted on the device with PdfBox; scanned pages read with OCR
 - **Text from photo** (+ → Text from photo): OCR of documents, receipts or slides
@@ -122,6 +122,7 @@ app/src/main/java/de/fz_juelich/blablador/
 ## Version history
 The Android and Apple apps share one version number and one release.
 
+- **2.6.5**: pictures from the web next to answers (people, places, things); searches before saying it doesn't know someone
 - **2.6.4**: Mac: ⌘+ / ⌘− now also resize reply text, your messages, the text field and the chat list
 - **2.6.3**: Mac: bigger and smaller text with ⌘+ / ⌘− / ⌘0 (View menu); also on iPad with a keyboard
 - **2.6.2**: share and copy generated speech as an audio file (for example into Messages); speech replies drop Read aloud and Select text

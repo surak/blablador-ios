@@ -368,7 +368,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         var system = systemPrompt
         system += "\n\nToday is ${DateFormat.getDateInstance(DateFormat.FULL).format(Date())}."
         if (webSearchEnabled) {
-            system += " You can use the web_search tool for current or uncertain information. Cite sources inline as [1], [2] matching the search results."
+            system += WebSearch.SYSTEM_PROMPT
         }
         if (imageToolsEnabled) {
             system += " You can create images with generate_image and modify the latest image in the chat with edit_image. Never describe an image as created unless the tool succeeded."
@@ -388,7 +388,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         update { it.copy(model = model, messages = it.messages + reply) }
 
         val tools = buildList {
-            if (webSearchEnabled) add(Tools.webSearch)
+            if (webSearchEnabled) { add(Tools.webSearch); add(Tools.imageSearch) }
             if (imageToolsEnabled) { add(Tools.generateImage); add(Tools.editImage) }
             if (voices.toolsEnabled) add(Tools.generateSpeech)
         }
@@ -512,6 +512,21 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         throw e
                     } catch (e: Exception) {
                         "Speech tool failed: ${e.message}"
+                    }
+                    call.name == "image_search" && query.isNotEmpty() -> {
+                        updateMessage(replyId) { it.copy(status = "Searching pictures of “$query”") }
+                        try {
+                            val images = WebSearch.searchImages(query)
+                            updateMessage(replyId) { message ->
+                                message.copy(webImages = message.webImages + images.filter { image -> message.webImages.none { it.image == image.image } })
+                            }
+                            if (images.isEmpty()) "No pictures found for \"$query\"."
+                            else "${images.size} pictures are shown to the user: ${images.joinToString("; ") { it.title }}. Don't include image links in your answer."
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            "Image search failed: ${e.message}"
+                        }
                     }
                     call.name == "web_search" && query.isNotEmpty() -> {
                         updateMessage(replyId) { it.copy(status = "Searching “$query”") }

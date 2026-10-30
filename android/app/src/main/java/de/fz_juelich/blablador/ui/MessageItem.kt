@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -76,6 +77,7 @@ import de.fz_juelich.blablador.data.ChatMessage
 import de.fz_juelich.blablador.data.ChatRole
 import de.fz_juelich.blablador.data.DocumentAttachment
 import de.fz_juelich.blablador.data.SearchResult
+import de.fz_juelich.blablador.data.WebImage
 import kotlinx.coroutines.delay
 import java.io.File
 
@@ -123,6 +125,7 @@ fun MessageItem(
                     }
                 }
                 if (message.reasoning.isNotEmpty()) Thinking(message.reasoning, isLast && isStreaming && message.content.isEmpty())
+                if (message.webImages.isNotEmpty()) WebImages(message.webImages)
                 message.images.forEach { ChatImage(imageFile(it), 420, square = false) { onEditImage(it) } }
                 message.audio.forEach { speechClip(it) }
                 message.videos.forEach { name -> VideoClip(videoFile(name)) { onContinueVideo(name) } }
@@ -226,6 +229,21 @@ private fun Sources(sources: List<SearchResult>) {
                 Text("${index + 1} · ${Uri.parse(source.url).host ?: source.url}", style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
+        }
+    }
+}
+
+/** Pictures found online, each opening the page it is on. */
+@Composable
+private fun WebImages(images: List<WebImage>) {
+    val context = LocalContext.current
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        items(images.filter { isSafeLink(it.url) }, key = { it.image }) { image ->
+            AsyncImage(
+                model = image.thumbnail ?: image.image, contentDescription = image.title, contentScale = ContentScale.Crop,
+                modifier = Modifier.size(150.dp).clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surfaceVariant)
+                    .clickable { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(image.url))) } },
+            )
         }
     }
 }
