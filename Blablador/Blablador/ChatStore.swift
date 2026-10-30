@@ -2,7 +2,7 @@ import Combine
 import Foundation
 import SwiftUI
 
-/// Custom instructions, in an encrypted file (UserDefaults before 2.6.6).
+/// Custom instructions, in an encrypted file (UserDefaults before 3.0).
 @MainActor
 enum CustomInstructions {
     private static let key = "systemPrompt"

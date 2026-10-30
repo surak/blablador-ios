@@ -96,7 +96,7 @@ struct DecisionExample: Codable, Identifiable, Hashable {
     }
 }
 
-/// The user's own decisions, in an encrypted file (UserDefaults before 2.6.6).
+/// The user's own decisions, in an encrypted file (UserDefaults before 3.0).
 enum SavedDecisions {
     private static let key = "savedDecisions"
 

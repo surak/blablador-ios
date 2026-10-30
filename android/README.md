@@ -124,6 +124,7 @@ app/src/main/java/de/fz_juelich/blablador/
 ## Version history
 The Android and Apple apps share one version number and one release.
 
+- **3.0.0**: long-term memory, search of earlier chats, skills (write, import, share; the assistant suggests new ones); everything saved is encrypted; memory can't be changed by text from web pages or documents; HTTPS only
 - **2.6.5**: pictures from the web next to answers (people, places, things); searches before saying it doesn't know someone
 - **2.6.4**: Mac: ⌘+ / ⌘− now also resize reply text, your messages, the text field and the chat list
 - **2.6.3**: Mac: bigger and smaller text with ⌘+ / ⌘− / ⌘0 (View menu); also on iPad with a keyboard

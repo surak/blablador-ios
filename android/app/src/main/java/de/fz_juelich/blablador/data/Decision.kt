@@ -98,7 +98,7 @@ data class DecisionExample(
     }
 }
 
-/** The user's own decisions, in an encrypted file (shared preferences before 2.6.6). */
+/** The user's own decisions, in an encrypted file (shared preferences before 3.0). */
 object SavedDecisions {
     private const val KEY = "decisions"
 

@@ -80,7 +80,7 @@ enum EncryptedStorage {
             || Array(bytes[4..<8]) == Array("ftyp".utf8)
     }
 
-    /// Encrypts files saved unencrypted by versions before 2.6.6: media in Images, Audio, Videos and Voices, and
+    /// Encrypts files saved unencrypted by versions before 3.0: media in Images, Audio, Videos and Voices, and
     /// each knowledge base's chunks and vectors.
     static func encryptOldFiles() {
         let support = AppFolder.url
@@ -163,7 +163,7 @@ enum EncryptedStorage {
 }
 
 /// Where the app keeps its files. On iOS that is the app's own Application Support folder; the Mac app isn't
-/// sandboxed, so it uses a folder of its own inside ~/Library/Application Support (before 2.6.6 its files sat in
+/// sandboxed, so it uses a folder of its own inside ~/Library/Application Support (before 3.0 its files sat in
 /// that shared folder itself, next to other apps' and macOS's folders, and are moved once).
 enum AppFolder {
     static let url: URL = {

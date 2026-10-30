@@ -27,7 +27,7 @@ class ConversationStore(private val context: Context) {
 
 /**
  * App files encrypted with AES-GCM under a key in the Android Keystore: chats, memories, images, audio, videos,
- * voice samples, knowledge bases and saved decisions. Files saved unencrypted by versions before 2.6.6 are read
+ * voice samples, knowledge bases and saved decisions. Files saved unencrypted by versions before 3.0 are read
  * as they are and rewritten encrypted. Nothing is written in plain text.
  */
 object EncryptedStorage {
@@ -112,7 +112,7 @@ object EncryptedStorage {
 
     private fun decryptedDirectory(context: Context) = File(context.cacheDir, "decrypted").apply { mkdirs() }
 
-    /** Encrypts files saved unencrypted by versions before 2.6.6. */
+    /** Encrypts files saved unencrypted by versions before 3.0. */
     fun encryptOldFiles(context: Context) {
         for (folder in listOf("images", "audio", "videos", "voices")) {
             File(context.filesDir, folder).listFiles()?.forEach { file ->
@@ -215,7 +215,7 @@ class Settings(context: Context) {
         get() = prefs.getString("userName", "").orEmpty()
         set(value) = prefs.edit().putString("userName", value).apply()
 
-    /** Custom instructions, in the encrypted preferences (plain preferences before 2.6.6). */
+    /** Custom instructions, in the encrypted preferences (plain preferences before 3.0). */
     var systemPrompt: String
         get() {
             prefs.getString("systemPrompt", null)?.let { old ->
