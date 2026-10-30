@@ -31,6 +31,8 @@ data class DocumentAttachment(
     val pageCount: Int,
     /** Pages without a text layer that were read with OCR. */
     val ocrPageCount: Int = 0,
+    /** For data files (CSV, Excel, JSON…): the original file in DataFiles, given to Python as /data/<name>. [text] then holds a description and the first lines. */
+    val dataFile: String? = null,
 )
 
 @Serializable

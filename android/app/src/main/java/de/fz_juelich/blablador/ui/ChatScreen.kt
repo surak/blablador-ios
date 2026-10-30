@@ -116,6 +116,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
 import de.fz_juelich.blablador.ChatViewModel
+import de.fz_juelich.blablador.data.DataFiles
 import de.fz_juelich.blablador.data.BlabladorApi
 import de.fz_juelich.blablador.data.Conversation
 import de.fz_juelich.blablador.data.DocumentAttachment
@@ -418,14 +419,24 @@ private fun Composer(
     var cameraUri by remember { mutableStateOf<Uri?>(null) }
     val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { taken -> if (taken) cameraUri?.let { addPhoto(it) } }
     val pdfs = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
-        // Images become photo attachments; PDFs are read into text.
+        // Images become photo attachments, PDFs are read into text, data files are kept for Python.
         uris.forEach { uri ->
-            if (context.contentResolver.getType(uri)?.startsWith("image/") == true) addPhoto(uri)
-            else {
-                reading++
-                scope.launch {
-                    try { documents.add(vm.readPdf(uri)) } catch (e: Exception) { error = e.message } finally { reading-- }
+            val type = context.contentResolver.getType(uri).orEmpty()
+            val name = context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
+                if (it.moveToFirst()) it.getString(0) else null
+            } ?: uri.lastPathSegment.orEmpty()
+            when {
+                type.startsWith("image/") -> addPhoto(uri)
+                type == "application/pdf" || name.endsWith(".pdf", ignoreCase = true) -> {
+                    reading++
+                    scope.launch {
+                        try { documents.add(vm.readPdf(uri)) } catch (e: Exception) { error = e.message } finally { reading-- }
+                    }
                 }
+                DataFiles.supports(name) -> scope.launch {
+                    try { documents.add(vm.attachDataFile(uri, name)) } catch (e: Exception) { error = "$name: ${e.message}" }
+                }
+                else -> error = "$name: only images, PDFs and data files (CSV, Excel, JSON…) can be attached."
             }
         }
     }
@@ -502,8 +513,8 @@ private fun Composer(
                         if (uris.isEmpty()) error = "The clipboard has no image. Copy an image first, then choose Paste image."
                         else uris.forEach { addPhoto(it) }
                     })
-                    DropdownMenuItem(text = { Text("File (image or PDF)") }, leadingIcon = { Icon(Icons.Outlined.PictureAsPdf, null) }, onClick = {
-                        menu = false; pdfs.launch(arrayOf("application/pdf", "image/*"))
+                    DropdownMenuItem(text = { Text("File (image, PDF or data)") }, leadingIcon = { Icon(Icons.Outlined.PictureAsPdf, null) }, onClick = {
+                        menu = false; pdfs.launch(arrayOf("application/pdf", "image/*") + DataFiles.MIME_TYPES)
                     })
                     DropdownMenuItem(text = { Text("Text from photo") }, leadingIcon = { Icon(Icons.Outlined.DocumentScanner, null) }, onClick = {
                         menu = false; ocrPhotos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))

@@ -24,6 +24,7 @@ import de.fz_juelich.blablador.data.EncryptedStorage
 import de.fz_juelich.blablador.data.KnowledgeLibrary
 import de.fz_juelich.blablador.data.ChatSearch
 import de.fz_juelich.blablador.data.PythonRunner
+import de.fz_juelich.blablador.data.DataFiles
 import de.fz_juelich.blablador.data.complete
 import de.fz_juelich.blablador.data.McpLibrary
 import de.fz_juelich.blablador.data.McpTool
@@ -217,6 +218,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun delete(conversation: Conversation) {
         if (conversation.id == currentId) newChat()
         images.delete(conversation.messages.flatMap { it.images })
+        DataFiles.delete(getApplication(), conversation.messages.flatMap { it.documents }.mapNotNull { it.dataFile })
         audio.delete(conversation.messages.flatMap { it.audio })
         videos.delete(conversation.messages.flatMap { it.videos })
         conversations.removeAll { it.id == conversation.id }
@@ -226,6 +228,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteAll() {
         newChat()
         images.delete(conversations.flatMap { c -> c.messages.flatMap { it.images } })
+        DataFiles.delete(getApplication(), conversations.flatMap { c -> c.messages.flatMap { it.documents }.mapNotNull { it.dataFile } })
         audio.delete(conversations.flatMap { c -> c.messages.flatMap { it.audio } })
         videos.delete(conversations.flatMap { c -> c.messages.flatMap { it.videos } })
         conversations.clear()
@@ -246,6 +249,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
      * Sends a chat message. With [createImage], the text is used directly as an image prompt;
      * with [speak], it is spoken with the selected Drama 3 voice.
      */
+    /** Stores a data file (CSV, Excel, JSON…) for Python and returns it as an attachment. */
+    suspend fun attachDataFile(uri: android.net.Uri, name: String): DocumentAttachment = withContext(Dispatchers.IO) {
+        val app = getApplication<Application>()
+        val bytes = app.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: throw IllegalStateException("Couldn't open $name.")
+        DataFiles.attach(app, name, bytes)
+    }
+
     fun send(text: String, attachments: List<ByteArray> = emptyList(), documents: List<DocumentAttachment> = emptyList(),
              createImage: Boolean = false, createVideo: Boolean = false, speak: Boolean = false) {
         val trimmed = text.trim()
@@ -749,10 +759,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     /** Runs Python with Pyodide; figures are added to the reply as images. */
     private suspend fun runPython(code: String, replyId: String): String {
         updateMessage(replyId) { it.copy(status = "Running Python…", toolCalls = it.toolCalls + "Python") }
-        // Attached documents, as text files in /data.
-        val files = current?.messages.orEmpty().flatMap { it.documents }.associate { document ->
-            val name = document.name.replace("/", "_")
-            (if (name.endsWith(".txt")) name else "$name.txt") to document.text
+        // Attached documents in /data: data files as they are, others as text.
+        val files = withContext(Dispatchers.IO) {
+            current?.messages.orEmpty().flatMap { it.documents }.associate { document ->
+                val name = document.name.replace("/", "_")
+                val data = document.dataFile?.let { DataFiles.data(getApplication(), it) }
+                if (data != null) name to data else (if (name.endsWith(".txt")) name else "$name.txt") to document.text.encodeToByteArray()
+            }
         }
         return try {
             val result = python.run(code, files)

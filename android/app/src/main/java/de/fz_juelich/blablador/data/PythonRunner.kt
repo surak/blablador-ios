@@ -35,7 +35,7 @@ class PythonRunner(context: Context) {
         /** Longest run, including the first download of Pyodide and packages. */
         const val TIMEOUT_MS = 180_000L
 
-        const val SYSTEM_PROMPT = "You can run Python with run_python for calculations, data analysis and plots; use it instead of computing by hand. Files the user attached are in /data as text. Figures you create with matplotlib are shown to the user automatically, so don't save them to files or include image links. There is no internet access from the code except sites that allow it."
+        const val SYSTEM_PROMPT = "You can run Python with run_python for calculations, data analysis and plots; use it instead of computing by hand. Files the user attached are in /data: data files (CSV, Excel, JSON…) as they are, PDFs and other documents as .txt text. Figures you create with matplotlib are shown to the user automatically, so don't save them to files or include image links. There is no internet access from the code except sites that allow it."
 
         private val PAGE = """
 <!doctype html><html><head><meta charset="utf-8">
@@ -59,13 +59,18 @@ async function runPython(code, files) {
   py.setStdout({ batched: append });
   py.setStderr({ batched: append });
   try { py.FS.mkdirTree('/data'); } catch (e) {}
-  for (const [name, text] of Object.entries(files || {})) {
-    try { py.FS.writeFile('/data/' + name, text); } catch (e) {}
+  for (const [name, base64] of Object.entries(files || {})) {
+    try { py.FS.writeFile('/data/' + name, Uint8Array.from(atob(base64), c => c.charCodeAt(0))); } catch (e) {}
   }
   let error = null, result = null, images = [];
   const globals = py.toPy({});
   try {
     await py.loadPackagesFromImports(code, { messageCallback: () => {} });
+    // Excel support isn't bundled with Pyodide; it comes from PyPI on first use.
+    if (/read_excel|to_excel|openpyxl|\.xlsx/.test(code)) {
+      await py.loadPackage('micropip', { messageCallback: () => {} });
+      await py.pyimport('micropip').install('openpyxl');
+    }
     const value = await py.runPythonAsync(code, { globals });
     if (value !== undefined && value !== null) {
       result = String(value);
@@ -116,14 +121,14 @@ boot();
         fun done(id: Int, json: String) { runs.remove(id)?.complete(json) }
     }
 
-    /** Runs code with the given text files placed in /data. */
-    suspend fun run(code: String, files: Map<String, String> = emptyMap()): Result {
+    /** Runs code with the given files placed in /data. */
+    suspend fun run(code: String, files: Map<String, ByteArray> = emptyMap()): Result {
         val id = nextId.getAndIncrement()
         val answer = CompletableDeferred<String>()
         runs[id] = answer
         val args = BlabladorApi.json.encodeToString(JsonArray.serializer(), JsonArray(listOf(
             kotlinx.serialization.json.JsonPrimitive(code),
-            buildJsonObject { files.forEach { (name, text) -> put(name, text) } },
+            buildJsonObject { files.forEach { (name, bytes) -> put(name, Base64.encodeToString(bytes, Base64.NO_WRAP)) } },
         )))
         withContext(Dispatchers.Main) {
             // Waits for the page to load: the script runs once pyodide.js and start() exist.
@@ -169,4 +174,55 @@ boot();
         runs.values.forEach { it.completeExceptionally(IllegalStateException("Python was restarted.")) }
         runs.clear()
     }
+}
+
+/** Data files attached to a chat (CSV, Excel, JSON…), kept encrypted and handed to Python as real files in /data. */
+object DataFiles {
+    val EXTENSIONS = setOf("csv", "tsv", "json", "jsonl", "xlsx", "xls", "parquet", "txt", "xml", "yaml", "yml", "dat", "npy", "npz")
+    private val BINARY = setOf("xlsx", "xls", "parquet", "npy", "npz")
+    const val MAX_SIZE = 25 * 1024 * 1024
+    private const val PREVIEW_LINES = 40
+
+    /** For the file picker. */
+    val MIME_TYPES = arrayOf(
+        "text/csv", "text/comma-separated-values", "text/tab-separated-values", "application/json", "text/plain",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel",
+        "application/xml", "text/xml", "application/x-yaml", "application/octet-stream",
+    )
+
+    fun supports(name: String) = name.substringAfterLast('.', "").lowercase() in EXTENSIONS
+
+    /** The description the model sees: where the file is, its size and the first lines of text formats. */
+    fun describe(name: String, bytes: ByteArray): String {
+        var text = "Data file $name (${size(bytes.size.toLong())}), available to run_python as /data/$name."
+        if (name.substringAfterLast('.', "").lowercase() in BINARY) {
+            text += " Binary file; read it with Python (for Excel: pandas.read_excel)."
+        } else {
+            val lines = bytes.decodeToString().split("\n")
+            text += " ${lines.size} lines; the first ${minOf(lines.size, PREVIEW_LINES)}:\n" + lines.take(PREVIEW_LINES).joinToString("\n") { it.take(500) }
+        }
+        return text
+    }
+
+    private fun size(bytes: Long): String = when {
+        bytes < 1000 -> "$bytes bytes"
+        bytes < 1_000_000 -> "${(bytes + 500) / 1000} KB"
+        else -> String.format(java.util.Locale.ROOT, "%.1f MB", bytes / 1_000_000.0)
+    }
+
+    /** Stores the file encrypted and returns it as a document attachment. */
+    fun attach(context: Context, name: String, bytes: ByteArray): DocumentAttachment {
+        require(bytes.size <= MAX_SIZE) { "Data files can be at most 25 MB." }
+        val clean = name.replace("/", "_")
+        val stored = java.util.UUID.randomUUID().toString() + "." + clean.substringAfterLast('.', "dat").lowercase()
+        EncryptedStorage.writeBytes(context, java.io.File(directory(context), stored), bytes)
+        return DocumentAttachment(name = clean, text = describe(clean, bytes), pageCount = 0, dataFile = stored)
+    }
+
+    fun data(context: Context, stored: String): ByteArray? =
+        EncryptedStorage.readBytes(context, java.io.File(directory(context), stored)) { false }
+
+    fun delete(context: Context, names: List<String>) = names.forEach { EncryptedStorage.delete(context, java.io.File(directory(context), it)) }
+
+    private fun directory(context: Context) = java.io.File(context.filesDir, "datafiles").apply { mkdirs() }
 }

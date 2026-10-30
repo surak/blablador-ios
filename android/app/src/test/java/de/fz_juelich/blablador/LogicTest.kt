@@ -142,3 +142,16 @@ class HistoryTest {
         assertEquals(2, chatHistory("S", conversation, ::wire).size)
     }
 }
+
+class DataFilesTest {
+    @org.junit.Test
+    fun describesTextAndBinaryFiles() {
+        val csv = de.fz_juelich.blablador.data.DataFiles.describe("quota.csv", "year,nodes\n2025,10\n2026,40\n".encodeToByteArray())
+        org.junit.Assert.assertTrue(csv.contains("/data/quota.csv"))
+        org.junit.Assert.assertTrue(csv.contains("year,nodes"))
+        val xlsx = de.fz_juelich.blablador.data.DataFiles.describe("Book.xlsx", ByteArray(10))
+        org.junit.Assert.assertTrue(xlsx.contains("Binary file"))
+        org.junit.Assert.assertTrue(de.fz_juelich.blablador.data.DataFiles.supports("Book.XLSX"))
+        org.junit.Assert.assertFalse(de.fz_juelich.blablador.data.DataFiles.supports("app.exe"))
+    }
+}

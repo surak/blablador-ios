@@ -80,6 +80,7 @@ import de.fz_juelich.blablador.data.SearchResult
 import de.fz_juelich.blablador.data.WebImage
 import de.fz_juelich.blablador.data.Skill
 import androidx.compose.material.icons.outlined.AutoFixHigh
+import androidx.compose.material.icons.outlined.TableChart
 import androidx.compose.material.icons.outlined.Extension
 import androidx.compose.material.icons.outlined.Psychology
 import kotlinx.coroutines.delay
@@ -212,10 +213,10 @@ fun DocumentChip(document: DocumentAttachment, onRemove: (() -> Unit)? = null) {
         Modifier.clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surfaceVariant).padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Icon(Icons.Outlined.Description, null, tint = Brand.violet)
+        Icon(if (document.dataFile != null) Icons.Outlined.TableChart else Icons.Outlined.Description, null, tint = Brand.violet)
         Column(Modifier.widthIn(max = 180.dp)) {
             Text(document.name, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(if (document.ocrPageCount > 0) "$pages · OCR" else pages, style = MaterialTheme.typography.labelSmall,
+            Text(if (document.dataFile != null) "Data file" else if (document.ocrPageCount > 0) "$pages · OCR" else pages, style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (onRemove != null) IconButton(onClick = onRemove, modifier = Modifier.size(24.dp)) {
