@@ -5,6 +5,11 @@ struct Memory: Identifiable, Codable, Hashable {
     var id = UUID()
     var text: String
     var date = Date()
+    /// Embedding of the text (see Embeddings), for finding the memories that matter to a question.
+    var vector: Data?
+    /// The chat the memory was saved in.
+    var sourceChat: UUID?
+    var sourceTitle: String?
 }
 
 /// Long-term memory: facts saved on the device with the remember tool and sent with every chat.
@@ -33,10 +38,10 @@ final class MemoryStore: ObservableObject {
 
     /// Saves a fact; returns false for an empty text or one already remembered.
     @discardableResult
-    func add(_ text: String) -> Bool {
+    func add(_ text: String, from chat: Conversation? = nil) -> Bool {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !memories.contains(where: { $0.text.caseInsensitiveCompare(text) == .orderedSame }) else { return false }
-        memories.append(Memory(text: text))
+        memories.append(Memory(text: text, sourceChat: chat?.id, sourceTitle: chat?.title))
         if memories.count > Self.maxMemories { memories.removeFirst(memories.count - Self.maxMemories) }
         persist()
         return true
@@ -45,6 +50,7 @@ final class MemoryStore: ObservableObject {
     func update(_ memory: Memory, text: String) {
         guard let index = memories.firstIndex(where: { $0.id == memory.id }) else { return }
         memories[index].text = text
+        memories[index].vector = nil
         persist()
     }
 
@@ -75,18 +81,49 @@ final class MemoryStore: ObservableObject {
         Self.systemPrompt(memories: memories, question: question)
     }
 
-    nonisolated static func systemPrompt(memories: [Memory], question: String) -> String {
+    /// Like `systemPrompt(for:)`, but with many memories picks the relevant ones by meaning when embeddings are available.
+    func systemPrompt(for question: String, api: BlabladorAPI) async -> String {
+        guard memories.count > Self.alwaysSent, Embeddings.available else { return systemPrompt(for: question) }
+        await embedMissing(api: api)
+        let questionVector = try? await Embeddings.embed([question], api: api).first
+        return Self.systemPrompt(memories: memories, question: question, questionVector: questionVector)
+    }
+
+    /// Embeds memories saved without a vector (new, edited, or from before 3.1).
+    func embedMissing(api: BlabladorAPI) async {
+        let missing = memories.filter { $0.vector == nil }
+        guard Embeddings.available, !missing.isEmpty,
+              let vectors = try? await Embeddings.embed(missing.map(\.text), api: api) else { return }
+        for (memory, vector) in zip(missing, vectors) {
+            if let index = memories.firstIndex(where: { $0.id == memory.id && $0.text == memory.text }) {
+                memories[index].vector = Embeddings.data(vector)
+            }
+        }
+        persist()
+    }
+
+    nonisolated static func systemPrompt(memories: [Memory], question: String, questionVector: [Float]? = nil) -> String {
         var prompt = "You have a long-term memory of the user that lasts across chats. Call remember when the user shares something lasting about themselves (name, job, preferences, ongoing projects) or asks you to remember something; save one short fact per call, written in the third person. Call forget with a number when the user says a memory is wrong or asks you to forget it. Never save passwords, keys or other secrets."
         let numbered = Array(memories.enumerated())
         guard !numbered.isEmpty else { return prompt + " You don't remember anything yet." }
         var shown = numbered
         if numbered.count > alwaysSent {
             let words = Self.words(question)
+            // Meaning (when embedded) plus a little for shared words; keywords alone otherwise. Unrelated texts
+            // still score 0.3 to 0.5 with Qwen3 embeddings, so only those close to the best match count.
+            let meanings = numbered.map { item in
+                questionVector.flatMap { question in item.element.vector.map { Embeddings.similarity(Embeddings.vector($0), question) } }
+            }
+            let cutoff = max(0.5, (meanings.compactMap { $0 }.max() ?? 0) - 0.2)
             let relevant = numbered
-                .map { ($0, Self.words($0.element.text).intersection(words).count) }
-                .filter { $0.1 > 0 }
-                .sorted { $0.1 > $1.1 }
-                .prefix(20).map(\.0.offset)
+                .map { item -> (offset: Int, score: Float) in
+                    let keywords = Float(Self.words(item.element.text).intersection(words).count)
+                    guard let meaning = meanings[item.offset] else { return (item.offset, keywords) }
+                    return (item.offset, meaning >= cutoff || keywords >= 2 ? meaning + 0.05 * keywords : 0)
+                }
+                .filter { $0.score > 0 }
+                .sorted { $0.score > $1.score }
+                .prefix(20).map(\.offset)
             let keep = Set(relevant).union(numbered.suffix(10).map(\.offset))
             shown = numbered.filter { keep.contains($0.offset) }
         }
@@ -100,7 +137,7 @@ final class MemoryStore: ObservableObject {
     /// Asks the model which facts from one exchange are worth keeping and saves them; returns the new ones.
     /// With `reply` nil (the reply read web pages or documents) only what the user wrote is used, so text planted
     /// there can't write itself into memory.
-    func learn(question: String, reply: String?, api: BlabladorAPI, model: String) async throws -> [String] {
+    func learn(question: String, reply: String?, api: BlabladorAPI, model: String, from chat: Conversation? = nil) async throws -> [String] {
         let today = Date().formatted(date: .complete, time: .omitted)
         var system = """
         You keep the long-term memory of an assistant. From the exchange below, pick out what is worth remembering \
@@ -121,7 +158,9 @@ final class MemoryStore: ObservableObject {
         let answer = ChatStore.splitThinking(text).answer
         guard let start = answer.firstIndex(of: "["), let end = answer.lastIndex(of: "]"), start < end,
               let facts = try? JSONDecoder().decode([String].self, from: Data(answer[start...end].utf8)) else { return [] }
-        return facts.prefix(5).filter { add($0) }.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        let added = facts.prefix(5).filter { add($0, from: chat) }.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        if !added.isEmpty { await embedMissing(api: api) }
+        return added
     }
 
     /// Lowercased words of three letters or more, for matching memories and chats to a question.
@@ -224,6 +263,8 @@ enum ChatSearch {
 
 /// Settings screen listing what the assistant remembers.
 struct MemoryView: View {
+    /// Opens the chat a memory was saved in; nil when that isn't possible here.
+    var onOpenChat: ((UUID) -> Void)?
     @ObservedObject private var memory = MemoryStore.shared
     @State private var newFact = ""
     @State private var confirmDelete = false
@@ -243,7 +284,7 @@ struct MemoryView: View {
                     Text("Nothing remembered yet.").foregroundStyle(.secondary)
                 }
                 ForEach(memory.memories) { item in
-                    MemoryRow(memory: item)
+                    MemoryRow(memory: item, onOpenChat: onOpenChat)
                 }
                 .onDelete { offsets in
                     memory.delete(Set(offsets.map { memory.memories[$0].id }))
@@ -276,13 +317,17 @@ struct MemoryView: View {
 
 private struct MemoryRow: View {
     let memory: Memory
+    var onOpenChat: ((UUID) -> Void)?
     @State private var text = ""
 
     var body: some View {
         HStack {
-            TextField("Memory", text: $text, axis: .vertical)
-                .onSubmit { save() }
-                .onChange(of: text) { save() }
+            VStack(alignment: .leading, spacing: 3) {
+                TextField("Memory", text: $text, axis: .vertical)
+                    .onSubmit { save() }
+                    .onChange(of: text) { save() }
+                source
+            }
 #if os(macOS)
             Button {
                 MemoryStore.shared.delete([memory.id])
@@ -299,5 +344,24 @@ private struct MemoryRow: View {
     private func save() {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty, trimmed != memory.text { MemoryStore.shared.update(memory, text: trimmed) }
+    }
+
+    /// Where the memory came from: a link to its chat, or the date it was added.
+    @ViewBuilder
+    private var source: some View {
+        let date = memory.date.formatted(date: .abbreviated, time: .omitted)
+        if let chat = memory.sourceChat, let title = memory.sourceTitle, let onOpenChat {
+            Button { onOpenChat(chat) } label: {
+                Label("\(title) · \(date)", systemImage: "bubble.left")
+                    .lineLimit(1)
+            }
+            .buttonStyle(.borderless)
+            .scaledFont(.caption)
+            .foregroundStyle(.secondary)
+        } else {
+            Text(memory.sourceTitle.map { "\($0) · \(date)" } ?? "Added \(date)")
+                .scaledFont(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 }

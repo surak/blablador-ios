@@ -111,7 +111,13 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    NavigationLink("Memory") { MemoryView() }
+                    NavigationLink("Memory") {
+                        MemoryView { id in
+                            guard let chat = store.conversations.first(where: { $0.id == id }) else { return }
+                            store.select(chat)
+                            dismiss()
+                        }
+                    }
                     NavigationLink("Skills") { SkillsView() }
                     NavigationLink("Connected tools (MCP)") { MCPServersView() }
                 } footer: {

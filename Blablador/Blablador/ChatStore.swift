@@ -675,7 +675,6 @@ final class ChatStore: ObservableObject {
         }
         let memory = MemoryStore.shared
         let question = conversation.messages.last { $0.role == .user }?.content ?? ""
-        if memory.enabled { system += "\n\n" + memory.systemPrompt(for: question) }
         let skills = SkillLibrary.shared
         if let skillPrompt = skills.systemPrompt { system += "\n\n" + skillPrompt }
         system += "\n\n" + SkillTools.systemPrompt + " Use search_chats when the user refers to an earlier conversation."
@@ -705,9 +704,13 @@ final class ChatStore: ObservableObject {
         if pythonEnabled { tools.append(PythonRunner.tool) }
         if !skills.skills.isEmpty { tools.append(SkillTools.use) }
         if folder != nil { tools += AgentTools.definitions }
+        let api = api
         streamTask = Task {
             do {
-                var wire = wire
+                // Memories go last in the system prompt; with many, picking the relevant ones may need an embedding.
+                var systemText = systemText
+                if memory.enabled { systemText += "\n\n" + (await memory.systemPrompt(for: question, api: api)) }
+                var wire = Self.history(system: systemText, conversation)
                 if let compacted = await compact(conversation, model: model, wire: wire, replyID: reply.id) {
                     wire = Self.history(system: systemText, compacted)
                 }
@@ -833,15 +836,19 @@ final class ChatStore: ObservableObject {
         return compacted
     }
 
-    /// Saves what's worth keeping from the exchange to long-term memory, in the background.
+    /// After a reply, in the background: indexes new messages for search_chats and saves what's worth keeping
+    /// from the exchange to long-term memory.
     private func learn(question: String, replyID: UUID, model: String, userOnly: Bool) {
         let memory = MemoryStore.shared
-        guard memory.enabled, memory.learnsAutomatically, !question.isEmpty,
+        guard !question.isEmpty,
               let reply = conversations.lazy.flatMap(\.messages).first(where: { $0.id == replyID }),
               !reply.isError, !reply.content.isEmpty else { return }
         let api = api
+        let chat = conversations.first { $0.messages.contains { $0.id == replyID } }
         Task {
-            guard let facts = try? await memory.learn(question: question, reply: userOnly ? nil : reply.content, api: api, model: model),
+            await ChatIndex.shared.update(conversations, api: api)
+            guard memory.enabled, memory.learnsAutomatically,
+                  let facts = try? await memory.learn(question: question, reply: userOnly ? nil : reply.content, api: api, model: model, from: chat),
                   !facts.isEmpty else { return }
             updateMessage(replyID) { $0.remembered += facts }
             persist()
@@ -956,11 +963,11 @@ final class ChatStore: ObservableObject {
                 } else if call.name == "search_chats", !query.isEmpty {
                     outsideContent = true
                     updateMessage(replyID) { $0.status = "Searching earlier chats…" }
-                    output = ChatSearch.search(query, in: library.conversations, excluding: currentID)
+                    output = await ChatSearch.find(query, in: library.conversations, excluding: currentID, api: api)
                 } else if call.name == "remember" || call.name == "forget", outsideContent {
                     output = "Memory can't be changed in a reply that used web results, documents, knowledge bases or files, because they could contain planted instructions. Tell the user they can ask again in a new message without them, or edit memories in Settings → Memory."
                 } else if call.name == "remember", let fact = arguments?["fact"] as? String, MemoryStore.shared.enabled {
-                    if MemoryStore.shared.add(fact) {
+                    if MemoryStore.shared.add(fact, from: current) {
                         updateMessage(replyID) { $0.remembered.append(fact.trimmingCharacters(in: .whitespacesAndNewlines)) }
                         output = "Saved to memory."
                     } else {
