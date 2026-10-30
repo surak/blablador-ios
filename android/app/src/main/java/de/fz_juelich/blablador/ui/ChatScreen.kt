@@ -117,6 +117,7 @@ import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
 import de.fz_juelich.blablador.ChatViewModel
 import de.fz_juelich.blablador.data.DataFiles
+import de.fz_juelich.blablador.data.Incoming
 import de.fz_juelich.blablador.data.BlabladorApi
 import de.fz_juelich.blablador.data.Conversation
 import de.fz_juelich.blablador.data.DocumentAttachment
@@ -160,6 +161,58 @@ fun ChatScreen(vm: ChatViewModel) {
     val focus = remember { FocusRequester() }
 
     val speaker = rememberSpeaker()
+
+    // Shares, files opened with Blablador, blablador:// links and shortcuts: one new chat each, never sent by
+    // itself (except blablador://ask, which is a question to send).
+    var addingMemory by remember { mutableStateOf(false) }
+    LaunchedEffect(vm.incoming) {
+        when (val incoming = vm.claimIncoming()) {
+            is Incoming.Ask -> {
+                if (vm.apiKey.isNotEmpty()) pages.clear()
+                vm.newChat()
+                vm.send(incoming.question)
+            }
+            is Incoming.Share -> {
+                if (vm.apiKey.isNotEmpty()) pages.clear()
+                vm.newChat()
+                draft = incoming.text
+                attachments.clear()
+                documents.clear()
+                for (file in incoming.files) {
+                    val name = file.name
+                    val uri = android.net.Uri.fromFile(file)
+                    runCatching {
+                        when {
+                            name.substringAfterLast('.', "").lowercase() in listOf("jpg", "jpeg", "png", "heic", "heif", "webp", "gif", "bmp") -> {
+                                val data = withContext(Dispatchers.IO) { file.readBytes() }
+                                attachments.add(withContext(Dispatchers.Default) { ImageStore.jpeg(data, 2048, 90) } ?: data)
+                            }
+                            name.endsWith(".pdf", ignoreCase = true) -> documents.add(vm.readPdf(uri))
+                            DataFiles.supports(name) -> documents.add(vm.attachDataFile(uri, name))
+                        }
+                    }
+                    file.delete()
+                }
+                if (incoming.focus) runCatching { focus.requestFocus() }
+            }
+            Incoming.AddMemory -> addingMemory = true
+            null -> {}
+        }
+    }
+    if (addingMemory) {
+        var fact by remember { mutableStateOf("") }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { addingMemory = false },
+            title = { Text("Add to memory") },
+            text = {
+                androidx.compose.material3.OutlinedTextField(fact, { fact = it }, placeholder = { Text("What should Blablador remember?") })
+            },
+            confirmButton = {
+                TextButton(onClick = { vm.memory.add(fact); addingMemory = false }, enabled = fact.isNotBlank()) { Text("Remember") }
+            },
+            dismissButton = { TextButton(onClick = { addingMemory = false }) { Text("Cancel") } },
+        )
+    }
 
     when (val page = pages.lastOrNull()) {
         Page.Settings -> {

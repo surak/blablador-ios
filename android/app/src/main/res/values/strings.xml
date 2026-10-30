@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">Blablador</string>
+    <string name="shortcut_ask">Ask Blablador</string>
+    <string name="shortcut_memory">Add to memory</string>
 </resources>

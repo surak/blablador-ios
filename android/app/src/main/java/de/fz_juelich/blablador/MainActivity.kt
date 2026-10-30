@@ -17,5 +17,11 @@ class MainActivity : ComponentActivity() {
         setContent {
             BlabladorTheme { ChatScreen(vm) }
         }
+        if (savedInstanceState == null) vm.receive(intent)
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        vm.receive(intent)
     }
 }

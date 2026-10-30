@@ -23,6 +23,7 @@ import de.fz_juelich.blablador.data.ImageStore
 import de.fz_juelich.blablador.data.EncryptedStorage
 import de.fz_juelich.blablador.data.KnowledgeLibrary
 import de.fz_juelich.blablador.data.ChatSearch
+import de.fz_juelich.blablador.data.Incoming
 import de.fz_juelich.blablador.data.find
 import de.fz_juelich.blablador.data.ChatIndex
 import de.fz_juelich.blablador.data.PythonRunner
@@ -62,6 +63,11 @@ import java.util.Date
 private const val CONTINUE_PROMPT = "Continue the scene naturally, with matching sound."
 
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
+    companion object {
+        const val ACTION_NEW_CHAT = "de.fz_juelich.blablador.NEW_CHAT"
+        const val ACTION_ADD_MEMORY = "de.fz_juelich.blablador.ADD_MEMORY"
+    }
+
     val settings = Settings(application)
     val images = ImageStore(application)
     private val conversationStore = ConversationStore(application)
@@ -202,6 +208,60 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun toggleKnowledge(id: String) {
         val ids = if (id in activeKnowledge) activeKnowledge - id else activeKnowledge + id
         if (currentId == null) pendingKnowledge = ids else update { it.copy(knowledge = ids) }
+    }
+
+    // MARK: From outside the app
+
+    /** A share, link or shortcut waiting for the chat screen. */
+    var incoming by mutableStateOf<Incoming?>(null)
+        private set
+
+    /** Takes what's waiting, so it is handled once. */
+    fun claimIncoming(): Incoming? = incoming.also { incoming = null }
+
+    /**
+     * Shares (ACTION_SEND / SEND_MULTIPLE), files opened with Blablador (ACTION_VIEW), blablador:// links and
+     * shortcuts. Shared content URIs stop working once the sending app is done, so files are copied first.
+     */
+    fun receive(intent: android.content.Intent) {
+        val app = getApplication<Application>()
+        when (intent.action) {
+            android.content.Intent.ACTION_SEND, android.content.Intent.ACTION_SEND_MULTIPLE -> {
+                val text = listOfNotNull(intent.getStringExtra(android.content.Intent.EXTRA_SUBJECT), intent.getStringExtra(android.content.Intent.EXTRA_TEXT))
+                    .filter { it.isNotBlank() }.distinct().joinToString("\n")
+                val uris = buildList {
+                    @Suppress("DEPRECATION")
+                    (intent.getParcelableExtra<Uri>(android.content.Intent.EXTRA_STREAM))?.let(::add)
+                    @Suppress("DEPRECATION")
+                    intent.getParcelableArrayListExtra<Uri>(android.content.Intent.EXTRA_STREAM)?.let(::addAll)
+                }.distinct()
+                viewModelScope.launch { incoming = Incoming.Share(text, copyShared(app, uris)) }
+            }
+            android.content.Intent.ACTION_VIEW -> {
+                val data = intent.data ?: return
+                if (data.scheme == "blablador") incoming = Incoming.parse(data.toString())
+                else viewModelScope.launch { incoming = Incoming.Share("", copyShared(app, listOf(data))) }
+            }
+            ACTION_NEW_CHAT -> incoming = Incoming.Share("")
+            ACTION_ADD_MEMORY -> incoming = Incoming.AddMemory
+        }
+    }
+
+    private suspend fun copyShared(app: Application, uris: List<Uri>): List<java.io.File> = withContext(Dispatchers.IO) {
+        val folder = java.io.File(app.cacheDir, "shared/" + java.util.UUID.randomUUID()).apply { mkdirs() }
+        uris.mapIndexedNotNull { index, uri ->
+            runCatching {
+                val name = app.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
+                    if (it.moveToFirst()) it.getString(0) else null
+                } ?: uri.lastPathSegment?.substringAfterLast('/') ?: "Shared ${index + 1}"
+                val type = app.contentResolver.getType(uri).orEmpty()
+                // Photos often come without an extension; the attachment code goes by name.
+                val named = if ('.' !in name && type.startsWith("image/")) "$name.${type.substringAfter('/')}" else name
+                val file = java.io.File(folder, named.replace('/', '_'))
+                app.contentResolver.openInputStream(uri)?.use { input -> file.outputStream().use { input.copyTo(it) } } ?: return@runCatching null
+                file
+            }.getOrNull()
+        }
     }
 
     // MARK: Conversations

@@ -18,6 +18,7 @@ It is the Android counterpart of [blablador-ios](https://github.com/surak/blabla
 - **Dictation** (system speech recognizer) and **read-aloud** (system text-to-speech)
 - **Memory**: facts about you saved across chats, editable in Settings; searches earlier chats when you refer to them
 - **Python**: the assistant runs Python on the device (Pyodide: numpy, pandas, matplotlib) for calculations, data and plots shown in the reply
+- **Share to Blablador**: links, text, photos, PDFs and data files from any app's share menu, "Open with" Blablador, blablador:// links, and app-icon shortcuts (Ask Blablador, Add to memory)
 - **Skills**: instructions for tasks you repeat, loaded when a task matches; import and share as Markdown
 - **Connected tools (MCP)**: add MCP servers over HTTPS and the assistant uses their tools, each call approved by you
 - **Long chats** are summarised with alias-fast once they get long, so they keep working
