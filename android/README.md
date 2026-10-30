@@ -130,6 +130,7 @@ app/src/main/java/de/fz_juelich/blablador/
 ## Version history
 The Android and Apple apps share one version number and one release.
 
+- **3.1.0**: reads web pages, summarises long chats, MCP servers, maths and diagrams, HTML previews, runs Python (plots, CSV/Excel/JSON data files), edit messages and switch versions, regenerate with another model, recall by meaning, share to Blablador and open files with it, blablador:// links, app shortcuts
 - **3.0.1**: memory learns from every chat automatically (decisions, projects, conclusions, not only facts about you; can be turned off); chats get short titles
 - **3.0.0**: long-term memory, search of earlier chats, skills (write, import, share; the assistant suggests new ones); everything saved is encrypted; memory can't be changed by text from web pages or documents; HTTPS only
 - **2.6.5**: pictures from the web next to answers (people, places, things); searches before saying it doesn't know someone
