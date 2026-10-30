@@ -48,6 +48,12 @@ data class ChatMessage(
     val forgotten: List<String> = emptyList(),
     /** Tools of connected MCP servers used for this reply, as "Server: tool". */
     val toolCalls: List<String> = emptyList(),
+    /**
+     * Earlier versions of the chat from this message on (after an edit or a regenerate), each starting with its
+     * own version of this message; [version] numbers them in the order they were made.
+     */
+    val alternatives: List<List<ChatMessage>> = emptyList(),
+    val version: Int = 1,
     /** Skills loaded with use_skill, and skills the model offered to save. */
     val skillsUsed: List<String> = emptyList(),
     val suggestedSkills: List<Skill> = emptyList(),
@@ -80,7 +86,14 @@ data class Conversation(
     /** Summary of the first [summaryCount] messages, sent instead of them once the chat got long. */
     val summary: String? = null,
     val summaryCount: Int? = null,
-)
+) {
+    /** Messages of every version, for deleting their files. */
+    val allMessages: List<ChatMessage>
+        get() {
+            fun expand(messages: List<ChatMessage>): List<ChatMessage> = messages.flatMap { listOf(it) + it.alternatives.flatMap(::expand) }
+            return expand(messages)
+        }
+}
 
 data class RemoteModel(val id: String) {
     /** Models that cannot be used for text chat. */

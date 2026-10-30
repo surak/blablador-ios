@@ -1,5 +1,15 @@
 package de.fz_juelich.blablador.ui
 
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.foundation.ExperimentalFoundationApi
+
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.layout.heightIn
@@ -94,14 +104,21 @@ fun MessageItem(
     imageFile: (String) -> File,
     speaking: Boolean,
     onSpeak: () -> Unit,
-    onRegenerate: () -> Unit,
+    /** Regenerates the reply, with another model when an id is given. */
+    onRegenerate: (String?) -> Unit,
     onEditImage: (String) -> Unit,
     speechClip: @Composable (String) -> Unit,
     videoFile: (String) -> File = { File(it) },
     onContinueVideo: (String) -> Unit = {},
     isSkillSaved: (String) -> Boolean = { false },
     onSaveSkill: (Skill) -> Unit = {},
+    /** Chat models as id and display name, for "Regenerate with". */
+    models: List<Pair<String, String>> = emptyList(),
+    onEdit: (String) -> Unit = {},
+    onShowVersion: (Int) -> Unit = {},
 ) {
+    var editing by remember { mutableStateOf(false) }
+    if (editing) EditMessageDialog(message.content, onDismiss = { editing = false }) { editing = false; onEdit(it) }
     when (message.role) {
         ChatRole.user -> Column(Modifier.fillMaxWidth().padding(start = 48.dp), horizontalAlignment = Alignment.End,
             verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -113,6 +130,12 @@ fun MessageItem(
                 Text(message.content, style = MaterialTheme.typography.bodyLarge,
                     modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceVariant)
                         .padding(horizontal = 16.dp, vertical = 10.dp))
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (message.alternatives.isNotEmpty()) VersionSwitcher(message, enabled = !isStreaming, onShow = onShowVersion)
+                if (message.content.isNotEmpty()) IconButton(onClick = { editing = true }, enabled = !isStreaming, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Outlined.Edit, "Edit", Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         }
         else -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -154,7 +177,8 @@ fun MessageItem(
                 if (message.citations.isNotEmpty()) Citations(message.citations)
                 if (message.sources.isNotEmpty()) Sources(message.sources)
                 if (!(isLast && isStreaming) && (message.content.isNotEmpty() || message.images.isNotEmpty())) {
-                    Actions(message, isLast, speaking, onSpeak, onRegenerate)
+                    Actions(message, isLast, speaking, onSpeak, onRegenerate, models)
+                    if (message.alternatives.isNotEmpty()) VersionSwitcher(message, enabled = !isStreaming, onShow = onShowVersion)
                 }
             }
         }
@@ -320,8 +344,11 @@ private fun Citations(citations: List<KnowledgeCitation>) {
 private fun label(index: Int, citation: KnowledgeCitation) =
     "K${index + 1} · ${citation.document}" + (citation.page?.let { " · p. $it" } ?: "")
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun Actions(message: ChatMessage, isLast: Boolean, speaking: Boolean, onSpeak: () -> Unit, onRegenerate: () -> Unit) {
+private fun Actions(message: ChatMessage, isLast: Boolean, speaking: Boolean, onSpeak: () -> Unit, onRegenerate: (String?) -> Unit,
+                    models: List<Pair<String, String>>) {
+    var choosingModel by remember { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
     var copied by remember { mutableStateOf(false) }
@@ -347,8 +374,53 @@ private fun Actions(message: ChatMessage, isLast: Boolean, speaking: Boolean, on
                 .putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(audio)).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             context.startActivity(Intent.createChooser(intent, null))
         }) { Icon(Icons.Outlined.Share, if (audio.isEmpty()) "Share" else "Share audio", Modifier.size(18.dp), tint = tint) }
-        if (isLast) IconButton(onClick = onRegenerate) { Icon(Icons.Outlined.Refresh, "Regenerate", Modifier.size(18.dp), tint = tint) }
+        if (isLast) Box {
+            // Tap regenerates; long-press picks another model.
+            Box(Modifier.size(48.dp).clip(CircleShape).combinedClickable(onClick = { onRegenerate(null) }, onLongClick = { choosingModel = true },
+                onLongClickLabel = "Regenerate with another model"), contentAlignment = Alignment.Center) {
+                Icon(Icons.Outlined.Refresh, "Regenerate", Modifier.size(18.dp), tint = tint)
+            }
+            DropdownMenu(expanded = choosingModel, onDismissRequest = { choosingModel = false }) {
+                DropdownMenuItem(text = { Text("Regenerate") }, onClick = { choosingModel = false; onRegenerate(null) })
+                if (models.isNotEmpty()) {
+                    HorizontalDivider()
+                    Text("Regenerate with", style = MaterialTheme.typography.labelMedium, color = tint,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+                    models.forEach { (id, name) -> DropdownMenuItem(text = { Text(name) }, onClick = { choosingModel = false; onRegenerate(id) }) }
+                }
+            }
+        }
     }
+}
+
+/** "‹ 2/3 ›" for a message with earlier or later versions. */
+@Composable
+private fun VersionSwitcher(message: ChatMessage, enabled: Boolean, onShow: (Int) -> Unit) {
+    val versions = (message.alternatives.map { it.first().version } + message.version).sorted()
+    val position = versions.indexOf(message.version) + 1
+    val tint = MaterialTheme.colorScheme.onSurfaceVariant
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onClick = { onShow(-1) }, enabled = enabled && position > 1, modifier = Modifier.size(32.dp)) {
+            Icon(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, "Previous version", Modifier.size(18.dp), tint = tint)
+        }
+        Text("$position/${versions.size}", style = MaterialTheme.typography.labelMedium, color = tint)
+        IconButton(onClick = { onShow(1) }, enabled = enabled && position < versions.size, modifier = Modifier.size(32.dp)) {
+            Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, "Next version", Modifier.size(18.dp), tint = tint)
+        }
+    }
+}
+
+/** Changes a message and sends it again; the old version stays. */
+@Composable
+private fun EditMessageDialog(text: String, onDismiss: () -> Unit, onSend: (String) -> Unit) {
+    var draft by remember { mutableStateOf(text) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit message") },
+        text = { OutlinedTextField(draft, { draft = it }, Modifier.fillMaxWidth(), minLines = 3, maxLines = 10) },
+        confirmButton = { TextButton(onClick = { onSend(draft) }, enabled = draft.isNotBlank()) { Text("Send") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 /** The model's thinking trace: open and following along while it thinks, folded away once the answer starts. */

@@ -217,20 +217,20 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun delete(conversation: Conversation) {
         if (conversation.id == currentId) newChat()
-        images.delete(conversation.messages.flatMap { it.images })
-        DataFiles.delete(getApplication(), conversation.messages.flatMap { it.documents }.mapNotNull { it.dataFile })
-        audio.delete(conversation.messages.flatMap { it.audio })
-        videos.delete(conversation.messages.flatMap { it.videos })
+        images.delete(conversation.allMessages.flatMap { it.images })
+        DataFiles.delete(getApplication(), conversation.allMessages.flatMap { it.documents }.mapNotNull { it.dataFile })
+        audio.delete(conversation.allMessages.flatMap { it.audio })
+        videos.delete(conversation.allMessages.flatMap { it.videos })
         conversations.removeAll { it.id == conversation.id }
         persist()
     }
 
     fun deleteAll() {
         newChat()
-        images.delete(conversations.flatMap { c -> c.messages.flatMap { it.images } })
-        DataFiles.delete(getApplication(), conversations.flatMap { c -> c.messages.flatMap { it.documents }.mapNotNull { it.dataFile } })
-        audio.delete(conversations.flatMap { c -> c.messages.flatMap { it.audio } })
-        videos.delete(conversations.flatMap { c -> c.messages.flatMap { it.videos } })
+        images.delete(conversations.flatMap { c -> c.allMessages.flatMap { it.images } })
+        DataFiles.delete(getApplication(), conversations.flatMap { c -> c.allMessages.flatMap { it.documents }.mapNotNull { it.dataFile } })
+        audio.delete(conversations.flatMap { c -> c.allMessages.flatMap { it.audio } })
+        videos.delete(conversations.flatMap { c -> c.allMessages.flatMap { it.videos } })
         conversations.clear()
         persist()
     }
@@ -284,14 +284,47 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun regenerate() {
-        if (isStreaming) return
-        update { conversation ->
-            if (conversation.messages.lastOrNull()?.role == ChatRole.assistant) conversation.copy(messages = conversation.messages.dropLast(1))
-            else conversation
-        }
+    /**
+     * Answers the last message again; the previous answer stays as an earlier version. With [model], that model
+     * becomes the chat's model first.
+     */
+    fun regenerate(model: String? = null) {
+        val messages = current?.messages ?: return
+        if (isStreaming || messages.lastOrNull()?.role != ChatRole.assistant) return
+        if (model != null) selectModel(model)
+        val (alternatives, version) = versions(messages.takeLast(1))
+        update { dropSummary(it.copy(messages = it.messages.dropLast(1)), it.messages.size - 1) }
+        respond(alternatives, version)
+    }
+
+    /**
+     * Sends a changed version of an earlier message of the user; the old one and everything after it stay as an
+     * earlier version, reachable with the arrows under the message.
+     */
+    fun edit(messageId: String, text: String) {
+        val trimmed = text.trim()
+        val messages = current?.messages ?: return
+        val index = messages.indexOfFirst { it.id == messageId }
+        if (isStreaming || trimmed.isEmpty() || index < 0 || messages[index].role != ChatRole.user) return
+        val (alternatives, version) = versions(messages.drop(index))
+        val edited = ChatMessage(role = ChatRole.user, content = trimmed, images = messages[index].images,
+            documents = messages[index].documents, alternatives = alternatives, version = version)
+        update { dropSummary(it.copy(messages = it.messages.take(index) + edited), index) }
         respond()
     }
+
+    /** Shows the previous (-1) or next (+1) version of the chat from this message on. */
+    fun showVersion(messageId: String, offset: Int) {
+        val messages = current?.messages ?: return
+        val index = messages.indexOfFirst { it.id == messageId }
+        if (isStreaming || index < 0) return
+        val switched = messagesShowingVersion(messages, offset, index) ?: return
+        update { dropSummary(it.copy(messages = switched), index) }
+    }
+
+    /** A summary of messages that changed no longer fits; long chats are summarised again when needed. */
+    private fun dropSummary(conversation: Conversation, index: Int): Conversation =
+        if ((conversation.summaryCount ?: 0) > index) conversation.copy(summary = null, summaryCount = null) else conversation
 
     fun stop() {
         streamJob?.cancel()
@@ -398,7 +431,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private val latestImage get() = current?.messages?.lastOrNull { it.images.isNotEmpty() }?.images?.lastOrNull()
 
-    private fun respond() {
+    private fun respond(alternatives: List<List<ChatMessage>> = emptyList(), version: Int = 1) {
         val conversation = current ?: return
         var system = systemPrompt
         system += "\n\nToday is ${DateFormat.getDateInstance(DateFormat.FULL).format(Date())}."
@@ -419,7 +452,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val systemText = system.trim()
         val wire = history(systemText, conversation)
 
-        val reply = ChatMessage(role = ChatRole.assistant, content = "")
+        val reply = ChatMessage(role = ChatRole.assistant, content = "", alternatives = alternatives, version = version)
         val model = selectedModel
         val bases = activeKnowledge
         val question = conversation.messages.lastOrNull { it.role == ChatRole.user }?.content.orEmpty()
@@ -908,4 +941,24 @@ internal fun requestSize(wire: List<JsonObject>): Int = wire.sumOf { message ->
         is kotlinx.serialization.json.JsonArray -> content.sumOf { part -> jsonString((part as? JsonObject)?.get("text"))?.length ?: 3_000 }
         else -> 0
     }
+}
+
+/** Versions to keep when [tail] is replaced: its own earlier versions plus itself, and the next version number. */
+fun versions(tail: List<ChatMessage>): Pair<List<List<ChatMessage>>, Int> {
+    val earlier = tail.first().alternatives
+    val all = earlier + listOf(listOf(tail.first().copy(alternatives = emptyList())) + tail.drop(1))
+    return all to (all.maxOf { it.first().version } + 1)
+}
+
+/** The chat with the version [offset] steps away shown from [index] on, or null when there is none. */
+fun messagesShowingVersion(messages: List<ChatMessage>, offset: Int, index: Int): List<ChatMessage>? {
+    val tail = messages.drop(index)
+    val current = listOf(tail.first().copy(alternatives = emptyList())) + tail.drop(1)
+    val all = (tail.first().alternatives + listOf(current)).sortedBy { it.first().version }
+    val position = all.indexOfFirst { it.first().id == messages[index].id }
+    val target = position + offset
+    if (position < 0 || target !in all.indices) return null
+    val others = all.filterIndexed { i, _ -> i != target }
+    val shown = all[target]
+    return messages.take(index) + listOf(shown.first().copy(alternatives = others)) + shown.drop(1)
 }
