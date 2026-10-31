@@ -178,6 +178,15 @@ struct SpeechModeChip: View {
             .buttonStyle(.plain)
             .fixedSize()
             .accessibilityLabel("Voice, \(library.selected.name)")
+            if library.cloned.isEmpty {
+                Button { cloning = true } label: {
+                    Label("Clone yours", systemImage: "person.wave.2")
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2)
+                        .background(.white.opacity(0.22), in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
             Button(action: onClose) {
                 Image(systemName: "xmark")
             }

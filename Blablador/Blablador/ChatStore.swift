@@ -754,6 +754,7 @@ final class ChatStore: ObservableObject {
         let usePython = pythonEnabled || mentioned.contains("python")
         let useDevice = DeviceTools.enabled || mentioned.contains("device")
         let useImages = imageToolsEnabled || mentioned.contains("image")
+        let useSpeech = VoiceLibrary.shared.toolsEnabled || mentioned.contains("speech")
 
         var system = systemPrompt
         system += "\n\nToday is \(Date().formatted(date: .complete, time: .omitted)), local time \(Date().formatted(date: .omitted, time: .shortened))."
@@ -764,7 +765,7 @@ final class ChatStore: ObservableObject {
         if useImages {
             system += " You can create images with generate_image and modify the latest image in the chat with edit_image. Never describe an image as created unless the tool succeeded."
         }
-        if VoiceLibrary.shared.toolsEnabled {
+        if useSpeech {
             system += " You can speak aloud with generate_speech when the user asks you to say, read or voice something. Never claim you spoke unless the tool succeeded."
         }
         if useDevice { system += " " + DeviceTools.systemPrompt }
@@ -798,7 +799,7 @@ final class ChatStore: ObservableObject {
         var tools: [[String: Any]] = []
         if useWeb { tools += [WebSearch.tool, WebSearch.imageTool, WebPage.tool] }
         if useImages { tools += [ImageTools.generate, ImageTools.edit] }
-        if VoiceLibrary.shared.toolsEnabled { tools.append(SpeechTools.generate) }
+        if useSpeech { tools.append(SpeechTools.generate) }
         if memory.enabled { tools += [MemoryTools.remember, MemoryTools.forget] }
         tools += [ChatSearch.tool, SkillTools.suggest, PlanTools.tool, TaskScheduler.tool]
         if usePython { tools.append(PythonRunner.tool) }
@@ -912,6 +913,7 @@ final class ChatStore: ObservableObject {
         "chats": "earlier chats (search_chats)",
         "memory": "long-term memory (remember what matters)",
         "image": "image creation (generate_image, edit_image)",
+        "speech": "speaking the answer aloud with generate_speech in the user's selected voice",
         "schedule": "a scheduled task (schedule_task)",
         "plan": "a plan (update_plan), working through it step by step"
     ]

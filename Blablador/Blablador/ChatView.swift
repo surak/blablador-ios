@@ -29,6 +29,7 @@ struct ChatView: View {
     @State private var dropTargeted = false
     @State private var showSettings = false
     @State private var showDecision = false
+    @State private var showCloneVoice = false
     @State private var whatsNew: (version: String, items: [WhatsNewItem])?
     @State private var showWhatsNew = false
     @State private var whatsNewDestination: WhatsNewDestination?
@@ -150,6 +151,7 @@ struct ChatView: View {
     private var chat: some View {
         chatContent
             .sheet(isPresented: $showDecision) { DecisionView().environmentObject(store) }
+            .sheet(isPresented: $showCloneVoice) { AddVoiceView().environmentObject(store) }
             .sheet(isPresented: $showWhatsNew, onDismiss: WhatsNew.markSeen) {
                 if let whatsNew {
                     WhatsNewView(version: whatsNew.version, items: whatsNew.items, onTry: tryWhatsNew) { showWhatsNew = false }
@@ -189,6 +191,13 @@ struct ChatView: View {
                     inputFocused = false
                     if suggestion.opensDecision {
                         showDecision = true
+                    } else if suggestion.opensVoiceClone {
+                        if VoiceLibrary.shared.cloned.isEmpty {
+                            showCloneVoice = true
+                        } else {
+                            speechMode = true
+                            draft = "Hello! This is my own voice, made by Blablador."
+                        }
                     } else {
                         store.send(suggestion.text, mentions: suggestion.mentions)
                     }
@@ -521,6 +530,7 @@ struct Suggestion: Hashable {
     let text: String
     var mentions: [Mention] = []
     var opensDecision = false
+    var opensVoiceClone = false
 
     private static func tool(_ value: String) -> [Mention] { MentionCatalog.tools.filter { $0.value == value } }
 
@@ -535,6 +545,7 @@ struct Suggestion: Hashable {
         Suggestion(icon: "checklist", text: "Plan a weekend trip to Jülich with a budget and a packing list", mentions: tool("plan")),
         Suggestion(icon: "function", text: "Solve x³ − 6x² + 11x − 6 = 0 and show the steps", mentions: tool("python")),
         Suggestion(icon: "doc.text.magnifyingglass", text: "Read fz-juelich.de and tell me what's new there", mentions: tool("web")),
+        Suggestion(icon: "person.wave.2", text: "Speak in my own voice: clone it in a few seconds", opensVoiceClone: true),
         Suggestion(icon: "lightbulb", text: "Explain quantum computing in simple terms")
     ]
 }
@@ -629,6 +640,7 @@ private struct ComposerView: View {
     @State private var showOCRPicker = false
     /// Scan text: asks where the pictures come from; the file importer and camera then read text instead of attaching.
     @State private var showScanChoice = false
+    @State private var showCloneVoice = false
     @State private var scanning = false
     @State private var showDecision = false
     @State private var ocrItems: [PhotosPickerItem] = []
@@ -850,6 +862,7 @@ private struct ComposerView: View {
             guard case .success(let urls) = result else { return }
             if scan { scanFiles(urls) } else { addFiles(urls) }
         }
+        .sheet(isPresented: $showCloneVoice) { AddVoiceView().environmentObject(store) }
         .confirmationDialog("Read text from", isPresented: $showScanChoice) {
             if CameraPicker.isAvailable {
                 Button("Camera") { scanning = true; showCamera = true }
@@ -1067,6 +1080,7 @@ private struct ComposerView: View {
         case .scanText: showScanChoice = true
         case .decide: showDecision = true
         case .newKnowledge: showKnowledge = true
+        case .cloneVoice: showCloneVoice = true
         case .workspace:
 #if os(macOS)
             if let url = chooseWorkspace() { store.workspace = url }

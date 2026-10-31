@@ -10,6 +10,7 @@ enum MentionCatalog {
         Mention(kind: .tool, value: "chats", name: "Earlier chats", icon: "text.magnifyingglass"),
         Mention(kind: .tool, value: "memory", name: "Memory", icon: "brain"),
         Mention(kind: .tool, value: "image", name: "Image", icon: "paintbrush.pointed"),
+        Mention(kind: .tool, value: "speech", name: "Voice", icon: "waveform"),
         Mention(kind: .tool, value: "schedule", name: "Schedule", icon: ToolIcon.schedule),
         Mention(kind: .tool, value: "plan", name: "Plan", icon: "checklist")
     ]
@@ -120,7 +121,7 @@ struct MentionChips: View {
 /// What the + button opens: attach, the kind of reply, tools, knowledge, connected services and more, each with
 /// its state visible instead of hidden in a menu.
 struct ToolsPanel: View {
-    enum Action { case camera, photos, files, paste, scanText, decide, workspace, newKnowledge }
+    enum Action { case camera, photos, files, paste, scanText, decide, workspace, newKnowledge, cloneVoice }
 
     @Binding var imageMode: Bool
     @Binding var videoMode: Bool
@@ -161,6 +162,7 @@ struct ToolsPanelContent: View {
     @ObservedObject private var memory = MemoryStore.shared
     @ObservedObject private var skills = SkillLibrary.shared
     @ObservedObject private var scheduler = TaskScheduler.shared
+    @ObservedObject private var voices = VoiceLibrary.shared
     @AppStorage("deviceToolsEnabled") private var deviceTools = false
 
     var body: some View {
@@ -184,6 +186,40 @@ struct ToolsPanelContent: View {
                             mode("Video", "film", selected: videoMode) { videoMode = true }
                             mode("Speech", "waveform", selected: speechMode) { speechMode = true }
                         }
+                    }
+
+                    section("Voice") {
+                        VStack(spacing: 0) {
+                            Button { onAction(.cloneVoice) } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "person.wave.2.fill")
+                                        .scaledFont(.title2)
+                                        .frame(width: 36)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(voices.cloned.isEmpty ? "Clone your voice" : "Clone another voice").scaledFont(.headline)
+                                        Text("Record a few seconds and Blablador speaks like you").scaledFont(.caption).opacity(0.85)
+                                    }
+                                    Spacer(minLength: 8)
+                                    Image(systemName: "chevron.right")
+                                }
+                                .foregroundStyle(.white)
+                                .padding(14)
+                                .background(Theme.gradient, in: RoundedRectangle(cornerRadius: 14))
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .padding(6)
+                            row("Speaks with", "waveform", voices.selected.isCloned ? "Your cloned voice" : "Drama 3 voice") {
+                                Picker("Voice", selection: $voices.selectedID) {
+                                    ForEach(voices.voices) { Text($0.name).tag($0.id) }
+                                }
+                                .labelsHidden()
+                                .fixedSize()
+                            }
+                            Divider().padding(.leading, 44)
+                            link("Manage voices", "slider.horizontal.3", "Feeling, pace, whisper, your cloned voices") { VoicesView() }
+                        }
+                        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14))
                     }
 
                     section("Tools") {
