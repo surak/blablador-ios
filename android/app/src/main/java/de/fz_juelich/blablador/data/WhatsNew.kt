@@ -15,6 +15,17 @@ data class WhatsNewItem(val icon: String, val title: String, val text: String, v
 
 object WhatsNew {
     val releases: List<Pair<String, List<WhatsNewItem>>> = listOf(
+        "3.4" to listOf(
+            WhatsNewItem("doc", "Reads Google Docs",
+                "Paste a link to a Google Doc, Sheet or Slides shared by link and ask about it. No Google account needed.",
+                WhatsNewItem.TryIt.Prompt("Summarise this Google Doc: ", null)),
+            WhatsNewItem("export", "Word, Excel and PowerPoint",
+                "The doc button under an answer copies it into Google Docs or Word with its formatting, or saves and opens it as a document, a spreadsheet or slides."),
+            WhatsNewItem("sparkles", "An example for everything",
+                "A new chat shows what Blablador can do, from Python plots to cloned voices. Tap More ideas for others."),
+            WhatsNewItem("text", "Cleaner answers",
+                "Lists, headings and paragraphs are laid out for easier reading."),
+        ),
         "3.3" to listOf(
             WhatsNewItem("checklist", "Plans and follows through",
                 "For bigger tasks Blablador writes a plan, ticks off each step and keeps going until it's done. Afterwards it offers to save what it did as a skill.",

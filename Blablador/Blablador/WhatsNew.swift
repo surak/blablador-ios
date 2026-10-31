@@ -12,6 +12,17 @@ struct WhatsNewItem: Identifiable, Hashable {
 
 enum WhatsNew {
     static let releases: [(version: String, items: [WhatsNewItem])] = [
+        ("3.4", [
+            WhatsNewItem(icon: "doc.text", title: "Reads Google Docs",
+                         text: "Paste a link to a Google Doc, Sheet or Slides shared by link and ask about it. No Google account needed.",
+                         tryIt: .prompt("Summarise this Google Doc: ", mention: nil)),
+            WhatsNewItem(icon: "square.and.arrow.up.on.square", title: "Word, Excel and PowerPoint",
+                         text: "The doc button under an answer copies it into Google Docs or Word with its formatting, or saves and opens it as a document, a spreadsheet or slides."),
+            WhatsNewItem(icon: "sparkles", title: "An example for everything",
+                         text: "A new chat shows what Blablador can do, from Python plots to cloned voices. Tap More ideas for others."),
+            WhatsNewItem(icon: "text.alignleft", title: "Cleaner answers",
+                         text: "Lists, headings and paragraphs are laid out for easier reading.")
+        ]),
         ("3.3", [
             WhatsNewItem(icon: "checklist", title: "Plans and follows through",
                          text: "For bigger tasks Blablador writes a plan, ticks off each step and keeps going until it's done. Afterwards it offers to save what it did as a skill.",
