@@ -37,6 +37,8 @@ final class ToolPermissions: ObservableObject {
         Kind(id: "contacts", name: "Look up contacts", icon: "person.crop.circle", detail: "Names, phone numbers, emails", defaultRule: .allow),
         Kind(id: "location", name: "Current location", icon: "location", detail: "Where this device is, roughly", defaultRule: .ask),
         Kind(id: "schedule", name: "Schedule tasks", icon: ToolIcon.schedule, detail: "Create tasks that run at set times", defaultRule: .ask),
+        Kind(id: "driveRead", name: "Read Google Drive (Mac)", icon: "externaldrive.connected.to.line.below", detail: "Search and read files in the Drive folder", defaultRule: .allow),
+        Kind(id: "driveSave", name: "Save to Google Drive (Mac)", icon: "externaldrive.badge.plus", detail: "Write new files into the Drive folder", defaultRule: .ask),
         Kind(id: "files", name: "Edit files (agent)", icon: "doc.badge.gearshape", detail: "Write and edit files in the agent's folder", defaultRule: .allow),
         Kind(id: "command", name: "Run commands (agent)", icon: "terminal", detail: "Shell commands in the agent's folder", defaultRule: .ask)
     ]
@@ -89,6 +91,8 @@ final class ToolPermissions: ObservableObject {
         case "find_contacts": "contacts"
         case "current_location": "location"
         case "schedule_task": "schedule"
+        case "drive_search", "drive_read": "driveRead"
+        case "drive_save": "driveSave"
         case "write_file", "edit_file": "files"
         case "run_command": "command"
         default: nil

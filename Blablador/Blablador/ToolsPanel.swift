@@ -164,6 +164,7 @@ struct ToolsPanelContent: View {
     @ObservedObject private var scheduler = TaskScheduler.shared
     @ObservedObject private var voices = VoiceLibrary.shared
     @AppStorage("deviceToolsEnabled") private var deviceTools = false
+    @AppStorage("googleDriveEnabled") private var googleDrive = true
 
     var body: some View {
                 VStack(alignment: .leading, spacing: 22) {
@@ -230,6 +231,12 @@ struct ToolsPanelContent: View {
                             Divider().padding(.leading, 44)
                             toggle("Calendar & contacts", "calendar", "Events, reminders, contacts, location", isOn: $deviceTools)
                             Divider().padding(.leading, 44)
+#if os(macOS)
+                            if !GoogleDrive.roots.isEmpty {
+                                toggle("Google Drive", "externaldrive.connected.to.line.below", "Search, read and save files in your Drive folder", isOn: $googleDrive)
+                                Divider().padding(.leading, 44)
+                            }
+#endif
                             toggle("Create images", "paintbrush.pointed", "The assistant may make and edit images", isOn: Binding(get: { store.imageToolsEnabled }, set: { store.imageToolsEnabled = $0 }))
                             Divider().padding(.leading, 44)
                             toggle("Memory", "brain", "\(memory.memories.count) memories", isOn: Binding(get: { memory.enabled }, set: { memory.enabled = $0 }))

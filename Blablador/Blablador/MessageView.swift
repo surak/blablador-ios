@@ -1,3 +1,4 @@
+import UniformTypeIdentifiers
 import SwiftUI
 #if os(iOS)
 import UIKit
@@ -59,6 +60,16 @@ struct MessageView: View {
     @State private var copied = false
     @State private var selectingText = false
     @State private var editing = false
+    @State private var exportingWord = false
+
+    private func copyForDocs() {
+        DocumentExport.copyFormatted(message.content)
+        copied = true
+        Task {
+            try? await Task.sleep(for: .seconds(1.5))
+            copied = false
+        }
+    }
 
     var body: some View {
         content
@@ -237,6 +248,25 @@ struct MessageView: View {
                 ShareLink(item: message.content) {
                     Image(systemName: "square.and.arrow.up")
                 }
+                Menu {
+                    Button { copyForDocs() } label: {
+                        Label("Copy for Google Docs or Word", systemImage: "doc.on.clipboard")
+                    }
+                    Button { exportingWord = true } label: {
+                        Label("Save as Word…", systemImage: "doc.richtext")
+                    }
+                } label: {
+                    Image(systemName: "doc.richtext")
+                } primaryAction: {
+                    copyForDocs()
+                }
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .accessibilityLabel("Copy for Google Docs")
+                .help("Copy with formatting, to paste into Google Docs or Word; or save as Word")
+                .fileExporter(isPresented: $exportingWord, document: WordFile(markdown: message.content),
+                              contentType: UTType(filenameExtension: "docx") ?? .data,
+                              defaultFilename: DocumentExport.fileName(for: message.content)) { _ in }
             } else {
                 #if os(iOS)
                 Button {

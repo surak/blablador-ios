@@ -214,6 +214,8 @@ enum WebPage {
             url = components.url ?? url
         }
         guard isPublic(url) else { throw PageError.notAllowed }
+        // Google Docs, Sheets and Slides shared by link: Google's own Markdown, CSV or text export.
+        if let google = GoogleDocs.link(url) { return try await GoogleDocs.read(google, original: url) }
         var request = URLRequest(url: url, timeoutInterval: 30)
         request.setValue("Mozilla/5.0 (compatible; Blablador)", forHTTPHeaderField: "User-Agent")
         request.setValue("text/html,application/xhtml+xml,application/pdf,text/plain;q=0.9,*/*;q=0.5", forHTTPHeaderField: "Accept")

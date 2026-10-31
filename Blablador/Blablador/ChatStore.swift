@@ -769,6 +769,11 @@ final class ChatStore: ObservableObject {
             system += " You can speak aloud with generate_speech when the user asks you to say, read or voice something. Never claim you spoke unless the tool succeeded."
         }
         if useDevice { system += " " + DeviceTools.systemPrompt }
+#if os(macOS)
+        let useDrive = GoogleDrive.available
+        if useDrive { system += " " + GoogleDrive.systemPrompt }
+#endif
+        system += " Google Docs, Sheets and Slides links shared by link can be read with read_page."
         system += " " + PlanTools.systemPrompt
         system += " Use schedule_task when the user wants something done later or regularly."
         let memory = MemoryStore.shared
@@ -798,12 +803,17 @@ final class ChatStore: ObservableObject {
 
         var tools: [[String: Any]] = []
         if useWeb { tools += [WebSearch.tool, WebSearch.imageTool, WebPage.tool] }
+        // Links the user pastes (Google Docs among them) can be read even with web search off.
+        else { tools.append(WebPage.tool) }
         if useImages { tools += [ImageTools.generate, ImageTools.edit] }
         if useSpeech { tools.append(SpeechTools.generate) }
         if memory.enabled { tools += [MemoryTools.remember, MemoryTools.forget] }
         tools += [ChatSearch.tool, SkillTools.suggest, PlanTools.tool, TaskScheduler.tool]
         if usePython { tools.append(PythonRunner.tool) }
         if useDevice { tools += DeviceTools.definitions }
+#if os(macOS)
+        if useDrive { tools += GoogleDrive.definitions }
+#endif
         if !skills.skills.isEmpty { tools.append(SkillTools.use) }
         if folder != nil { tools += AgentTools.definitions }
         tools = ToolPermissions.shared.filter(tools)
@@ -1176,6 +1186,10 @@ final class ChatStore: ObservableObject {
             var title = "Let Blablador use \(name)?"
             var detail = (try? JSONSerialization.data(withJSONObject: arguments, options: [.prettyPrinted, .sortedKeys])).map { String(decoding: $0, as: UTF8.self) } ?? ""
             if let device = DeviceTools.approval(name, arguments) { (title, detail) = device }
+            if name == "drive_save" {
+                title = "Save “\(arguments["path"] as? String ?? "file")” to your Google Drive?"
+                detail = String((arguments["content"] as? String ?? "").prefix(1_500))
+            }
             if name == "schedule_task", let task = TaskScheduler.task(from: arguments) {
                 title = "Schedule “\(task.title)”?"
                 detail = task.scheduleText + "\n\n" + task.prompt
@@ -1241,6 +1255,18 @@ final class ChatStore: ObservableObject {
             TaskScheduler.shared.save(task)
             let next = task.next().map { " Next run: \($0.formatted(date: .abbreviated, time: .shortened))." } ?? ""
             return ("Scheduled “\(task.title)”: \(task.scheduleText).\(next) The user can change it in Settings → Scheduled tasks.", .done)
+        } else if ["drive_search", "drive_read", "drive_save"].contains(name) {
+#if os(macOS)
+            if name != "drive_save" { outsideContent = true }
+            updateMessage(replyID) { $0.status = name == "drive_save" ? "Saving to Google Drive…" : "Looking in Google Drive…" }
+            do {
+                return (try await GoogleDrive.run(name, arguments), .done)
+            } catch {
+                return (error.localizedDescription, .failed)
+            }
+#else
+            return ("Google Drive tools work on the Mac only.", .failed)
+#endif
         } else if DeviceTools.names.contains(name) {
             if !name.hasPrefix("create_") { outsideContent = true }
             updateMessage(replyID) { $0.status = name == "current_location" ? "Finding your location…" : name == "find_contacts" ? "Looking up contacts…" : "Checking your calendar…" }
