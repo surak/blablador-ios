@@ -565,3 +565,51 @@ struct OfficeFile: FileDocument {
 
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper { FileWrapper(regularFileWithContents: data) }
 }
+
+extension DocumentExport {
+    /// Writes the file to a temporary folder and opens it: in the default app for its type on the Mac, or with the
+    /// "Open in" list of apps (Word, Google Docs, Pages, Files…) on iPhone and iPad.
+    @MainActor
+    static func open(_ file: OfficeFile, name: String) {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("Exports", isDirectory: true)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let url = folder.appendingPathComponent(name).appendingPathExtension(file.kind.rawValue)
+        guard (try? file.data.write(to: url)) != nil else { return }
+#if os(macOS)
+        NSWorkspace.shared.open(url)
+#else
+        OpenInPresenter.shared.present(url)
+#endif
+    }
+}
+
+#if os(iOS)
+/// Keeps the document controller alive while its menu is shown.
+@MainActor
+final class OpenInPresenter: NSObject, UIDocumentInteractionControllerDelegate {
+    static let shared = OpenInPresenter()
+    private var controller: UIDocumentInteractionController?
+
+    func present(_ url: URL) {
+        guard let window = UIApplication.shared.connectedScenes.compactMap({ ($0 as? UIWindowScene)?.keyWindow }).first,
+              var top = window.rootViewController else { return }
+        while let presented = top.presentedViewController { top = presented }
+        let controller = UIDocumentInteractionController(url: url)
+        controller.delegate = self
+        self.controller = controller
+        let anchor = CGRect(x: top.view.bounds.midX, y: top.view.bounds.midY, width: 1, height: 1)
+        // Quick Look first, with its own share button; the options menu when there's no preview.
+        if !controller.presentPreview(animated: true) {
+            controller.presentOptionsMenu(from: anchor, in: top.view, animated: true)
+        }
+    }
+
+    nonisolated func documentInteractionControllerViewControllerForPreview(_ controller: UIDocumentInteractionController) -> UIViewController {
+        MainActor.assumeIsolated {
+            var top = UIApplication.shared.connectedScenes.compactMap({ ($0 as? UIWindowScene)?.keyWindow }).first?.rootViewController ?? UIViewController()
+            while let presented = top.presentedViewController { top = presented }
+            return top
+        }
+    }
+}
+#endif

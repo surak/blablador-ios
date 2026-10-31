@@ -66,6 +66,11 @@ struct MessageView: View {
         exportFile = OfficeFile(kind: kind, markdown: message.content)
     }
 
+    private func open(_ kind: OfficeFile.Kind) {
+        guard let file = OfficeFile(kind: kind, markdown: message.content) else { return }
+        DocumentExport.open(file, name: DocumentExport.fileName(for: message.content))
+    }
+
     private func copyForDocs() {
         DocumentExport.copyFormatted(message.content)
         copied = true
@@ -267,6 +272,19 @@ struct MessageView: View {
                         }
                         Button { export(.pptx) } label: {
                             Label("PowerPoint slides…", systemImage: "rectangle.on.rectangle")
+                        }
+                    }
+                    Section("Open in an app") {
+                        Button { open(.docx) } label: {
+                            Label("Open as Word document", systemImage: "arrow.up.forward.app")
+                        }
+                        if !DocumentExport.tables(message.content).isEmpty {
+                            Button { open(.xlsx) } label: {
+                                Label("Open as spreadsheet", systemImage: "arrow.up.forward.app")
+                            }
+                        }
+                        Button { open(.pptx) } label: {
+                            Label("Open as slides", systemImage: "arrow.up.forward.app")
                         }
                     }
                 } label: {
