@@ -511,7 +511,24 @@ private fun Composer(
 
     val photos = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(4)) { uris -> uris.forEach { addPhoto(it) } }
     var cameraUri by remember { mutableStateOf<Uri?>(null) }
-    val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { taken -> if (taken) cameraUri?.let { addPhoto(it) } }
+    var scanning by remember { mutableStateOf(false) }
+    var scanChoice by remember { mutableStateOf(false) }
+
+    /** Reads the text in a picture with the same OCR as photo text and attaches it. */
+    fun scanImage(uri: Uri, name: String) {
+        reading++
+        scope.launch {
+            try {
+                val data = withContext(Dispatchers.IO) { context.contentResolver.openInputStream(uri)?.use { it.readBytes() } } ?: return@launch
+                documents.add(vm.readPhotoText(data, name))
+            } catch (e: Exception) { error = "$name: ${e.message}" } finally { reading-- }
+        }
+    }
+    val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { taken ->
+        // A picture taken for scanning is read into text instead of attached.
+        if (taken) cameraUri?.let { if (scanning) scanImage(it, "Scanned text") else addPhoto(it) }
+        scanning = false
+    }
     val pdfs = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         // Images become photo attachments, PDFs are read into text, data files are kept for Python.
         uris.forEach { uri ->
@@ -545,6 +562,22 @@ private fun Composer(
                     runCatching { documents.add(vm.readPhotoText(data, name)) }.onFailure { error = "$name: ${it.message}" }
                 }
             } finally { reading-- }
+        }
+    }
+    val scanFiles = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        uris.forEach { uri ->
+            val type = context.contentResolver.getType(uri).orEmpty()
+            val name = context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
+                if (it.moveToFirst()) it.getString(0) else null
+            } ?: uri.lastPathSegment.orEmpty()
+            when {
+                type.startsWith("image/") -> scanImage(uri, name.substringBeforeLast('.'))
+                type == "application/pdf" || name.endsWith(".pdf", ignoreCase = true) -> {
+                    reading++
+                    scope.launch { try { documents.add(vm.readPdf(uri)) } catch (e: Exception) { error = e.message } finally { reading-- } }
+                }
+                else -> error = "$name: only pictures and PDFs can be read."
+            }
         }
     }
     val dictation = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -658,7 +691,7 @@ private fun Composer(
                         else uris.forEach { addPhoto(it) }
                     }
                     PanelAction.Files -> pdfs.launch(arrayOf("application/pdf", "image/*") + DataFiles.MIME_TYPES)
-                    PanelAction.ScanText -> ocrPhotos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    PanelAction.ScanText -> scanChoice = true
                     PanelAction.Decide -> onNavigate(Page.Decision)
                     PanelAction.Knowledge -> onNavigate(Page.Knowledge())
                     PanelAction.NewKnowledge -> naming = true
@@ -669,6 +702,30 @@ private fun Composer(
                 }
             })
     }
+    if (scanChoice) androidx.compose.material3.AlertDialog(
+        onDismissRequest = { scanChoice = false },
+        title = { Text("Read text from") },
+        text = {
+            Column {
+                Text("Blablador reads the text in pictures and attaches it to your message.", style = MaterialTheme.typography.bodyMedium)
+                Spacer(Modifier.height(8.dp))
+                if (context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_CAMERA_ANY)) TextButton(onClick = {
+                    scanChoice = false; scanning = true
+                    val file = File(context.cacheDir, "camera").apply { mkdirs() }.let { File(it, "scan.jpg") }
+                    cameraUri = FileProvider.getUriForFile(context, context.packageName + ".files", file)
+                    camera.launch(cameraUri!!)
+                }) { Icon(Icons.Outlined.CameraAlt, null); Spacer(Modifier.width(8.dp)); Text("Camera") }
+                TextButton(onClick = { scanChoice = false; ocrPhotos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) {
+                    Icon(Icons.Outlined.Photo, null); Spacer(Modifier.width(8.dp)); Text("Photos")
+                }
+                TextButton(onClick = { scanChoice = false; scanFiles.launch(arrayOf("image/*", "application/pdf")) }) {
+                    Icon(Icons.Outlined.PictureAsPdf, null); Spacer(Modifier.width(8.dp)); Text("Files")
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = { scanChoice = false }) { Text("Cancel") } },
+    )
     if (naming) NameDialog("New knowledge base", "", onDismiss = { naming = false }) { name ->
         naming = false
         val base = vm.knowledge.create(name)
