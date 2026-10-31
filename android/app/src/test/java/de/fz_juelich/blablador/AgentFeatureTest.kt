@@ -133,4 +133,27 @@ class AgentFeatureTest {
         assertEquals("News\n⏰ Reminder: Call Maria about JUWELS",
             de.fz_juelich.blablador.data.Notifier.plain("## News\n⏰ Reminder: **Call Maria** about `JUWELS` [1]"))
     }
+
+    @Test
+    fun whatsNewShowsOnceAfterAnUpdate() {
+        val newest = de.fz_juelich.blablador.data.WhatsNew.releases.first().first
+        assertEquals("3.3", newest)
+        assertNull(de.fz_juelich.blablador.data.WhatsNew.unseen(null, hasChats = false))
+        assertEquals(newest, de.fz_juelich.blablador.data.WhatsNew.unseen(null, hasChats = true)?.first)
+        assertEquals(newest, de.fz_juelich.blablador.data.WhatsNew.unseen("3.2", hasChats = true)?.first)
+        assertNull(de.fz_juelich.blablador.data.WhatsNew.unseen("3.3", hasChats = true))
+        assertTrue(de.fz_juelich.blablador.data.WhatsNew.compare("3.10", "3.9") > 0)
+        assertEquals(5, de.fz_juelich.blablador.data.WhatsNew.releases.first().second.size)
+    }
+
+    @Test
+    fun refusedTitlesAreReplaced() {
+        assertTrue(isRefusal("I'm sorry, but I can't help with that"))
+        assertTrue(isRefusal("Das tut mir leid"))
+        assertFalse(isRefusal("Weekend in Jülich"))
+        val chat = de.fz_juelich.blablador.data.Conversation(title = "I’m sorry, I can’t help", model = "m", messages = listOf(
+            ChatMessage(role = de.fz_juelich.blablador.data.ChatRole.user, content = "Remind me to call Maria about the JUWELS benchmark tomorrow\nthanks")))
+        assertEquals("Remind me to call Maria about the JUWELS…", markingInterrupted(chat).title)
+        assertEquals("Fine", markingInterrupted(chat.copy(title = "Fine")).title)
+    }
 }

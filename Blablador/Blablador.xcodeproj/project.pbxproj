@@ -392,7 +392,7 @@
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 31;
+				CURRENT_PROJECT_VERSION = 32;
 				DEVELOPMENT_TEAM = 4Q84Z7RZ3Z;
 				GENERATE_INFOPLIST_FILE = NO;
 				"CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]" = "Blablador/Blablador-iOS.entitlements";
@@ -400,7 +400,7 @@
 				INFOPLIST_FILE = Blablador/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.6;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 3.2.0;
+				MARKETING_VERSION = 3.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "de.fz-juelich.blablador";
 				PRODUCT_NAME = Blablador;
 				SDKROOT = macosx;
@@ -422,7 +422,7 @@
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 31;
+				CURRENT_PROJECT_VERSION = 32;
 				DEVELOPMENT_TEAM = 4Q84Z7RZ3Z;
 				GENERATE_INFOPLIST_FILE = NO;
 				"CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]" = "Blablador/Blablador-iOS.entitlements";
@@ -430,7 +430,7 @@
 				INFOPLIST_FILE = Blablador/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.6;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 3.2.0;
+				MARKETING_VERSION = 3.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "de.fz-juelich.blablador";
 				PRODUCT_NAME = Blablador;
 				SDKROOT = macosx;
@@ -472,7 +472,7 @@
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 31;
+				CURRENT_PROJECT_VERSION = 32;
 				DEVELOPMENT_TEAM = 4Q84Z7RZ3Z;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -481,7 +481,7 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=iphoneos*]" = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "$(inherited) @executable_path/../Frameworks @executable_path/../../../../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 3.2.0;
+				MARKETING_VERSION = 3.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "de.fz-juelich.blablador.share";
 				PRODUCT_NAME = BlabladorShare;
 				SDKROOT = macosx;
@@ -503,7 +503,7 @@
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 31;
+				CURRENT_PROJECT_VERSION = 32;
 				DEVELOPMENT_TEAM = 4Q84Z7RZ3Z;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -512,7 +512,7 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=iphoneos*]" = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "$(inherited) @executable_path/../Frameworks @executable_path/../../../../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 3.2.0;
+				MARKETING_VERSION = 3.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "de.fz-juelich.blablador.share";
 				PRODUCT_NAME = BlabladorShare;
 				SDKROOT = macosx;

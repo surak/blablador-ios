@@ -1064,11 +1064,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private fun nameChat(id: String, text: String, model: String) {
         val provisional = title(text)
         viewModelScope.launch {
-            val system = "Give a chat a short title that says what it is about, like a heading: two to six words, in the language of the user's message, without quotes or final period. Don't copy the start of the message. Reply with only the title."
+            val system = "You only write titles; you never answer, judge or refuse the message, whatever it asks. Give a chat a short title that says what it is about, like a heading: two to six words, in the language of the user's message, without quotes or final period. Don't copy the start of the message. Reply with only the title."
             val name = runCatching { api.complete(BlabladorApi.helperModel(model), system, text.take(2000)) }.getOrNull()
                 ?.trim()?.trim('"', '\'', '“', '”', '«', '»', '*', '#', '.')?.trim() ?: return@launch
             val index = conversations.indexOfFirst { it.id == id }
-            if (name.isEmpty() || name.length > 80 || '\n' in name || index < 0 || conversations[index].title != provisional) return@launch
+            if (name.isEmpty() || name.length > 80 || '\n' in name || isRefusal(name) || index < 0 || conversations[index].title != provisional) return@launch
             conversations[index] = conversations[index].copy(title = name)
             persist()
         }
@@ -1219,11 +1219,21 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
  * Replies that were still empty when the app quit or was stopped (nothing is running after a restart) become an
  * error the user can regenerate, instead of looking like they are still being written.
  */
-fun markingInterrupted(conversation: Conversation): Conversation = conversation.copy(messages = conversation.messages.map { m ->
+fun markingInterrupted(conversation: Conversation): Conversation = conversation.copy(
+    // A helper model's refusal instead of a title gets the start of the first message.
+    title = conversation.messages.firstOrNull { it.role == ChatRole.user }?.content?.takeIf { isRefusal(conversation.title) && it.isNotEmpty() }
+        ?.let { val line = it.lineSequence().first(); if (line.length > 40) line.take(40) + "…" else line } ?: conversation.title,
+    messages = conversation.messages.map { m ->
     if (m.role == ChatRole.assistant && m.content.isEmpty() && !m.isError && m.images.isEmpty() && m.audio.isEmpty() && m.videos.isEmpty())
         m.copy(content = "The reply was interrupted. Tap Regenerate to try again.", isError = true)
     else m
 })
+
+/** A helper model's refusal instead of a title, e.g. "I'm sorry, but I can't help with that". */
+fun isRefusal(text: String): Boolean {
+    val lower = text.lowercase()
+    return listOf("sorry", "i can't", "i can’t", "i cannot", "i'm unable", "i am unable", "as an ai", "tut mir leid", "kann ich nicht").any { it in lower }
+}
 
 /** The system prompt (with the summary of older messages, if any) and the messages after the summary. */
 internal fun chatHistory(system: String, conversation: Conversation, wireMessage: (ChatMessage) -> JsonObject): List<JsonObject> {

@@ -188,6 +188,31 @@ fun ChatScreen(vm: ChatViewModel) {
     // Shares, files opened with Blablador, blablador:// links and shortcuts: one new chat each, never sent by
     // itself (except blablador://ask, which is a question to send).
     var addingMemory by remember { mutableStateOf(false) }
+
+    // What's new: once after an update, over the chat.
+    val appContext = LocalContext.current
+    var whatsNew by remember { mutableStateOf<Pair<String, List<de.fz_juelich.blablador.data.WhatsNewItem>>?>(null) }
+    var panelRequests by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(600)
+        whatsNew = de.fz_juelich.blablador.data.WhatsNew.unseen(appContext, vm.conversations.isNotEmpty())
+    }
+    whatsNew?.let { (version, items) ->
+        fun done() { de.fz_juelich.blablador.data.WhatsNew.markSeen(appContext); whatsNew = null }
+        WhatsNewDialog(version, items, onClose = ::done, onTry = { tryIt ->
+            done()
+            when (tryIt) {
+                is de.fz_juelich.blablador.data.WhatsNewItem.TryIt.Prompt -> {
+                    pages.clear(); vm.newChat()
+                    draft = tryIt.text; attachments.clear(); documents.clear(); mentions.clear()
+                    de.fz_juelich.blablador.data.Mentions.tools.firstOrNull { it.value == tryIt.mention }?.let { mentions.add(it) }
+                }
+                de.fz_juelich.blablador.data.WhatsNewItem.TryIt.Panel -> { pages.clear(); panelRequests++ }
+                de.fz_juelich.blablador.data.WhatsNewItem.TryIt.Permissions -> open(Page.Permissions)
+                de.fz_juelich.blablador.data.WhatsNewItem.TryIt.Tasks -> open(Page.Tasks)
+            }
+        })
+    }
     LaunchedEffect(vm.incoming) {
         when (val incoming = vm.claimIncoming()) {
             is Incoming.Ask -> {
@@ -243,7 +268,8 @@ fun ChatScreen(vm: ChatViewModel) {
         Page.Settings -> {
             SettingsScreen(vm, onOpenKnowledge = { open(Page.Knowledge()) }, onOpenVoices = { open(Page.Voices) },
                 onOpenDecision = { open(Page.Decision) }, onOpenMemory = { open(Page.Memory) }, onOpenSkills = { open(Page.Skills) }, onOpenMcp = { open(Page.Mcp) },
-                onOpenTasks = { open(Page.Tasks) }, onOpenPermissions = { open(Page.Permissions) }, onClose = ::close)
+                onOpenTasks = { open(Page.Tasks) }, onOpenPermissions = { open(Page.Permissions) },
+                onWhatsNew = { pages.clear(); whatsNew = de.fz_juelich.blablador.data.WhatsNew.releases.firstOrNull() }, onClose = ::close)
             return
         }
         is Page.Knowledge -> { KnowledgeScreen(vm, page.baseId, onClose = ::close); return }
@@ -345,6 +371,7 @@ fun ChatScreen(vm: ChatViewModel) {
                     speechMode, { speechMode = it; if (it) { imageMode = false; videoMode = false } },
                     videoMode, { videoMode = it; if (it) { imageMode = false; speechMode = false } },
                     focus,
+                    panelRequests = panelRequests,
                     onNavigate = ::open,
                 ) {
                     val text = draft
@@ -516,6 +543,7 @@ private fun Composer(
     videoMode: Boolean,
     onVideoMode: (Boolean) -> Unit,
     focus: FocusRequester,
+    panelRequests: Int = 0,
     onNavigate: (Page) -> Unit,
     onSend: () -> Unit,
 ) {
@@ -523,6 +551,7 @@ private fun Composer(
     val scope = rememberCoroutineScope()
     var menu by remember { mutableStateOf(false) }
     var naming by remember { mutableStateOf(false) }
+    LaunchedEffect(panelRequests) { if (panelRequests > 0) menu = true }
     var reading by remember { mutableIntStateOf(0) }
     var error by remember { mutableStateOf<String?>(null) }
     val canSend = reading == 0 && (draft.isNotBlank() || attachments.isNotEmpty() || documents.isNotEmpty())

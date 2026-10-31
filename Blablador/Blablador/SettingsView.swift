@@ -168,6 +168,15 @@ struct SettingsView: View {
 
                 Section("About") {
                     LabeledContent("Version", value: AppUpdater.currentVersion)
+                    if let release = WhatsNew.releases.first {
+                        NavigationLink("What's new in \(release.version)") {
+                            WhatsNewView(version: release.version, items: release.items.map { item in
+                                var item = item
+                                item.tryIt = nil
+                                return item
+                            }, onTry: { _ in }, onClose: { dismiss() })
+                        }
+                    }
                     Button("Check for updates") { Task { await AppUpdater.shared.check(force: true) } }
                 }
             }

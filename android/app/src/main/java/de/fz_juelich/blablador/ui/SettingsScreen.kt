@@ -47,7 +47,7 @@ import de.fz_juelich.blablador.data.BlabladorApi
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(vm: ChatViewModel, onOpenKnowledge: () -> Unit, onOpenVoices: () -> Unit, onOpenDecision: () -> Unit, onOpenMemory: () -> Unit, onOpenSkills: () -> Unit, onOpenMcp: () -> Unit,
-                   onOpenTasks: () -> Unit, onOpenPermissions: () -> Unit, onClose: () -> Unit) {
+                   onOpenTasks: () -> Unit, onOpenPermissions: () -> Unit, onWhatsNew: () -> Unit = {}, onClose: () -> Unit) {
     var key by remember { mutableStateOf(vm.apiKey) }
     var endpoint by remember { mutableStateOf(vm.endpoint) }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -142,6 +142,7 @@ fun SettingsScreen(vm: ChatViewModel, onOpenKnowledge: () -> Unit, onOpenVoices:
             TextButton(onClick = { confirmDelete = true }) { Text("Delete all chats", color = MaterialTheme.colorScheme.error) }
 
             val context = LocalContext.current
+            Section("About") { Link("What's new", "", onWhatsNew) }
             Text("Blablador ${Updates.currentVersion(context)}", style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
                 textAlign = TextAlign.Center)
