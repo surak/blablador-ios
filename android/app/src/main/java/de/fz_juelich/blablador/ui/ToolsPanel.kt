@@ -44,6 +44,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material.icons.outlined.RecordVoiceOver
+import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -54,7 +63,7 @@ import androidx.compose.ui.unit.dp
 import de.fz_juelich.blablador.ChatViewModel
 
 /** Things picked in the panel that open a picker or a page. */
-enum class PanelAction { Camera, Photos, Files, Paste, ScanText, Decide, Knowledge, NewKnowledge, Mcp, Skills, Tasks, Permissions }
+enum class PanelAction { CloneVoice, Voices, Camera, Photos, Files, Paste, ScanText, Decide, Knowledge, NewKnowledge, Mcp, Skills, Tasks, Permissions }
 
 /**
  * What the + button opens: attach, the kind of reply, tools, knowledge, connected services and more, each with its
@@ -84,6 +93,34 @@ fun ToolsPanel(
                 Tile("Image", Icons.Outlined.Brush, Modifier.weight(1f), selected = imageMode) { onMode("image") }
                 Tile("Video", Icons.Outlined.Movie, Modifier.weight(1f), selected = videoMode) { onMode("video") }
                 Tile("Speech", Icons.Outlined.GraphicEq, Modifier.weight(1f), selected = speechMode) { onMode("speech") }
+            }
+        }
+        PanelSection("Voice") {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Brand.gradient).clickable { onAction(PanelAction.CloneVoice) }
+                    .padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Icon(Icons.Outlined.RecordVoiceOver, null, tint = Color.White)
+                    Column(Modifier.weight(1f)) {
+                        Text(if (vm.voices.cloned.isEmpty()) "Clone your voice" else "Clone another voice", color = Color.White, fontWeight = FontWeight.SemiBold)
+                        Text("Record a few seconds and Blablador speaks like you", color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                Card {
+                    var picking by remember { mutableStateOf(false) }
+                    PanelRow("Speaks with", if (vm.voices.selected.isCloned) "Your cloned voice" else "Drama 3 voice", Icons.Outlined.GraphicEq,
+                        onClick = { picking = true }) {
+                        Box {
+                            Text(vm.voices.selected.name + " ▾", color = Brand.violet)
+                            DropdownMenu(expanded = picking, onDismissRequest = { picking = false }) {
+                                vm.voices.voices.forEach { voice ->
+                                    DropdownMenuItem(text = { Text(voice.name) }, onClick = { vm.voices.select(voice.id); picking = false })
+                                }
+                            }
+                        }
+                    }
+                    Divider()
+                    LinkRow("Manage voices", "Feeling, pace, whisper, your cloned voices", Icons.Outlined.Tune) { onAction(PanelAction.Voices) }
+                }
             }
         }
         PanelSection("Tools") {

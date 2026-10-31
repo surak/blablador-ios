@@ -162,6 +162,7 @@ object Mentions {
         Mention(Mention.Kind.tool, "chats", "Earlier chats"),
         Mention(Mention.Kind.tool, "memory", "Memory"),
         Mention(Mention.Kind.tool, "image", "Image"),
+        Mention(Mention.Kind.tool, "speech", "Voice"),
         Mention(Mention.Kind.tool, "schedule", "Schedule"),
         Mention(Mention.Kind.tool, "plan", "Plan"),
     )
@@ -173,6 +174,7 @@ object Mentions {
         "chats" to "earlier chats (search_chats)",
         "memory" to "long-term memory (remember what matters)",
         "image" to "image creation (generate_image, edit_image)",
+        "speech" to "speaking the answer aloud with generate_speech in the user's selected voice",
         "schedule" to "a scheduled task (schedule_task)",
         "plan" to "a plan (update_plan), working through it step by step",
     )

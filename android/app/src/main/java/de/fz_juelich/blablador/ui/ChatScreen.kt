@@ -61,6 +61,7 @@ import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material.icons.outlined.ShowChart
+import androidx.compose.material.icons.outlined.RecordVoiceOver
 import androidx.compose.material.icons.outlined.Newspaper
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Schedule
@@ -342,7 +343,15 @@ fun ChatScreen(vm: ChatViewModel) {
                     val conversation = vm.current
                     if (conversation == null || conversation.messages.isEmpty()) {
                         Welcome(vm.userName) { suggestion ->
-                            if (suggestion.opensDecision) open(Page.Decision) else vm.send(suggestion.text, mentions = suggestion.mentions)
+                            when {
+                                suggestion.opensDecision -> open(Page.Decision)
+                                // Clone first; with a cloned voice, try it in speech mode.
+                                suggestion.opensVoice -> if (vm.voices.cloned.isEmpty()) open(Page.AddVoice) else {
+                                    speechMode = true; imageMode = false; videoMode = false
+                                    draft = "Hello! This is my own voice, made by Blablador."
+                                }
+                                else -> vm.send(suggestion.text, mentions = suggestion.mentions)
+                            }
                         }
                     } else {
                         MessageList(conversation, vm, speaker, onContinueVideo = { name ->
@@ -447,7 +456,8 @@ private fun HistoryDrawer(vm: ChatViewModel, onPick: () -> Unit) {
 }
 
 /** An example on the empty chat: sent with its @mention, or opening the Decide screen. */
-private class Suggestion(val icon: ImageVector, val text: String, val mentions: List<de.fz_juelich.blablador.data.Mention> = emptyList(), val opensDecision: Boolean = false)
+private class Suggestion(val icon: ImageVector, val text: String, val mentions: List<de.fz_juelich.blablador.data.Mention> = emptyList(),
+                         val opensDecision: Boolean = false, val opensVoice: Boolean = false)
 
 private fun tool(value: String) = de.fz_juelich.blablador.data.Mentions.tools.filter { it.value == value }
 
@@ -462,6 +472,7 @@ private val allSuggestions = listOf(
     Suggestion(Icons.Outlined.Functions, "Solve x³ − 6x² + 11x − 6 = 0 and show the steps", tool("python")),
     Suggestion(Icons.Outlined.FindInPage, "Read fz-juelich.de and tell me what's new there", tool("web")),
     Suggestion(Icons.Outlined.Lightbulb, "Explain quantum computing in simple terms"),
+    Suggestion(Icons.Outlined.RecordVoiceOver, "Speak in my own voice: clone it in a few seconds", opensVoice = true),
 )
 
 @Composable
@@ -744,6 +755,8 @@ private fun Composer(
                     }
                     PanelAction.Files -> pdfs.launch(arrayOf("application/pdf", "image/*") + DataFiles.MIME_TYPES)
                     PanelAction.ScanText -> scanChoice = true
+                    PanelAction.CloneVoice -> onNavigate(Page.AddVoice)
+                    PanelAction.Voices -> onNavigate(Page.Voices)
                     PanelAction.Decide -> onNavigate(Page.Decision)
                     PanelAction.Knowledge -> onNavigate(Page.Knowledge())
                     PanelAction.NewKnowledge -> naming = true

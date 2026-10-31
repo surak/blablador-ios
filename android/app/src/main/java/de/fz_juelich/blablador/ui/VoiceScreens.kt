@@ -127,6 +127,8 @@ fun SpeechModeChip(vm: ChatViewModel, onCloneVoice: () -> Unit, onClose: () -> U
                     onClick = { menu = false; onCloneVoice() })
             }
         }
+        if (library.cloned.isEmpty()) Text("Clone yours", color = Brand.violet, style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.clip(CircleShape).background(Color.White).clickable(onClick = onCloneVoice).padding(horizontal = 8.dp, vertical = 2.dp))
         Icon(Icons.Filled.Close, "Leave speech mode", Modifier.size(14.dp).clickable(onClick = onClose), tint = Color.White)
     }
 }

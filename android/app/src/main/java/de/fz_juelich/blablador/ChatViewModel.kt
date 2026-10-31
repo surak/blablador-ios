@@ -558,6 +558,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val usePython = pythonEnabled || "python" in mentioned
         val useDevice = deviceToolsEnabled || "device" in mentioned
         val useImages = imageToolsEnabled || "image" in mentioned
+        val useSpeech = voices.toolsEnabled || "speech" in mentioned
 
         val now = Date()
         var system = systemPrompt
@@ -567,7 +568,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         if (useImages) {
             system += " You can create images with generate_image and modify the latest image in the chat with edit_image. Never describe an image as created unless the tool succeeded."
         }
-        if (voices.toolsEnabled) {
+        if (useSpeech) {
             system += " You can speak aloud with generate_speech when the user asks you to say, read or voice something. Never claim you spoke unless the tool succeeded."
         }
         if (useDevice) system += " " + DeviceTools.SYSTEM_PROMPT
@@ -594,7 +595,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             if (useWeb) { add(Tools.webSearch); add(Tools.imageSearch); add(Tools.readPage) }
             if (usePython) add(Tools.runPython)
             if (useImages) { add(Tools.generateImage); add(Tools.editImage) }
-            if (voices.toolsEnabled) add(Tools.generateSpeech)
+            if (useSpeech) add(Tools.generateSpeech)
             if (memory.enabled) { add(Tools.remember); add(Tools.forget) }
             add(Tools.searchChats); add(Tools.suggestSkill); add(PlanTools.tool); add(ScheduledTask.tool)
             if (useDevice) addAll(DeviceTools.definitions)

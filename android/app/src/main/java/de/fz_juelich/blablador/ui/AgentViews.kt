@@ -32,6 +32,7 @@ import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.Event
 import androidx.compose.material.icons.outlined.Extension
+import androidx.compose.material.icons.outlined.GraphicEq
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.ManageSearch
 import androidx.compose.material.icons.outlined.Psychology
@@ -107,6 +108,7 @@ fun mentionIcon(mention: Mention): ImageVector = when (mention.kind) {
         "chats" -> Icons.Outlined.ManageSearch
         "memory" -> Icons.Outlined.Psychology
         "image" -> Icons.Outlined.Brush
+        "speech" -> Icons.Outlined.GraphicEq
         "schedule" -> Icons.Outlined.Schedule
         else -> Icons.Outlined.Checklist
     }
