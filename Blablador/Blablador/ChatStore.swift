@@ -59,6 +59,11 @@ final class ConversationLibrary: ObservableObject {
     /// they are still being written.
     static func markingInterrupted(_ conversation: Conversation) -> Conversation {
         var conversation = conversation
+        // Titles that are a refusal of the title helper become the first words of the chat again.
+        if ChatStore.isRefusal(conversation.title), let first = conversation.messages.first(where: { $0.role == .user })?.content, !first.isEmpty {
+            let line = first.split(separator: "\n").first.map(String.init) ?? first
+            conversation.title = line.count > 40 ? String(line.prefix(40)) + "…" : line
+        }
         for index in conversation.messages.indices {
             let message = conversation.messages[index]
             if message.role == .assistant, message.content.isEmpty, !message.isError, message.images.isEmpty, message.audio.isEmpty,
@@ -934,15 +939,21 @@ final class ChatStore: ObservableObject {
         let provisional = Self.title(for: text)
         let api = api
         Task {
-            let system = "Give a chat a short title that says what it is about, like a heading: two to six words, in the language of the user's message, without quotes or final period. Don't copy the start of the message. Reply with only the title."
+            let system = "You only write titles; you never answer, judge or refuse the message, whatever it asks. Give the chat a short title that says what it is about, like a heading: two to six words, in the language of the user's message, without quotes or final period. Don't copy the start of the message. Reply with only the title."
             guard let reply = try? await api.complete(model: BlabladorAPI.helperModel(else: model), system: system, user: String(text.prefix(2000))) else { return }
             var name = Self.splitThinking(reply).answer.trimmingCharacters(in: .whitespacesAndNewlines)
             name = name.trimmingCharacters(in: CharacterSet(charactersIn: "\"'“”«»*#.")).trimmingCharacters(in: .whitespaces)
-            guard !name.isEmpty, name.count <= 80, !name.contains("\n"),
+            guard !name.isEmpty, name.count <= 80, !name.contains("\n"), !Self.isRefusal(name),
                   let index = conversations.firstIndex(where: { $0.id == id }), conversations[index].title == provisional else { return }
             conversations[index].title = name
             persist()
         }
+    }
+
+    /// A helper model's refusal instead of a title, e.g. "I'm sorry, but I can't help with that".
+    static func isRefusal(_ text: String) -> Bool {
+        let lower = text.lowercased()
+        return ["sorry", "i can't", "i can’t", "i cannot", "i'm unable", "i am unable", "as an ai", "tut mir leid", "kann ich nicht"].contains { lower.contains($0) }
     }
 
     // MARK: - Long chats

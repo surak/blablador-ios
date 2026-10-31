@@ -43,6 +43,7 @@
 		9B2A76A6E3E0A1B200000207 /* RichContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000206 /* RichContent.swift */; };
 		9B2A76A6E3E0A1B200000209 /* PythonRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000208 /* PythonRunner.swift */; };
 		9B2A76A6E3E0A1B20000020B /* Recall.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B20000020A /* Recall.swift */; };
+		9B2A76A6E3E0A1B20000045B /* WhatsNew.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B20000045A /* WhatsNew.swift */; };
 		9B2A76A6E3E0A1B20000040B /* Permissions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B20000040A /* Permissions.swift */; };
 		9B2A76A6E3E0A1B20000041B /* Planning.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B20000041A /* Planning.swift */; };
 		9B2A76A6E3E0A1B20000042B /* DeviceTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B20000042A /* DeviceTools.swift */; };
@@ -118,6 +119,7 @@
 		9B2A76A6E3E0A1B200000206 /* RichContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RichContent.swift; sourceTree = "<group>"; };
 		9B2A76A6E3E0A1B200000208 /* PythonRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PythonRunner.swift; sourceTree = "<group>"; };
 		9B2A76A6E3E0A1B20000020A /* Recall.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Recall.swift; sourceTree = "<group>"; };
+		9B2A76A6E3E0A1B20000045A /* WhatsNew.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhatsNew.swift; sourceTree = "<group>"; };
 		9B2A76A6E3E0A1B20000040A /* Permissions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Permissions.swift; sourceTree = "<group>"; };
 		9B2A76A6E3E0A1B20000041A /* Planning.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Planning.swift; sourceTree = "<group>"; };
 		9B2A76A6E3E0A1B20000042A /* DeviceTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceTools.swift; sourceTree = "<group>"; };
@@ -195,6 +197,7 @@
 				9B2A76A6E3E0A1B200000206 /* RichContent.swift */,
 				9B2A76A6E3E0A1B200000208 /* PythonRunner.swift */,
 				9B2A76A6E3E0A1B20000020A /* Recall.swift */,
+				9B2A76A6E3E0A1B20000045A /* WhatsNew.swift */,
 				9B2A76A6E3E0A1B20000040A /* Permissions.swift */,
 				9B2A76A6E3E0A1B20000041A /* Planning.swift */,
 				9B2A76A6E3E0A1B20000042A /* DeviceTools.swift */,
@@ -341,6 +344,7 @@
 				9B2A76A6E3E0A1B200000207 /* RichContent.swift in Sources */,
 				9B2A76A6E3E0A1B200000209 /* PythonRunner.swift in Sources */,
 				9B2A76A6E3E0A1B20000020B /* Recall.swift in Sources */,
+				9B2A76A6E3E0A1B20000045B /* WhatsNew.swift in Sources */,
 				9B2A76A6E3E0A1B20000040B /* Permissions.swift in Sources */,
 				9B2A76A6E3E0A1B20000041B /* Planning.swift in Sources */,
 				9B2A76A6E3E0A1B20000042B /* DeviceTools.swift in Sources */,

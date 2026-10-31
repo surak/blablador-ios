@@ -15,6 +15,22 @@ final class RenderPreview: XCTestCase {
                 try? png.write(to: URL(fileURLWithPath: dir).appendingPathComponent(name + ".png"))
             }
         }
+        let release = WhatsNew.releases[0]
+        save(VStack(alignment: .leading, spacing: 22) {
+            Text("What's new in Blablador \(release.version)").font(.system(size: 28, weight: .semibold)).foregroundStyle(Theme.gradient)
+            ForEach(release.items) { item in
+                HStack(alignment: .top, spacing: 14) {
+                    ToolIcon(name: item.icon, size: 26).font(.title2).foregroundStyle(Theme.gradient).frame(width: 34)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(item.title).font(.headline)
+                        Text(item.text).font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        if item.tryIt != nil { Label("Try it", systemImage: "arrow.right.circle.fill").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.gradient) }
+                    }
+                }
+            }
+            Spacer()
+            Text("Continue").font(.body.weight(.semibold)).frame(maxWidth: .infinity, minHeight: 48).foregroundStyle(.white).background(Theme.gradient, in: RoundedRectangle(cornerRadius: 14))
+        }.padding(24), "whatsnew", size: CGSize(width: 420, height: 760))
         let store = ChatStore()
         let panel = ToolsPanelContent(imageMode: .constant(false), videoMode: .constant(true), speechMode: .constant(false)) { _ in }
             .environmentObject(store)

@@ -29,6 +29,9 @@ struct ChatView: View {
     @State private var dropTargeted = false
     @State private var showSettings = false
     @State private var showDecision = false
+    @State private var whatsNew: (version: String, items: [WhatsNewItem])?
+    @State private var showWhatsNew = false
+    @State private var whatsNewDestination: WhatsNewDestination?
     @ObservedObject private var knowledge = KnowledgeLibrary.shared
     @State private var showKnowledge = false
     @State private var openedKnowledge: UUID?
@@ -147,6 +150,33 @@ struct ChatView: View {
     private var chat: some View {
         chatContent
             .sheet(isPresented: $showDecision) { DecisionView().environmentObject(store) }
+            .sheet(isPresented: $showWhatsNew, onDismiss: WhatsNew.markSeen) {
+                if let whatsNew {
+                    WhatsNewView(version: whatsNew.version, items: whatsNew.items, onTry: tryWhatsNew) { showWhatsNew = false }
+#if os(macOS)
+                        .frame(width: 460, height: 640)
+#endif
+                }
+            }
+            .sheet(item: $whatsNewDestination) { destination in
+                NavigationStack {
+                    Group {
+                        if destination.id == "tasks" { TasksView() } else { PermissionsView() }
+                    }
+                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { whatsNewDestination = nil } } }
+                }
+#if os(macOS)
+                .frame(minWidth: 480, minHeight: 520)
+#endif
+            }
+            .onAppear {
+                guard !showWhatsNew, let unseen = WhatsNew.unseen(hasChats: !store.conversations.isEmpty) else { return }
+                whatsNew = unseen
+                Task {
+                    try? await Task.sleep(for: .milliseconds(600))
+                    showWhatsNew = true
+                }
+            }
     }
 
     private var chatContent: some View {
@@ -366,6 +396,24 @@ struct ChatView: View {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
 #endif
         withAnimation(.spring(duration: 0.3)) { showHistory = false }
+    }
+
+    private func tryWhatsNew(_ tryIt: WhatsNewItem.TryIt) {
+        showWhatsNew = false
+        WhatsNew.markSeen()
+        Task {
+            try? await Task.sleep(for: .milliseconds(450))
+            switch tryIt {
+            case let .prompt(text, mention):
+                store.newChat()
+                draft = text
+                mentions = MentionCatalog.tools.filter { $0.value == mention }
+                inputFocused = true
+            case .panel: NotificationCenter.default.post(name: WhatsNew.openPanel, object: nil)
+            case .permissions: whatsNewDestination = WhatsNewDestination(id: "permissions")
+            case .tasks: whatsNewDestination = WhatsNewDestination(id: "tasks")
+            }
+        }
     }
 
     private func send() {
@@ -749,6 +797,7 @@ private struct ComposerView: View {
 
     var body: some View {
         field
+        .onReceive(NotificationCenter.default.publisher(for: WhatsNew.openPanel)) { _ in showPanel = true }
         .sheet(isPresented: $showPanel, onDismiss: runPendingAction) {
             ToolsPanel(imageMode: $imageMode, videoMode: $videoMode, speechMode: $speechMode) { action in
                 pendingAction = action

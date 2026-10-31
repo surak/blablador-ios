@@ -104,4 +104,9 @@ final class AgentFeatureTests: XCTestCase {
     func testNotificationTextHasNoMarkdown() {
         XCTAssertEqual(Notifier.plain("## News\n⏰ Reminder: **Call Maria** about `JUWELS` [1]"), "News\n⏰ Reminder: Call Maria about JUWELS")
     }
+
+    func testRefusalsAreNotTitles() {
+        XCTAssertTrue(ChatStore.isRefusal("I'm sorry, but I can't help with that"))
+        XCTAssertFalse(ChatStore.isRefusal("News from Forschungszentrum Jülich"))
+    }
 }
