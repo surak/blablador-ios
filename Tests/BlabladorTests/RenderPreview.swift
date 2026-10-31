@@ -31,6 +31,26 @@ final class RenderPreview: XCTestCase {
             Spacer()
             Text("Continue").font(.body.weight(.semibold)).frame(maxWidth: .infinity, minHeight: 48).foregroundStyle(.white).background(Theme.gradient, in: RoundedRectangle(cornerRadius: 14))
         }.padding(24), "whatsnew", size: CGSize(width: 420, height: 760))
+        let sample = """
+        # What's new at Forschungszentrum Jülich
+        *fz-juelich.de, as of 31 October 2026*
+
+        ## This week's news
+
+        ### Fast but accurate: a new speed record for quantum gates
+        Researchers from Jülich, Aachen and Cologne performed a single-qubit operation in just **6.8 nanoseconds** with **more than 99.98 % accuracy**. Published in *Nature Communications*. [27][29][30]
+
+        ### Jülich at European Hydrogen Week
+        Jülich presented itself at the hydrogen trade fair in Brussels (26–28 October). [1]
+
+        > Hettwer received the 2026 KlarText Prize for her article on brain development.
+
+        ---
+
+        - First point
+        - Second point [2]
+        """
+        save(MarkdownText(text: sample).padding(), "markdown", size: CGSize(width: 620, height: 700))
         let store = ChatStore()
         let panel = ToolsPanelContent(imageMode: .constant(false), videoMode: .constant(true), speechMode: .constant(false)) { _ in }
             .environmentObject(store)

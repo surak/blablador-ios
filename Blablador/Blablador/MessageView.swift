@@ -626,9 +626,11 @@ struct MarkdownText: View {
             ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                 switch block {
                 case let .text(body):
-                    // One Text per block so a selection can span lines.
-                    Text(attributed(body))
-                        .scaledFont(.body)
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(Array(Self.parts(body).enumerated()), id: \.offset) { _, part in
+                            partView(part)
+                        }
+                    }
                 case let .code(language, body):
                     CodeBlock(language: language, code: body)
                 case let .math(body):
@@ -688,16 +690,81 @@ struct MarkdownText: View {
             .gridColumnAlignment(alignment)
     }
 
-    private static func headingFont(_ style: Font.TextStyle, scale: CGFloat) -> Font {
+    /// A piece of a text block: a heading, a paragraph (or list), a quote or a rule.
+    enum Part: Equatable {
+        case heading(level: Int, text: String)
+        case paragraph([String])
+        case quote([String])
+        case rule
+    }
+
+    /// Splits text into headings, paragraphs and quotes at blank lines, headings and rules.
+    static func parts(_ body: String) -> [Part] {
+        var parts: [Part] = []
+        var lines: [String] = []
+        var quoting = false
+        func flush() {
+            if !lines.isEmpty { parts.append(quoting ? .quote(lines) : .paragraph(lines)) }
+            lines = []
+        }
+        for raw in body.components(separatedBy: "\n") {
+            let trimmed = raw.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty {
+                flush()
+            } else if let heading = trimmed.range(of: #"^#{1,6}\s+"#, options: .regularExpression) {
+                flush()
+                parts.append(.heading(level: trimmed[heading].filter { $0 == "#" }.count, text: String(trimmed[heading.upperBound...])))
+            } else if trimmed.range(of: #"^([-*_])(\s*\1){2,}$"#, options: .regularExpression) != nil {
+                flush()
+                parts.append(.rule)
+            } else if trimmed.hasPrefix(">") {
+                if !quoting { flush() }
+                quoting = true
+                lines.append(String(trimmed.dropFirst()).trimmingCharacters(in: .whitespaces))
+            } else {
+                if quoting { flush() }
+                quoting = false
+                lines.append(raw)
+            }
+        }
+        flush()
+        return parts
+    }
+
+    @ViewBuilder
+    private func partView(_ part: Part) -> some View {
+        switch part {
+        case let .heading(level, text):
+            Text(inline(text))
+                .font(Self.headingFont(level: level, scale: textScale))
+                .padding(.top, level <= 2 ? 10 : 6)
+                .accessibilityAddTraits(.isHeader)
+        case let .paragraph(lines):
+            Text(attributed(lines))
+                .scaledFont(.body)
+                .lineSpacing(3)
+        case let .quote(lines):
+            Text(attributed(lines))
+                .scaledFont(.body)
+                .lineSpacing(3)
+                .foregroundStyle(.secondary)
+                .padding(.leading, 12)
+                .overlay(alignment: .leading) { Capsule().fill(Theme.gradient).frame(width: 3) }
+        case .rule:
+            Divider().padding(.vertical, 6)
+        }
+    }
+
+    private static func headingFont(level: Int, scale: CGFloat) -> Font {
 #if os(macOS)
-        .system(size: (style == .title3 ? 15 : 13) * scale, weight: .bold)
+        let size: CGFloat = level == 1 ? 21 : level == 2 ? 18 : level == 3 ? 15.5 : 14
+        return .system(size: size * scale, weight: level <= 2 ? .bold : .semibold)
 #else
-        .system(style, weight: .bold)
+        return .system(level == 1 ? .title2 : level == 2 ? .title3 : .headline, weight: level <= 2 ? .bold : .semibold)
 #endif
     }
 
-    private func attributed(_ body: String) -> AttributedString {
-        let lines = body.components(separatedBy: "\n").filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+    private func attributed(_ lines: [String]) -> AttributedString {
         var result = AttributedString()
         for (index, raw) in lines.enumerated() {
             if index > 0 { result += AttributedString("\n") }
@@ -708,12 +775,6 @@ struct MarkdownText: View {
 
     private func line(_ raw: String) -> AttributedString {
         let trimmed = raw.trimmingCharacters(in: .whitespaces)
-        if let heading = trimmed.range(of: #"^#{1,6}\s+"#, options: .regularExpression) {
-            let level = trimmed[heading].filter { $0 == "#" }.count
-            var text = inline(String(trimmed[heading.upperBound...]))
-            text.font = Self.headingFont(level <= 2 ? .title3 : .headline, scale: textScale)
-            return text
-        }
         if let bullet = trimmed.range(of: #"^([-*+]|\d+\.)\s+"#, options: .regularExpression) {
             let marker = trimmed[bullet].trimmingCharacters(in: .whitespaces)
             let indent = String(repeating: "    ", count: raw.prefix { $0 == " " }.count / 2)
@@ -726,7 +787,22 @@ struct MarkdownText: View {
 
     private func inline(_ string: String) -> AttributedString {
         let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        return (try? AttributedString(markdown: string, options: options)) ?? AttributedString(string)
+        var text = (try? AttributedString(markdown: string, options: options)) ?? AttributedString(string)
+        // Source numbers like [3] or [3][7] become small raised marks, so they don't break up the sentence.
+        let plain = String(text.characters)
+        guard let regex = try? NSRegularExpression(pattern: #"\s?(\[\d{1,3}\])+"#) else { return text }
+        for match in regex.matches(in: plain, range: NSRange(plain.startIndex..., in: plain)).reversed() {
+            guard let range = Range(match.range, in: plain) else { continue }
+            let start = text.characters.index(text.startIndex, offsetBy: plain.distance(from: plain.startIndex, to: range.lowerBound))
+            let end = text.characters.index(start, offsetBy: plain.distance(from: range.lowerBound, to: range.upperBound))
+            let marks = plain[range].trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "][", with: ",")
+            var replacement = AttributedString(marks)
+            replacement.font = .system(size: 10 * textScale, weight: .medium)
+            replacement.foregroundColor = .secondary
+            replacement.baselineOffset = 5
+            text.replaceSubrange(start..<end, with: replacement)
+        }
+        return text
     }
 }
 
