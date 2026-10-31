@@ -118,7 +118,7 @@ enum GoogleDrive {
             "path": ["type": "string", "description": "Path as returned by drive_search, relative to the Drive."]
         ], required: ["path"]),
         function("drive_save", "Save a document into the user's Google Drive; it syncs up by itself. Google Docs can't be changed in place: save a new file (Word keeps formatting and opens in Google Docs). The user is asked first.", [
-            "path": ["type": "string", "description": "Path relative to the Drive, e.g. \"Reports/Summary.docx\". The extension sets the format: .docx, .md, .txt or .csv."],
+            "path": ["type": "string", "description": "Path relative to the Drive, e.g. \"Reports/Summary.docx\". The extension sets the format: .docx (Word), .xlsx (Excel, from Markdown tables), .pptx (PowerPoint, one slide per heading), .md, .txt or .csv."],
             "content": ["type": "string", "description": "The document in Markdown (for .docx and .md), or plain text/CSV."]
         ], required: ["path", "content"])
     ]
@@ -233,7 +233,15 @@ enum GoogleDrive {
         guard let url = resolve(path), url.pathExtension.count > 0 else { throw DriveError.outside }
         guard !FileManager.default.fileExists(atPath: url.path) else { throw DriveError.exists(url.lastPathComponent) }
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let data = url.pathExtension.lowercased() == "docx" ? DocumentExport.docx(markdown: content) : Data(content.utf8)
+        let data: Data
+        switch url.pathExtension.lowercased() {
+        case "docx": data = DocumentExport.docx(markdown: content)
+        case "pptx": data = DocumentExport.pptx(markdown: content)
+        case "xlsx":
+            guard let workbook = DocumentExport.xlsx(markdown: content) else { throw DriveError.unreadable("The content has no table for a spreadsheet") }
+            data = workbook
+        default: data = Data(content.utf8)
+        }
         try data.write(to: url)
         return "Saved \(relative(url)) to Google Drive; it syncs up by itself. In Google Docs, File → Save as Google Docs makes it a native document."
     }

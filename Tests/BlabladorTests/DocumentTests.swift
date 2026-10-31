@@ -55,4 +55,36 @@ final class DocumentTests: XCTestCase {
     func testCRC() {
         XCTAssertEqual(Zip.crc32(Data("123456789".utf8)), 0xCBF4_3926)
     }
+
+    func testExcelAndPowerPoint() throws {
+        let markdown = """
+        # Flights in October
+        Summary of **5,000 flights**.
+
+        | Airline | Flights | On time |
+        |---|---|---|
+        | Lufthansa | 1,234 | 87 % |
+        | Eurowings | 980.5 | 91% |
+
+        ## Findings
+        - Delays peak on Fridays
+        - Morning flights are most punctual
+
+        ## Next steps
+        1. Ask for November data
+        """
+        XCTAssertEqual(DocumentExport.tables(markdown).first?[1], ["Lufthansa", "1,234", "87 %"])
+        XCTAssertEqual(DocumentExport.number("1,234"), 1234)
+        XCTAssertEqual(DocumentExport.number("87 %"), 0.87)
+        XCTAssertNil(DocumentExport.number("Lufthansa"))
+        XCTAssertNil(DocumentExport.xlsx(markdown: "No tables here."))
+        let slides = DocumentExport.slides(markdown)
+        XCTAssertEqual(slides.map(\.title), ["Flights in October", "Findings", "Next steps"])
+        XCTAssertEqual(slides[1].bullets, ["Delays peak on Fridays", "Morning flights are most punctual"])
+        if let dir = ProcessInfo.processInfo.environment["RENDER_DIR"] {
+            try DocumentExport.xlsx(markdown: markdown)!.write(to: URL(fileURLWithPath: dir).appendingPathComponent("sample.xlsx"))
+            try DocumentExport.pptx(markdown: markdown).write(to: URL(fileURLWithPath: dir).appendingPathComponent("sample.pptx"))
+            try DocumentExport.docx(markdown: markdown).write(to: URL(fileURLWithPath: dir).appendingPathComponent("sample.docx"))
+        }
+    }
 }

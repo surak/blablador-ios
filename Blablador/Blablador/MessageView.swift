@@ -60,7 +60,11 @@ struct MessageView: View {
     @State private var copied = false
     @State private var selectingText = false
     @State private var editing = false
-    @State private var exportingWord = false
+    @State private var exportFile: OfficeFile?
+
+    private func export(_ kind: OfficeFile.Kind) {
+        exportFile = OfficeFile(kind: kind, markdown: message.content)
+    }
 
     private func copyForDocs() {
         DocumentExport.copyFormatted(message.content)
@@ -252,8 +256,18 @@ struct MessageView: View {
                     Button { copyForDocs() } label: {
                         Label("Copy for Google Docs or Word", systemImage: "doc.on.clipboard")
                     }
-                    Button { exportingWord = true } label: {
-                        Label("Save as Word…", systemImage: "doc.richtext")
+                    Section("Save as a file") {
+                        Button { export(.docx) } label: {
+                            Label("Word document…", systemImage: "doc.richtext")
+                        }
+                        if !DocumentExport.tables(message.content).isEmpty {
+                            Button { export(.xlsx) } label: {
+                                Label("Excel spreadsheet…", systemImage: "tablecells")
+                            }
+                        }
+                        Button { export(.pptx) } label: {
+                            Label("PowerPoint slides…", systemImage: "rectangle.on.rectangle")
+                        }
                     }
                 } label: {
                     Image(systemName: "doc.richtext")
@@ -263,10 +277,10 @@ struct MessageView: View {
                 .menuIndicator(.hidden)
                 .fixedSize()
                 .accessibilityLabel("Copy for Google Docs")
-                .help("Copy with formatting, to paste into Google Docs or Word; or save as Word")
-                .fileExporter(isPresented: $exportingWord, document: WordFile(markdown: message.content),
-                              contentType: UTType(filenameExtension: "docx") ?? .data,
-                              defaultFilename: DocumentExport.fileName(for: message.content)) { _ in }
+                .help("Copy with formatting, to paste into Google Docs or Word; or save as Word, Excel or PowerPoint")
+                .fileExporter(isPresented: Binding(get: { exportFile != nil }, set: { if !$0 { exportFile = nil } }),
+                              document: exportFile, contentType: exportFile?.contentType ?? .data,
+                              defaultFilename: DocumentExport.fileName(for: message.content)) { _ in exportFile = nil }
             } else {
                 #if os(iOS)
                 Button {
