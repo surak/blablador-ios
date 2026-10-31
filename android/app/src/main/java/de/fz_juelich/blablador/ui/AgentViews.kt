@@ -21,6 +21,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.LibraryBooks
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.shadow
 import androidx.compose.material.icons.outlined.AutoFixHigh
 import androidx.compose.material.icons.outlined.Brush
 import androidx.compose.material.icons.outlined.Checklist
@@ -61,6 +65,36 @@ import de.fz_juelich.blablador.data.PlanItem
 import de.fz_juelich.blablador.data.RemoteModel
 import de.fz_juelich.blablador.data.StepState
 import de.fz_juelich.blablador.data.Trace
+
+/**
+ * The icon for scheduled tasks: the Blablador avatar with a small clock at the top right whose glow fades in and
+ * out (1.6 s each way). Nothing moves or scales.
+ */
+@Composable
+fun ScheduleIcon(size: androidx.compose.ui.unit.Dp = 22.dp) {
+    val glow by androidx.compose.animation.core.rememberInfiniteTransition(label = "schedule").animateFloat(
+        initialValue = 0.55f, targetValue = 1f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+            androidx.compose.animation.core.tween(1600, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+            androidx.compose.animation.core.RepeatMode.Reverse),
+        label = "glow",
+    )
+    androidx.compose.foundation.layout.Box(Modifier.size(size)) {
+        androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(de.fz_juelich.blablador.R.drawable.avatar), "Scheduled task", Modifier.size(size))
+        Icon(Icons.Filled.Schedule, null, tint = Brand.violet,
+            modifier = Modifier.align(Alignment.TopEnd).size(size * 0.5f)
+                .shadow((size * 0.25f) * glow, CircleShape, ambientColor = Brand.violet, spotColor = Brand.violet)
+                .background(MaterialTheme.colorScheme.surface, CircleShape)
+                .alpha(glow))
+    }
+}
+
+/** A mention's icon; the schedule tool shows [ScheduleIcon]. */
+@Composable
+fun MentionIcon(mention: Mention, size: androidx.compose.ui.unit.Dp, tint: Color) {
+    if (mention.kind == Mention.Kind.tool && mention.value == "schedule") ScheduleIcon(size)
+    else Icon(mentionIcon(mention), null, Modifier.size(size), tint = tint)
+}
 
 fun mentionIcon(mention: Mention): ImageVector = when (mention.kind) {
     Mention.Kind.skill -> Icons.Outlined.AutoFixHigh
@@ -181,7 +215,7 @@ fun MentionChips(mentions: List<Mention>, onRemove: ((Mention) -> Unit)? = null)
             val color = if (onRemove != null) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
             Row(modifier.padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                Icon(mentionIcon(mention), null, Modifier.size(14.dp), tint = color)
+                MentionIcon(mention, 14.dp, color)
                 Text("@" + mention.name, style = MaterialTheme.typography.labelMedium, color = color, maxLines = 1)
                 if (onRemove != null) Icon(Icons.Filled.Close, "Remove ${mention.name}", Modifier.size(14.dp).clickable { onRemove(mention) }, tint = color)
             }
@@ -200,7 +234,7 @@ fun MentionSuggestions(query: String, all: List<Mention>, onPick: (Mention) -> U
         matches.take(30).forEach { mention ->
             Row(Modifier.fillMaxWidth().clickable { onPick(mention) }.padding(horizontal = 12.dp, vertical = 9.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Icon(mentionIcon(mention), null, Modifier.size(18.dp), tint = Brand.violet)
+                MentionIcon(mention, 18.dp, Brand.violet)
                 Text(mention.name, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(Mentions.kindName(mention.kind), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }

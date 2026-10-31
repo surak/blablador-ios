@@ -259,6 +259,7 @@ fun ChatScreen(vm: ChatViewModel) {
     vm.toolApproval?.let { approval ->
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { vm.answerApproval(ChatViewModel.ApprovalChoice.Deny) },
+            icon = if (approval.kind == "schedule") ({ ScheduleIcon(32.dp) }) else null,
             title = { Text(approval.title) },
             text = {
                 Text(approval.detail, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,

@@ -76,6 +76,7 @@ private fun RuleRow(vm: ChatViewModel, id: String, name: String, detail: String)
     var menu by remember { mutableStateOf(false) }
     val rule = vm.permissions.rule(id)
     Row(Modifier.fillMaxWidth().clickable { menu = true }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (id == "schedule") { ScheduleIcon(); Spacer(Modifier.width(10.dp)) }
         Column(Modifier.weight(1f)) {
             Text(name)
             Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
@@ -110,6 +111,8 @@ fun TasksScreen(vm: ChatViewModel, onClose: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                 vm.tasks.tasks.forEach { task ->
                     Row(Modifier.fillMaxWidth().clickable { editing = task }.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        ScheduleIcon()
+                        Spacer(Modifier.width(10.dp))
                         Column(Modifier.weight(1f)) {
                             Text(task.title, color = if (task.enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(if (task.enabled) task.scheduleText else "Off", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

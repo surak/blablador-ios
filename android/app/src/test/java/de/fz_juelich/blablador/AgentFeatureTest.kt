@@ -113,4 +113,18 @@ class AgentFeatureTest {
         assertEquals(Incoming.OpenChat("abc"), Incoming.parse("blablador://chat?id=abc"))
         assertEquals(Incoming.Tasks, Incoming.parse("blablador://tasks"))
     }
+
+    @Test
+    fun emptyRepliesFromAnEarlierRunAreMarkedInterrupted() {
+        val chat = de.fz_juelich.blablador.data.Conversation(title = "t", model = "m", messages = listOf(
+            ChatMessage(role = de.fz_juelich.blablador.data.ChatRole.user, content = "Hi"),
+            ChatMessage(role = de.fz_juelich.blablador.data.ChatRole.assistant, content = ""),
+            ChatMessage(role = de.fz_juelich.blablador.data.ChatRole.assistant, content = "", images = listOf("a.jpg")),
+            ChatMessage(role = de.fz_juelich.blablador.data.ChatRole.assistant, content = "Done")))
+        val marked = markingInterrupted(chat).messages
+        assertEquals("The reply was interrupted. Tap Regenerate to try again.", marked[1].content)
+        assertTrue(marked[1].isError)
+        assertEquals("", marked[2].content)
+        assertFalse(marked[0].isError || marked[3].isError)
+    }
 }

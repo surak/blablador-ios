@@ -38,7 +38,6 @@ import androidx.compose.material.icons.outlined.Movie
 import androidx.compose.material.icons.outlined.PanTool
 import androidx.compose.material.icons.outlined.Photo
 import androidx.compose.material.icons.outlined.Psychology
-import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -132,8 +131,8 @@ fun ToolsPanel(
                 LinkRow("Skills", if (vm.skills.skills.isEmpty()) "Instructions for tasks you repeat" else "${vm.skills.skills.size} skills · use one with @",
                     Icons.Outlined.AutoFixHigh) { onAction(PanelAction.Skills) }
                 Divider()
-                LinkRow("Scheduled tasks", if (vm.tasks.tasks.isEmpty()) "Run prompts at set times" else "${vm.tasks.tasks.count { it.enabled }} active",
-                    Icons.Outlined.Schedule) { onAction(PanelAction.Tasks) }
+                PanelRow("Scheduled tasks", if (vm.tasks.tasks.isEmpty()) "Run prompts at set times" else "${vm.tasks.tasks.count { it.enabled }} active",
+                    leading = { ScheduleIcon() }, onClick = { onAction(PanelAction.Tasks) }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null) }
                 Divider()
                 LinkRow("Permissions", "What the assistant may do without asking", Icons.Outlined.PanTool) { onAction(PanelAction.Permissions) }
                 Divider()
@@ -180,10 +179,14 @@ private fun Tile(title: String, icon: ImageVector, modifier: Modifier, selected:
 }
 
 @Composable
-private fun PanelRow(title: String, detail: String, icon: ImageVector, onClick: (() -> Unit)? = null, trailing: @Composable () -> Unit) {
+private fun PanelRow(title: String, detail: String, icon: ImageVector, onClick: (() -> Unit)? = null, trailing: @Composable () -> Unit) =
+    PanelRow(title, detail, leading = { Icon(icon, null, Modifier.size(22.dp), tint = Brand.violet) }, onClick = onClick, trailing = trailing)
+
+@Composable
+private fun PanelRow(title: String, detail: String, leading: @Composable () -> Unit, onClick: (() -> Unit)? = null, trailing: @Composable () -> Unit) {
     Row(Modifier.fillMaxWidth().then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier).padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Icon(icon, null, Modifier.size(22.dp), tint = Brand.violet)
+        leading()
         Column(Modifier.weight(1f)) {
             Text(title)
             Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)

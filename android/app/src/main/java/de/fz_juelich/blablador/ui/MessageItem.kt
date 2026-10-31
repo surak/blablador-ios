@@ -164,7 +164,7 @@ fun MessageItem(
                 message.audio.forEach { speechClip(it) }
                 message.videos.forEach { name -> VideoClip(videoFile(name)) { onContinueVideo(name) } }
                 when {
-                    message.content.isEmpty() -> if (message.status == null && message.images.isEmpty() && message.audio.isEmpty() && message.videos.isEmpty() && message.reasoning.isEmpty()) TypingIndicator()
+                    message.content.isEmpty() -> if (message.status == null && message.images.isEmpty() && message.audio.isEmpty() && message.videos.isEmpty() && message.reasoning.isEmpty() && isLast && isStreaming) TypingIndicator()
                     message.isError -> SelectionContainer {
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             Icon(Icons.Outlined.WarningAmber, null, tint = MaterialTheme.colorScheme.error)

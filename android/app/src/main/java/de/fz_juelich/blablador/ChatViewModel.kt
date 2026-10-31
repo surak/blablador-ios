@@ -100,7 +100,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val permissions = ToolPermissions(application, { mcp.servers.toList() }, { mcp.save(it) })
     val tasks = TaskStore(application)
 
-    val conversations = mutableStateListOf<Conversation>().apply { addAll(conversationStore.load()) }
+    val conversations = mutableStateListOf<Conversation>().apply { addAll(conversationStore.load().map(::markingInterrupted)) }
     var currentId by mutableStateOf<String?>(null)
         private set
     var models by mutableStateOf<List<RemoteModel>>(emptyList())
@@ -1212,6 +1212,16 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         return if (first.length > 40) first.take(40) + "…" else first
     }
 }
+
+/**
+ * Replies that were still empty when the app quit or was stopped (nothing is running after a restart) become an
+ * error the user can regenerate, instead of looking like they are still being written.
+ */
+fun markingInterrupted(conversation: Conversation): Conversation = conversation.copy(messages = conversation.messages.map { m ->
+    if (m.role == ChatRole.assistant && m.content.isEmpty() && !m.isError && m.images.isEmpty() && m.audio.isEmpty() && m.videos.isEmpty())
+        m.copy(content = "The reply was interrupted. Tap Regenerate to try again.", isError = true)
+    else m
+})
 
 /** The system prompt (with the summary of older messages, if any) and the messages after the summary. */
 internal fun chatHistory(system: String, conversation: Conversation, wireMessage: (ChatMessage) -> JsonObject): List<JsonObject> {
