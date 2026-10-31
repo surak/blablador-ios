@@ -93,4 +93,24 @@ final class MemoryCutoffTests: XCTestCase {
         XCTAssertTrue(prompt.contains("2. Nodes move to JUPITER in January"))
         XCTAssertFalse(prompt.contains("3. Prefers short answers"))
     }
+
+    func testLinkedMemoriesFollowSharedEntities() {
+        let unrelated = EmbeddingTests.axis(1)
+        var memories = (1...40).map { Memory(text: "Filler \($0)", vector: Embeddings.data(unrelated), entities: []) }
+        memories[0] = Memory(text: "Maria leads the benchmark project", vector: Embeddings.data(EmbeddingTests.axis(0)), entities: ["maria", "benchmark project"])
+        memories[1] = Memory(text: "The benchmark project uses vLLM", vector: Embeddings.data(unrelated), entities: ["benchmark project", "vllm"])
+        memories[2] = Memory(text: "Tom fixed a leak in vLLM", vector: Embeddings.data(unrelated), entities: ["tom", "vllm"])
+        memories[3] = Memory(text: "Tom likes tea", vector: Embeddings.data(unrelated), entities: ["tom"])
+        let prompt = MemoryStore.systemPrompt(memories: memories, question: "Maria", questionVector: EmbeddingTests.axis(0))
+        XCTAssertTrue(prompt.contains("2. The benchmark project uses vLLM"))
+        XCTAssertTrue(prompt.contains("3. Tom fixed a leak in vLLM"))
+        XCTAssertFalse(prompt.contains("4. Tom likes tea"), "three steps away")
+        XCTAssertEqual(MemoryStore.normalized([" Maria ", "maria", "the user", ""]), ["maria"])
+    }
+
+    func testLearnedFactsAcceptStringsAndObjects() {
+        let facts = MemoryStore.jsonArray(#"Sure: ["Plain fact", {"fact": "Tom fixed vLLM", "about": ["Tom", "vLLM"]}]"#, as: [MemoryStore.LearnedFact].self)
+        XCTAssertEqual(facts?.map(\.fact), ["Plain fact", "Tom fixed vLLM"])
+        XCTAssertEqual(facts?[1].about, ["Tom", "vLLM"])
+    }
 }

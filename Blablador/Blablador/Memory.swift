@@ -10,6 +10,9 @@ struct Memory: Identifiable, Codable, Hashable {
     /// The chat the memory was saved in.
     var sourceChat: UUID?
     var sourceTitle: String?
+    /// People, projects, places, tools and other named things the fact is about, lowercased. Memories sharing
+    /// one are linked, so recall can follow a chain of facts. nil until the helper model has named them.
+    var entities: [String]?
 }
 
 /// Long-term memory: facts saved on the device with the remember tool and sent with every chat.
@@ -38,10 +41,10 @@ final class MemoryStore: ObservableObject {
 
     /// Saves a fact; returns false for an empty text or one already remembered.
     @discardableResult
-    func add(_ text: String, from chat: Conversation? = nil) -> Bool {
+    func add(_ text: String, from chat: Conversation? = nil, entities: [String]? = nil) -> Bool {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !memories.contains(where: { $0.text.caseInsensitiveCompare(text) == .orderedSame }) else { return false }
-        memories.append(Memory(text: text, sourceChat: chat?.id, sourceTitle: chat?.title))
+        memories.append(Memory(text: text, sourceChat: chat?.id, sourceTitle: chat?.title, entities: entities.map(Self.normalized)))
         if memories.count > Self.maxMemories { memories.removeFirst(memories.count - Self.maxMemories) }
         persist()
         return true
@@ -51,6 +54,7 @@ final class MemoryStore: ObservableObject {
         guard let index = memories.firstIndex(where: { $0.id == memory.id }) else { return }
         memories[index].text = text
         memories[index].vector = nil
+        memories[index].entities = nil
         persist()
     }
 
@@ -85,6 +89,7 @@ final class MemoryStore: ObservableObject {
     func systemPrompt(for question: String, api: BlabladorAPI) async -> String {
         guard memories.count > Self.alwaysSent, Embeddings.available else { return systemPrompt(for: question) }
         await embedMissing(api: api)
+        await linkMissing(api: api)
         let questionVector = try? await Embeddings.embed([question], api: api).first
         return Self.systemPrompt(memories: memories, question: question, questionVector: questionVector)
     }
@@ -124,7 +129,8 @@ final class MemoryStore: ObservableObject {
                 .filter { $0.score > 0 }
                 .sorted { $0.score > $1.score }
                 .prefix(20).map(\.offset)
-            let keep = Set(relevant).union(numbered.suffix(10).map(\.offset))
+            let linked = Self.linked(to: relevant, in: memories, limit: 10)
+            let keep = Set(relevant).union(linked).union(numbered.suffix(10).map(\.offset))
             shown = numbered.filter { keep.contains($0.offset) }
         }
         prompt += " What you remember:\n" + shown.map { "\($0.offset + 1). \($0.element.text)" }.joined(separator: "\n")
@@ -132,6 +138,81 @@ final class MemoryStore: ObservableObject {
             prompt += "\n(\(numbered.count - shown.count) other memories aren't shown because they don't seem related to this message.)"
         }
         return prompt
+    }
+
+    /// Memories reached from `start` (indices) through shared entities, up to two steps away, nearest first.
+    /// "Maria leads the benchmark project" leads to "The benchmark project uses vLLM" and on to "Tom fixed vLLM".
+    nonisolated static func linked(to start: [Int], in memories: [Memory], limit: Int) -> [Int] {
+        var byEntity: [String: [Int]] = [:]
+        for (index, memory) in memories.enumerated() {
+            for entity in memory.entities ?? [] { byEntity[entity, default: []].append(index) }
+        }
+        // Entities on most memories (usually the user) link everything to everything; leave them out.
+        let common = max(5, memories.count / 10)
+        var seen = Set(start), frontier = start, found: [Int] = []
+        for _ in 0..<2 {
+            var next: [Int] = []
+            for index in frontier {
+                for entity in memories[index].entities ?? [] {
+                    guard let others = byEntity[entity], others.count <= common else { continue }
+                    for other in others.reversed() where seen.insert(other).inserted { next.append(other) }
+                }
+            }
+            found += next
+            frontier = next
+        }
+        return Array(found.prefix(limit))
+    }
+
+    nonisolated static func normalized(_ entities: [String]) -> [String] {
+        var seen = Set<String>()
+        return entities
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            .filter { !$0.isEmpty && !["user", "the user", "assistant"].contains($0) && seen.insert($0).inserted }
+    }
+
+    /// Names the entities of memories saved without them (remember tool, edits, before 3.2), 40 at a time.
+    func linkMissing(api: BlabladorAPI) async {
+        let missing = Array(memories.filter { $0.entities == nil }.prefix(40))
+        guard !missing.isEmpty else { return }
+        let system = """
+        For each numbered fact, list the people, organisations, projects, places, products, tools and other specific \
+        things it is about, by their usual name (not "the user"). Reply with only a JSON array with one array of \
+        strings per fact, in order, e.g. [["Maria", "JUWELS"], []].
+        """
+        let list = missing.enumerated().map { "\($0.offset + 1). \($0.element.text)" }.joined(separator: "\n")
+        guard let text = try? await api.complete(model: BlabladorAPI.helperModel(else: BlabladorAPI.defaultModel), system: system, user: list),
+              let lists = Self.jsonArray(ChatStore.splitThinking(text).answer, as: [[String]].self),
+              lists.count == missing.count else { return }
+        for (memory, entities) in zip(missing, lists) {
+            if let index = memories.firstIndex(where: { $0.id == memory.id && $0.text == memory.text }) {
+                memories[index].entities = Self.normalized(entities)
+            }
+        }
+        persist()
+    }
+
+    /// The outermost JSON array in a model's answer.
+    nonisolated static func jsonArray<T: Decodable>(_ answer: String, as type: T.Type) -> T? {
+        guard let start = answer.firstIndex(of: "["), let end = answer.lastIndex(of: "]"), start < end else { return nil }
+        return try? JSONDecoder().decode(type, from: Data(answer[start...end].utf8))
+    }
+
+    /// A fact from `learn`: a plain string or {"fact": …, "about": […]}.
+    struct LearnedFact: Decodable {
+        var fact: String
+        var about: [String]?
+
+        init(from decoder: Decoder) throws {
+            if let text = try? decoder.singleValueContainer().decode(String.self) {
+                fact = text
+            } else {
+                let object = try decoder.container(keyedBy: CodingKeys.self)
+                fact = try object.decode(String.self, forKey: .fact)
+                about = try object.decodeIfPresent([String].self, forKey: .about)
+            }
+        }
+        private enum CodingKeys: String, CodingKey { case fact, about }
     }
 
     /// Asks the model which facts from one exchange are worth keeping and saves them; returns the new ones.
@@ -146,20 +227,26 @@ final class MemoryStore: ObservableObject {
         back to. Skip general knowledge, small talk, one-off requests and anything already remembered. Never include \
         passwords, keys or other secrets. Write each fact as one short sentence that makes sense on its own, naming \
         things explicitly and giving dates where they matter (today is \(today)). Reply with only a JSON array of \
-        strings, or [] if there is nothing worth keeping.
+        objects like {"fact": "Maria leads the JUWELS benchmark project.", "about": ["Maria", "JUWELS benchmark \
+        project"]}, where "about" lists the people, projects, places, tools and other specific things the fact is \
+        about, by their usual name and spelled the same way as in earlier facts; or [] if there is nothing worth keeping.
         """
         let known = memories.suffix(60).map(\.text)
         if !known.isEmpty { system += "\n\nAlready remembered:\n" + known.map { "- " + $0 }.joined(separator: "\n") }
+        let names = Set(memories.flatMap { $0.entities ?? [] }).sorted().prefix(150)
+        if !names.isEmpty { system += "\n\nNames used so far: " + names.joined(separator: ", ") }
         var exchange = "User: " + question.prefix(8000)
         if let reply { exchange += "\n\nAssistant: " + reply.prefix(8000) }
         else { system += "\n\nOnly use what the user wrote." }
 
         let text = try await api.complete(model: BlabladorAPI.helperModel(else: model), system: system, user: exchange)
         let answer = ChatStore.splitThinking(text).answer
-        guard let start = answer.firstIndex(of: "["), let end = answer.lastIndex(of: "]"), start < end,
-              let facts = try? JSONDecoder().decode([String].self, from: Data(answer[start...end].utf8)) else { return [] }
-        let added = facts.prefix(5).filter { add($0, from: chat) }.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-        if !added.isEmpty { await embedMissing(api: api) }
+        guard let facts = Self.jsonArray(answer, as: [LearnedFact].self) else { return [] }
+        let added = facts.prefix(5).filter { add($0.fact, from: chat, entities: $0.about) }.map { $0.fact.trimmingCharacters(in: .whitespacesAndNewlines) }
+        if !added.isEmpty {
+            await embedMissing(api: api)
+            await linkMissing(api: api)
+        }
         return added
     }
 

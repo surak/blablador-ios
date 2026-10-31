@@ -88,6 +88,7 @@ struct AddMemoryIntent: AppIntent {
         guard MemoryStore.shared.add(fact) else { return .result(dialog: "Blablador already remembers that.") }
         if let key = KeychainHelper.read("apiKey"), !key.isEmpty {
             await MemoryStore.shared.embedMissing(api: BlabladorAPI(apiKey: key))
+            await MemoryStore.shared.linkMissing(api: BlabladorAPI(apiKey: key))
         }
         return .result(dialog: "Blablador will remember that.")
     }

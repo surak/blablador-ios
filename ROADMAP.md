@@ -42,3 +42,12 @@ Blablador API. Ordered from least to most work. Each step ships in both apps.
 - Then interactive steps (click, fill, scroll) with screenshots read by a vision model, every action approved by the
   user like `run_command` in agent mode. Confined to http(s); no saved passwords.
 - Hardest part: reliable element targeting and keeping the user in control; start read-only.
+
+## 6. Knowledge graphs (tried October 2026)
+
+- Memories carry `entities` and recall follows shared ones up to two steps, so chains of facts come back together
+  (done, on the device and encrypted).
+- cognee (github.com/topoteretes/cognee) works with Blablador as a separate MCP server (`alias-fast` for the graph,
+  `hosted_vllm/alias-qwen3-4b-embeddings` with 2560 dimensions, `HUGGINGFACE_TOKENIZER=Qwen/Qwen3-Embedding-4B`) and
+  answered a three-step question correctly, but needs 6–15 s and several LLM calls per text it stores, keeps its graph
+  unencrypted on the server and can't run on a phone. Worth hosting only for shared team or project knowledge bases.

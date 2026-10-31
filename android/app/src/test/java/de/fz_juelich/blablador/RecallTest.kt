@@ -63,6 +63,28 @@ class EmbeddingTest {
         assertTrue(prompt.contains("2. Nodes move to JUPITER in January"))
         assertFalse(prompt.contains("3. Prefers short answers"))
     }
+
+    @Test
+    fun linkedMemoriesFollowSharedEntities() {
+        val unrelated = Embeddings.encode(axis(1))
+        val memories = (1..40).map { Memory(text = "Filler $it", vector = unrelated, entities = emptyList()) }.toMutableList()
+        memories[0] = Memory(text = "Maria leads the benchmark project", vector = Embeddings.encode(axis(0)), entities = listOf("maria", "benchmark project"))
+        memories[1] = Memory(text = "The benchmark project uses vLLM", vector = unrelated, entities = listOf("benchmark project", "vllm"))
+        memories[2] = Memory(text = "Tom fixed a leak in vLLM", vector = unrelated, entities = listOf("tom", "vllm"))
+        memories[3] = Memory(text = "Tom likes tea", vector = unrelated, entities = listOf("tom"))
+        val prompt = MemoryStore.systemPrompt(memories, "Maria", axis(0))
+        assertTrue(prompt.contains("2. The benchmark project uses vLLM"))
+        assertTrue(prompt.contains("3. Tom fixed a leak in vLLM"))
+        assertFalse("three steps away", prompt.contains("4. Tom likes tea"))
+        assertEquals(listOf("maria"), MemoryStore.normalized(listOf(" Maria ", "maria", "the user", "")))
+    }
+
+    @Test
+    fun learnedFactsAcceptStringsAndObjects() {
+        val facts = MemoryStore.learnedFacts("""Sure: ["Plain fact", {"fact": "Tom fixed vLLM", "about": ["Tom", "vLLM"]}]""")
+        assertEquals(listOf("Plain fact", "Tom fixed vLLM"), facts.map { it.fact })
+        assertEquals(listOf("Tom", "vLLM"), facts[1].about)
+    }
 }
 
 /** search_chats by meaning, against a fake embeddings and rerank server. */
