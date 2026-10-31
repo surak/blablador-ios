@@ -532,6 +532,13 @@ struct Suggestion: Hashable {
     var opensDecision = false
     var opensVoiceClone = false
 
+    /// `count` examples at random, always with the voice one, which people otherwise don't find.
+    @MainActor
+    static func pick(_ count: Int) -> [Suggestion] {
+        let voice = all.filter(\.opensVoiceClone)
+        return (voice + all.filter { !$0.opensVoiceClone }.shuffled().prefix(count - voice.count)).shuffled()
+    }
+
     private static func tool(_ value: String) -> [Mention] { MentionCatalog.tools.filter { $0.value == value } }
 
     @MainActor
@@ -554,7 +561,7 @@ private struct WelcomeView: View {
     let onPick: (Suggestion) -> Void
 
     /// Four examples, picked when the empty chat appears.
-    @State private var suggestions = Array(Suggestion.all.shuffled().prefix(4))
+    @State private var suggestions = Suggestion.pick(6)
 
     @EnvironmentObject private var store: ChatStore
 
@@ -582,26 +589,28 @@ private struct WelcomeView: View {
                 }
                 .font(.system(size: 36, weight: .semibold))
 
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
-                        ForEach(suggestions, id: \.text) { suggestion in
-                            Button { onPick(suggestion) } label: {
-                                VStack(alignment: .leading) {
-                                    Text(suggestion.text)
-                                        .scaledFont(.subheadline)
-                                        .multilineTextAlignment(.leading)
-                                        .foregroundStyle(.primary)
-                                    Spacer()
-                                    Image(systemName: suggestion.icon)
-                                        .padding(8)
-                                        .background(Theme.background, in: Circle())
-                                }
-                                .padding(14)
-                                .frame(width: 160, height: 160, alignment: .leading)
-                                .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18))
+                // Two or three columns of compact cards: icon beside the text, no empty space.
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 210), spacing: 10)], spacing: 10) {
+                    ForEach(suggestions, id: \.text) { suggestion in
+                        Button { onPick(suggestion) } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: suggestion.icon)
+                                    .foregroundStyle(Theme.gradient)
+                                    .frame(width: 34, height: 34)
+                                    .background(Theme.background, in: Circle())
+                                Text(suggestion.text)
+                                    .scaledFont(.subheadline)
+                                    .multilineTextAlignment(.leading)
+                                    .lineLimit(3)
+                                    .foregroundStyle(.primary)
+                                Spacer(minLength: 0)
                             }
-                            .buttonStyle(.plain)
+                            .padding(12)
+                            .frame(maxWidth: .infinity, minHeight: 74, alignment: .leading)
+                            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16))
+                            .contentShape(RoundedRectangle(cornerRadius: 16))
                         }
+                        .buttonStyle(.plain)
                     }
                 }
             }
