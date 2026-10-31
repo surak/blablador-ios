@@ -140,7 +140,7 @@ object DocumentExport {
         }
     }
 
-    private fun xml(text: String) = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    internal fun xml(text: String) = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
     private fun runs(text: String, size: Int? = null, bold: Boolean = false, mono: Boolean = false): String = spans(text).joinToString("") { span ->
         var properties = ""
@@ -192,6 +192,19 @@ object DocumentExport {
         val out = ByteArrayOutputStream()
         ZipOutputStream(out).use { zip ->
             for ((name, text) in listOf("[Content_Types].xml" to contentTypes, "_rels/.rels" to rels, "word/document.xml" to documentXml(markdown))) {
+                zip.putNextEntry(ZipEntry(name))
+                zip.write(text.toByteArray())
+                zip.closeEntry()
+            }
+        }
+        return out.toByteArray()
+    }
+
+    /** A ZIP of text files, as Office files are. */
+    internal fun zip(files: List<Pair<String, String>>): ByteArray {
+        val out = ByteArrayOutputStream()
+        ZipOutputStream(out).use { zip ->
+            for ((name, text) in files) {
                 zip.putNextEntry(ZipEntry(name))
                 zip.write(text.toByteArray())
                 zip.closeEntry()

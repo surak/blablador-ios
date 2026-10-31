@@ -63,4 +63,37 @@ class DocumentTest {
         val document = entries.getValue("word/document.xml")
         listOf("Report", "bold", "second", "Value").forEach { assertTrue(it, document.contains(it)) }
     }
+
+    @Test
+    fun excelAndPowerPoint() {
+        val markdown = """
+            # Flights in October
+            Summary of **5,000 flights**.
+
+            | Airline | Flights | On time |
+            |---|---|---|
+            | Lufthansa | 1,234 | 87 % |
+            | Eurowings | 980.5 | 91% |
+
+            ## Findings
+            - Delays peak on Fridays
+            - Morning flights are most punctual
+
+            ## Next steps
+            1. Ask for November data
+        """.trimIndent()
+        val office = de.fz_juelich.blablador.data.OfficeExport
+        assertEquals(listOf("Lufthansa", "1,234", "87 %"), office.tables(markdown).first()[1])
+        assertEquals(1234.0, office.number("1,234")!!, 0.0)
+        assertEquals(0.87, office.number("87 %")!!, 1e-9)
+        assertEquals(-3.0, office.number("−3")!!, 0.0)
+        assertNull(office.number("Lufthansa"))
+        assertNull(office.xlsx("No tables here."))
+        val slides = office.slides(markdown)
+        assertEquals(listOf("Flights in October", "Findings", "Next steps"), slides.map { it.first })
+        assertEquals(listOf("Delays peak on Fridays", "Morning flights are most punctual"), slides[1].second)
+        fun names(data: ByteArray) = ZipInputStream(data.inputStream()).use { zip -> generateSequence { zip.nextEntry?.name }.toSet() }
+        assertTrue(names(office.xlsx(markdown)!!).containsAll(listOf("xl/workbook.xml", "xl/styles.xml", "xl/worksheets/sheet1.xml")))
+        assertTrue(names(office.pptx(markdown)).containsAll(listOf("ppt/presentation.xml", "ppt/slides/slide3.xml", "ppt/theme/theme1.xml")))
+    }
 }

@@ -499,11 +499,17 @@ private fun DocumentButton(markdown: String, tint: androidx.compose.ui.graphics.
     var menu by remember { mutableStateOf(false) }
     var copied by remember { mutableStateOf(false) }
     LaunchedEffect(copied) { if (copied) { delay(1500); copied = false } }
-    val save = androidx.activity.compose.rememberLauncherForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/vnd.openxmlformats-officedocument.wordprocessingml.document")) { uri ->
+    @Composable
+    fun saver(mime: String, make: () -> ByteArray?) = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument(mime)) { uri ->
         uri ?: return@rememberLauncherForActivityResult
-        runCatching { context.contentResolver.openOutputStream(uri)?.use { it.write(de.fz_juelich.blablador.data.DocumentExport.docx(markdown)) } }
+        runCatching { make()?.let { data -> context.contentResolver.openOutputStream(uri)?.use { it.write(data) } } }
     }
+    val saveWord = saver("application/vnd.openxmlformats-officedocument.wordprocessingml.document") { de.fz_juelich.blablador.data.DocumentExport.docx(markdown) }
+    val saveExcel = saver("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") { de.fz_juelich.blablador.data.OfficeExport.xlsx(markdown) }
+    val saveSlides = saver("application/vnd.openxmlformats-officedocument.presentationml.presentation") { de.fz_juelich.blablador.data.OfficeExport.pptx(markdown) }
+    val name = de.fz_juelich.blablador.data.DocumentExport.fileName(markdown)
+    val hasTables = remember(markdown) { de.fz_juelich.blablador.data.OfficeExport.tables(markdown).isNotEmpty() }
     fun copy() {
         val clip = android.content.ClipData.newHtmlText("Blablador", de.fz_juelich.blablador.data.DocumentExport.plain(markdown),
             de.fz_juelich.blablador.data.DocumentExport.html(markdown))
@@ -517,9 +523,12 @@ private fun DocumentButton(markdown: String, tint: androidx.compose.ui.graphics.
         }
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
             DropdownMenuItem(text = { Text("Copy for Google Docs or Word") }, onClick = { menu = false; copy() })
-            DropdownMenuItem(text = { Text("Save as Word…") }, onClick = {
-                menu = false; save.launch(de.fz_juelich.blablador.data.DocumentExport.fileName(markdown) + ".docx")
-            })
+            HorizontalDivider()
+            Text("Save as a file", style = MaterialTheme.typography.labelMedium, color = tint,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+            DropdownMenuItem(text = { Text("Word document…") }, onClick = { menu = false; saveWord.launch("$name.docx") })
+            if (hasTables) DropdownMenuItem(text = { Text("Excel spreadsheet…") }, onClick = { menu = false; saveExcel.launch("$name.xlsx") })
+            DropdownMenuItem(text = { Text("PowerPoint slides…") }, onClick = { menu = false; saveSlides.launch("$name.pptx") })
         }
     }
 }
