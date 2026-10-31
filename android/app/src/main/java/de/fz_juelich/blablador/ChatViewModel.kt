@@ -574,6 +574,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         if (useDevice) system += " " + DeviceTools.SYSTEM_PROMPT
         system += " " + PlanTools.SYSTEM_PROMPT
         system += " Use schedule_task when the user wants something done later or regularly."
+        system += " Google Docs, Sheets and Slides links shared by link can be read with read_page."
         skills.systemPrompt?.let { system += "\n\n" + it }
         system += "\n\n" + SkillLibrary.SYSTEM_PROMPT + " Use search_chats when the user refers to an earlier conversation."
         Mentions.prompt(mentions, skills::skill, mcp::server)?.let { system += "\n\n" + it }
@@ -592,7 +593,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         updateChat(id) { it.copy(model = model, messages = it.messages + reply) }
 
         val tools = permissions.filter(buildList {
-            if (useWeb) { add(Tools.webSearch); add(Tools.imageSearch); add(Tools.readPage) }
+            if (useWeb) { add(Tools.webSearch); add(Tools.imageSearch) }
+            // Links the user pastes (Google Docs among them) can be read even with web search off.
+            add(Tools.readPage)
             if (usePython) add(Tools.runPython)
             if (useImages) { add(Tools.generateImage); add(Tools.editImage) }
             if (useSpeech) add(Tools.generateSpeech)

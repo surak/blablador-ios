@@ -380,6 +380,7 @@ private fun Actions(message: ChatMessage, isLast: Boolean, speaking: Boolean, on
                 .putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(audio)).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             context.startActivity(Intent.createChooser(intent, null))
         }) { Icon(Icons.Outlined.Share, if (audio.isEmpty()) "Share" else "Share audio", Modifier.size(18.dp), tint = tint) }
+        if (audio.isEmpty()) DocumentButton(message.content, tint)
         if (isLast) Box {
             // Tap regenerates; long-press picks another model.
             Box(Modifier.size(48.dp).clip(CircleShape).combinedClickable(onClick = { onRegenerate(null) }, onLongClick = { choosingModel = true },
@@ -487,5 +488,38 @@ private fun VideoClip(file: File, onContinue: () -> Unit) {
             context.startActivity(android.content.Intent.createChooser(intent, null))
         }) { Text("Share") }
     }
+    }
+}
+
+/** Tap copies the answer as formatted text for Google Docs or Word; long-press also offers saving a Word file. */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun DocumentButton(markdown: String, tint: androidx.compose.ui.graphics.Color) {
+    val context = LocalContext.current
+    var menu by remember { mutableStateOf(false) }
+    var copied by remember { mutableStateOf(false) }
+    LaunchedEffect(copied) { if (copied) { delay(1500); copied = false } }
+    val save = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/vnd.openxmlformats-officedocument.wordprocessingml.document")) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        runCatching { context.contentResolver.openOutputStream(uri)?.use { it.write(de.fz_juelich.blablador.data.DocumentExport.docx(markdown)) } }
+    }
+    fun copy() {
+        val clip = android.content.ClipData.newHtmlText("Blablador", de.fz_juelich.blablador.data.DocumentExport.plain(markdown),
+            de.fz_juelich.blablador.data.DocumentExport.html(markdown))
+        context.getSystemService(android.content.ClipboardManager::class.java)?.setPrimaryClip(clip)
+        copied = true
+    }
+    Box {
+        Box(Modifier.size(48.dp).clip(CircleShape).combinedClickable(onClick = ::copy, onLongClick = { menu = true },
+            onClickLabel = "Copy for Google Docs or Word", onLongClickLabel = "More document options"), contentAlignment = Alignment.Center) {
+            Icon(if (copied) Icons.Outlined.Check else Icons.Outlined.Description, "Copy for Google Docs or Word", Modifier.size(18.dp), tint = tint)
+        }
+        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            DropdownMenuItem(text = { Text("Copy for Google Docs or Word") }, onClick = { menu = false; copy() })
+            DropdownMenuItem(text = { Text("Save as Word…") }, onClick = {
+                menu = false; save.launch(de.fz_juelich.blablador.data.DocumentExport.fileName(markdown) + ".docx")
+            })
+        }
     }
 }

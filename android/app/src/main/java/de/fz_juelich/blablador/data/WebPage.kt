@@ -33,6 +33,7 @@ object WebPage {
     }
 
     suspend fun read(address: String): Page = withContext(Dispatchers.IO) {
+        GoogleDocs.link(address.trim())?.let { return@withContext GoogleDocs.read(it, address.trim()) }
         var url = address.trim()
         if (url.startsWith("http://", ignoreCase = true)) url = "https://" + url.substring(7)
         if (!url.startsWith("https://", ignoreCase = true) || !isPublic(url)) throw PageException("Only public http(s) pages can be read.")
