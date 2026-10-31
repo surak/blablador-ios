@@ -60,6 +60,12 @@ import androidx.compose.material.icons.outlined.DocumentScanner
 import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Lightbulb
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.KeyboardArrowUp
+import androidx.compose.material.icons.outlined.ManageSearch
+import androidx.compose.material.icons.outlined.Psychology
+import androidx.compose.material.icons.outlined.TableChart
+import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.ShowChart
 import androidx.compose.material.icons.outlined.RecordVoiceOver
 import androidx.compose.material.icons.outlined.Newspaper
@@ -194,6 +200,8 @@ fun ChatScreen(vm: ChatViewModel) {
     val appContext = LocalContext.current
     var whatsNew by remember { mutableStateOf<Pair<String, List<de.fz_juelich.blablador.data.WhatsNewItem>>?>(null) }
     var panelRequests by remember { mutableIntStateOf(0) }
+    /** A + panel action started from an empty-chat example. */
+    var actionRequest by remember { mutableStateOf<PanelAction?>(null) }
     LaunchedEffect(Unit) {
         kotlinx.coroutines.delay(600)
         whatsNew = de.fz_juelich.blablador.data.WhatsNew.unseen(appContext, vm.conversations.isNotEmpty())
@@ -343,14 +351,19 @@ fun ChatScreen(vm: ChatViewModel) {
                     val conversation = vm.current
                     if (conversation == null || conversation.messages.isEmpty()) {
                         Welcome(vm.userName) { suggestion ->
-                            when {
-                                suggestion.opensDecision -> open(Page.Decision)
+                            fun fill(text: String) { draft = text; runCatching { focus.requestFocus() } }
+                            when (val action = suggestion.action) {
+                                SuggestionAction.Send -> vm.send(suggestion.text, mentions = suggestion.mentions)
+                                is SuggestionAction.Fill -> fill(action.text)
+                                is SuggestionAction.Panel -> { action.fill?.let { draft = it }; actionRequest = action.action }
+                                SuggestionAction.Decision -> open(Page.Decision)
                                 // Clone first; with a cloned voice, try it in speech mode.
-                                suggestion.opensVoice -> if (vm.voices.cloned.isEmpty()) open(Page.AddVoice) else {
+                                SuggestionAction.CloneVoice -> if (vm.voices.cloned.isEmpty()) open(Page.AddVoice) else {
                                     speechMode = true; imageMode = false; videoMode = false
-                                    draft = "Hello! This is my own voice, made by Blablador."
+                                    fill("Hello! This is my own voice, made by Blablador.")
                                 }
-                                else -> vm.send(suggestion.text, mentions = suggestion.mentions)
+                                is SuggestionAction.Video -> { videoMode = true; imageMode = false; speechMode = false; fill(action.prompt) }
+                                is SuggestionAction.Image -> { imageMode = true; videoMode = false; speechMode = false; fill(action.prompt) }
                             }
                         }
                     } else {
@@ -381,6 +394,8 @@ fun ChatScreen(vm: ChatViewModel) {
                     videoMode, { videoMode = it; if (it) { imageMode = false; speechMode = false } },
                     focus,
                     panelRequests = panelRequests,
+                    actionRequest = actionRequest,
+                    onActionHandled = { actionRequest = null },
                     onNavigate = ::open,
                 ) {
                     val text = draft
@@ -456,32 +471,65 @@ private fun HistoryDrawer(vm: ChatViewModel, onPick: () -> Unit) {
 }
 
 /** An example on the empty chat: sent with its @mention, or opening the Decide screen. */
+/** What tapping an empty-chat example does. */
+private sealed interface SuggestionAction {
+    /** Send the text right away (with its mentions). */
+    data object Send : SuggestionAction
+    /** Put text in the composer for the user to finish, e.g. by pasting a link. */
+    data class Fill(val text: String) : SuggestionAction
+    /** Open something from the + panel (files, scan text…), with optional text in the composer. */
+    data class Panel(val action: PanelAction, val fill: String?) : SuggestionAction
+    data object Decision : SuggestionAction
+    data object CloneVoice : SuggestionAction
+    data class Video(val prompt: String) : SuggestionAction
+    data class Image(val prompt: String) : SuggestionAction
+}
+
+/** An example on the empty chat. */
 private class Suggestion(val icon: ImageVector, val text: String, val mentions: List<de.fz_juelich.blablador.data.Mention> = emptyList(),
-                         val opensDecision: Boolean = false, val opensVoice: Boolean = false)
+                         val action: SuggestionAction = SuggestionAction.Send) {
+    /** Always among the examples: features people otherwise don't find. */
+    val isFeatured get() = action == SuggestionAction.CloneVoice || "Google Doc" in text
+}
 
 private fun tool(value: String) = de.fz_juelich.blablador.data.Mentions.tools.filter { it.value == value }
 
 private val allSuggestions = listOf(
+    Suggestion(Icons.Outlined.Description, "Summarise a Google Doc: paste its link", action = SuggestionAction.Fill("Summarise this Google Doc and list what needs doing: ")),
+    Suggestion(Icons.Outlined.RecordVoiceOver, "Speak in my own voice: clone it in a few seconds", action = SuggestionAction.CloneVoice),
     Suggestion(Icons.Outlined.ShowChart, "Plot the world population since 1950 and fit a trend line", tool("python")),
-    Suggestion(Icons.Outlined.Balance, "Help me make a decision, step by step", opensDecision = true),
+    Suggestion(Icons.Outlined.TableChart, "Analyse a spreadsheet and chart the trends", action = SuggestionAction.Panel(PanelAction.Files, "Analyse this file and make a chart of the main trends")),
+    Suggestion(Icons.Outlined.PictureAsPdf, "Ask questions about a PDF", action = SuggestionAction.Panel(PanelAction.Files, "What are the key points of this document?")),
+    Suggestion(Icons.Outlined.DocumentScanner, "Read the text in a photo of a page", action = SuggestionAction.Panel(PanelAction.ScanText, "Translate this into English")),
+    Suggestion(Icons.Outlined.Balance, "Help me make a decision, step by step", action = SuggestionAction.Decision),
     Suggestion(Icons.Outlined.Newspaper, "What's new in supercomputing this week?", tool("web")),
+    Suggestion(Icons.Outlined.FindInPage, "Read fz-juelich.de and tell me what's new there", tool("web")),
     Suggestion(Icons.Outlined.CalendarMonth, "What's on my calendar this week?", tool("device")),
     Suggestion(Icons.Outlined.Schedule, "Every weekday at 8, summarise the top AI news for me", tool("schedule")),
-    Suggestion(Icons.Outlined.Brush, "Draw a fox reading a book in a cosy library", tool("image")),
     Suggestion(Icons.Outlined.Checklist, "Plan a weekend trip to Jülich with a budget and a packing list", tool("plan")),
+    Suggestion(Icons.Outlined.Brush, "Draw a fox reading a book in a cosy library", action = SuggestionAction.Image("A fox reading a book in a cosy library, warm lamp light")),
+    Suggestion(Icons.Outlined.Movie, "Make a short video with sound", action = SuggestionAction.Video("A red panda sipping coffee in a café while rain falls outside")),
     Suggestion(Icons.Outlined.Functions, "Solve x³ − 6x² + 11x − 6 = 0 and show the steps", tool("python")),
-    Suggestion(Icons.Outlined.FindInPage, "Read fz-juelich.de and tell me what's new there", tool("web")),
+    Suggestion(Icons.Outlined.Psychology, "What do you remember about me?", tool("memory")),
+    Suggestion(Icons.Outlined.ManageSearch, "What did we talk about last week?", tool("chats")),
+    Suggestion(Icons.AutoMirrored.Outlined.LibraryBooks, "Answer from your own documents: make a knowledge base", action = SuggestionAction.Panel(PanelAction.NewKnowledge, null)),
     Suggestion(Icons.Outlined.Lightbulb, "Explain quantum computing in simple terms"),
-    Suggestion(Icons.Outlined.RecordVoiceOver, "Speak in my own voice: clone it in a few seconds", opensVoice = true),
 )
+
+/** [count] examples at random, with the featured ones. */
+private fun pickSuggestions(count: Int): List<Suggestion> {
+    val featured = allSuggestions.filter { it.isFeatured }
+    return (featured + allSuggestions.filter { !it.isFeatured }.shuffled().take(count - featured.size)).shuffled()
+}
 
 @Composable
 private fun Welcome(userName: String, onPick: (Suggestion) -> Unit) {
     val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
     val salutation = when (hour) { in 5..11 -> "Good morning"; in 12..17 -> "Good afternoon"; in 18..21 -> "Good evening"; else -> "Hello" }
-    // Four examples, picked when the empty chat appears.
-    // Six examples: the voice-cloning one always, the rest at random.
-    val suggestions = remember { (allSuggestions.filter { it.opensVoice } + allSuggestions.filter { !it.opensVoice }.shuffled().take(5)).shuffled() }
+    // Six examples, featured ones always; "More ideas" shows them all.
+    val picked = remember { pickSuggestions(6) }
+    var showAll by remember { mutableStateOf(false) }
+    val suggestions = if (showAll) allSuggestions else picked
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(28.dp)) {
         Spacer(Modifier.height(24.dp))
         Column {
@@ -511,6 +559,12 @@ private fun Welcome(userName: String, onPick: (Suggestion) -> Unit) {
                     }
                 }
             }
+        }
+        Row(Modifier.clickable { showAll = !showAll }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(if (showAll) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.AutoAwesome, null, Modifier.size(16.dp), tint = Brand.violet)
+            Spacer(Modifier.width(6.dp))
+            Text(if (showAll) "Fewer ideas" else "More ideas", fontWeight = FontWeight.SemiBold,
+                style = MaterialTheme.typography.labelLarge.copy(brush = Brand.gradient))
         }
     }
 }
@@ -566,6 +620,8 @@ private fun Composer(
     onVideoMode: (Boolean) -> Unit,
     focus: FocusRequester,
     panelRequests: Int = 0,
+    actionRequest: PanelAction? = null,
+    onActionHandled: () -> Unit = {},
     onNavigate: (Page) -> Unit,
     onSend: () -> Unit,
 ) {
@@ -736,6 +792,38 @@ private fun Composer(
             }
         }
     }
+    fun runAction(action: PanelAction) {
+            menu = false
+            when (action) {
+                PanelAction.Camera -> {
+                    val file = File(context.cacheDir, "camera").apply { mkdirs() }.let { File(it, "photo.jpg") }
+                    cameraUri = FileProvider.getUriForFile(context, context.packageName + ".files", file)
+                    camera.launch(cameraUri!!)
+                }
+                PanelAction.Photos -> photos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                PanelAction.Paste -> {
+                    // Images copied in other apps arrive as content URIs on the clipboard.
+                    val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
+                    val clip = clipboard?.primaryClip
+                    val uris = (0 until (clip?.itemCount ?: 0)).mapNotNull { clip?.getItemAt(it)?.uri }
+                        .filter { context.contentResolver.getType(it)?.startsWith("image/") == true }
+                    if (uris.isEmpty()) error = "The clipboard has no image. Copy an image first, then choose Paste."
+                    else uris.forEach { addPhoto(it) }
+                }
+                PanelAction.Files -> pdfs.launch(arrayOf("application/pdf", "image/*") + DataFiles.MIME_TYPES)
+                PanelAction.ScanText -> scanChoice = true
+                PanelAction.CloneVoice -> onNavigate(Page.AddVoice)
+                PanelAction.Voices -> onNavigate(Page.Voices)
+                PanelAction.Decide -> onNavigate(Page.Decision)
+                PanelAction.Knowledge -> onNavigate(Page.Knowledge())
+                PanelAction.NewKnowledge -> naming = true
+                PanelAction.Mcp -> onNavigate(Page.Mcp)
+                PanelAction.Skills -> onNavigate(Page.Skills)
+                PanelAction.Tasks -> onNavigate(Page.Tasks)
+                PanelAction.Permissions -> onNavigate(Page.Permissions)
+            }
+    }
+    LaunchedEffect(actionRequest) { actionRequest?.let { onActionHandled(); runAction(it) } }
     if (menu) androidx.compose.material3.ModalBottomSheet(onDismissRequest = { menu = false }) {
         ToolsPanel(vm, imageMode, videoMode, speechMode,
             onMode = { mode ->
@@ -746,37 +834,7 @@ private fun Composer(
                     else -> { onImageMode(false); onVideoMode(false); onSpeechMode(false) }
                 }
             },
-            onAction = { action ->
-                menu = false
-                when (action) {
-                    PanelAction.Camera -> {
-                        val file = File(context.cacheDir, "camera").apply { mkdirs() }.let { File(it, "photo.jpg") }
-                        cameraUri = FileProvider.getUriForFile(context, context.packageName + ".files", file)
-                        camera.launch(cameraUri!!)
-                    }
-                    PanelAction.Photos -> photos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                    PanelAction.Paste -> {
-                        // Images copied in other apps arrive as content URIs on the clipboard.
-                        val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
-                        val clip = clipboard?.primaryClip
-                        val uris = (0 until (clip?.itemCount ?: 0)).mapNotNull { clip?.getItemAt(it)?.uri }
-                            .filter { context.contentResolver.getType(it)?.startsWith("image/") == true }
-                        if (uris.isEmpty()) error = "The clipboard has no image. Copy an image first, then choose Paste."
-                        else uris.forEach { addPhoto(it) }
-                    }
-                    PanelAction.Files -> pdfs.launch(arrayOf("application/pdf", "image/*") + DataFiles.MIME_TYPES)
-                    PanelAction.ScanText -> scanChoice = true
-                    PanelAction.CloneVoice -> onNavigate(Page.AddVoice)
-                    PanelAction.Voices -> onNavigate(Page.Voices)
-                    PanelAction.Decide -> onNavigate(Page.Decision)
-                    PanelAction.Knowledge -> onNavigate(Page.Knowledge())
-                    PanelAction.NewKnowledge -> naming = true
-                    PanelAction.Mcp -> onNavigate(Page.Mcp)
-                    PanelAction.Skills -> onNavigate(Page.Skills)
-                    PanelAction.Tasks -> onNavigate(Page.Tasks)
-                    PanelAction.Permissions -> onNavigate(Page.Permissions)
-                }
-            })
+            onAction = ::runAction)
     }
     if (scanChoice) androidx.compose.material3.AlertDialog(
         onDismissRequest = { scanChoice = false },
