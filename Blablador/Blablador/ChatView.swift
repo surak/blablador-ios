@@ -28,6 +28,7 @@ struct ChatView: View {
     @State private var shareArrived = Date.distantPast
     @State private var dropTargeted = false
     @State private var showSettings = false
+    @State private var showDecision = false
     @ObservedObject private var knowledge = KnowledgeLibrary.shared
     @State private var showKnowledge = false
     @State private var openedKnowledge: UUID?
@@ -144,14 +145,23 @@ struct ChatView: View {
     }
 
     private var chat: some View {
+        chatContent
+            .sheet(isPresented: $showDecision) { DecisionView().environmentObject(store) }
+    }
+
+    private var chatContent: some View {
         VStack(spacing: 0) {
             UpdateBanner()
             if let conversation = store.current, !conversation.messages.isEmpty {
                 messageList(conversation)
             } else {
-                WelcomeView { prompt in
+                WelcomeView { suggestion in
                     inputFocused = false
-                    store.send(prompt)
+                    if suggestion.opensDecision {
+                        showDecision = true
+                    } else {
+                        store.send(suggestion.text, mentions: suggestion.mentions)
+                    }
                 }
             }
             if let approval = store.commandApproval {
@@ -457,15 +467,35 @@ private struct ModelMenu: View {
     }
 }
 
-private struct WelcomeView: View {
-    let onPick: (String) -> Void
+/// An example on the empty chat that shows something the app can do.
+struct Suggestion: Hashable {
+    let icon: String
+    let text: String
+    var mentions: [Mention] = []
+    var opensDecision = false
 
-    private let suggestions: [(icon: String, text: String)] = [
-        ("lightbulb", "Explain quantum computing in simple terms"),
-        ("pencil.and.outline", "Help me write an email to my team"),
-        ("chevron.left.forwardslash.chevron.right", "Write a Python script to rename files"),
-        ("globe.europe.africa", "Plan a weekend trip to Jülich")
+    private static func tool(_ value: String) -> [Mention] { MentionCatalog.tools.filter { $0.value == value } }
+
+    @MainActor
+    static let all: [Suggestion] = [
+        Suggestion(icon: "chart.xyaxis.line", text: "Plot the world population since 1950 and fit a trend line", mentions: tool("python")),
+        Suggestion(icon: "arrow.triangle.branch", text: "Help me make a decision, step by step", opensDecision: true),
+        Suggestion(icon: "newspaper", text: "What's new in supercomputing this week?", mentions: tool("web")),
+        Suggestion(icon: "calendar", text: "What's on my calendar this week?", mentions: tool("device")),
+        Suggestion(icon: "clock", text: "Every weekday at 8, summarise the top AI news for me", mentions: tool("schedule")),
+        Suggestion(icon: "paintbrush.pointed", text: "Draw a fox reading a book in a cosy library", mentions: tool("image")),
+        Suggestion(icon: "checklist", text: "Plan a weekend trip to Jülich with a budget and a packing list", mentions: tool("plan")),
+        Suggestion(icon: "function", text: "Solve x³ − 6x² + 11x − 6 = 0 and show the steps", mentions: tool("python")),
+        Suggestion(icon: "doc.text.magnifyingglass", text: "Read fz-juelich.de and tell me what's new there", mentions: tool("web")),
+        Suggestion(icon: "lightbulb", text: "Explain quantum computing in simple terms")
     ]
+}
+
+private struct WelcomeView: View {
+    let onPick: (Suggestion) -> Void
+
+    /// Four examples, picked when the empty chat appears.
+    @State private var suggestions = Array(Suggestion.all.shuffled().prefix(4))
 
     @EnvironmentObject private var store: ChatStore
 
@@ -496,7 +526,7 @@ private struct WelcomeView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {
                         ForEach(suggestions, id: \.text) { suggestion in
-                            Button { onPick(suggestion.text) } label: {
+                            Button { onPick(suggestion) } label: {
                                 VStack(alignment: .leading) {
                                     Text(suggestion.text)
                                         .scaledFont(.subheadline)
