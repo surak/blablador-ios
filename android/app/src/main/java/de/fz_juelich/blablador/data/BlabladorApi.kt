@@ -96,6 +96,8 @@ class BlabladorApi(private val apiKey: String) {
         data class Content(val text: String) : StreamEvent
         data class Reasoning(val text: String) : StreamEvent
         data class ToolCalls(val calls: List<ToolCall>) : StreamEvent
+        /** Tokens the request used, sent at the end when the server reports them. */
+        data class Usage(val prompt: Int, val completion: Int) : StreamEvent
     }
 
     data class ToolCall(var id: String = "", var name: String = "", var arguments: String = "") {
@@ -160,6 +162,8 @@ class BlabladorApi(private val apiKey: String) {
             put("messages", JsonArray(messages))
             put("stream", true)
             if (tools.isNotEmpty()) put("tools", JsonArray(tools))
+            // Blablador reports token counts at the end of the stream; other servers may reject the option.
+            if (endpoint.trim().trimEnd('/') == DEFAULT_ENDPOINT) put("stream_options", buildJsonObject { put("include_usage", true) })
         }
         val request = post("chat/completions", body).newBuilder().header("Accept", "text/event-stream").build()
         // Slow models can take minutes before the first token.
@@ -175,9 +179,11 @@ class BlabladorApi(private val apiKey: String) {
                 if (!line.startsWith("data:")) continue
                 val payload = line.removePrefix("data:").trim()
                 if (payload == "[DONE]") break
-                val delta = runCatching {
-                    json.parseToJsonElement(payload).jsonObject["choices"]?.jsonArray?.firstOrNull()?.jsonObject?.get("delta")?.jsonObject
-                }.getOrNull() ?: continue
+                val chunk = runCatching { json.parseToJsonElement(payload).jsonObject }.getOrNull() ?: continue
+                (chunk["usage"] as? JsonObject)?.let { usage ->
+                    emit(StreamEvent.Usage(usage["prompt_tokens"]?.jsonPrimitive?.intOrNull ?: 0, usage["completion_tokens"]?.jsonPrimitive?.intOrNull ?: 0))
+                }
+                val delta = runCatching { chunk["choices"]?.jsonArray?.firstOrNull()?.jsonObject?.get("delta")?.jsonObject }.getOrNull() ?: continue
                 // Thinking trace: vLLM and DeepSeek send reasoning_content, others reasoning.
                 (jsonString(delta["reasoning_content"]) ?: jsonString(delta["reasoning"]))?.takeIf { it.isNotEmpty() }
                     ?.let { emit(StreamEvent.Reasoning(it)) }

@@ -116,6 +116,8 @@ fun MessageItem(
     models: List<Pair<String, String>> = emptyList(),
     onEdit: (String) -> Unit = {},
     onShowVersion: (Int) -> Unit = {},
+    canRerun: (String) -> Boolean = { false },
+    onRerun: (String) -> Unit = {},
 ) {
     var editing by remember { mutableStateOf(false) }
     if (editing) EditMessageDialog(message.content, onDismiss = { editing = false }) { editing = false; onEdit(it) }
@@ -126,6 +128,7 @@ fun MessageItem(
                 message.images.forEach { ChatImage(imageFile(it), if (message.images.size == 1) 180 else 100, square = true) { onEditImage(it) } }
             }
             message.documents.forEach { DocumentChip(it) }
+            if (message.mentions.isNotEmpty()) MentionChips(message.mentions)
             if (message.content.isNotEmpty()) SelectionContainer {
                 Text(message.content, style = MaterialTheme.typography.bodyLarge,
                     modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceVariant)
@@ -154,6 +157,7 @@ fun MessageItem(
                         Text(status, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
+                if (message.plan.isNotEmpty()) PlanCard(message.plan)
                 if (message.reasoning.isNotEmpty()) Thinking(message.reasoning, isLast && isStreaming && message.content.isEmpty())
                 if (message.webImages.isNotEmpty()) WebImages(message.webImages)
                 message.images.forEach { ChatImage(imageFile(it), 420, square = false) { onEditImage(it) } }
@@ -180,6 +184,8 @@ fun MessageItem(
                     Actions(message, isLast, speaking, onSpeak, onRegenerate, models)
                     if (message.alternatives.isNotEmpty()) VersionSwitcher(message, enabled = !isStreaming, onShow = onShowVersion)
                 }
+                val trace = message.trace
+                if (trace != null && !(isLast && isStreaming)) TraceLine(trace, canRerun, onRerun)
             }
         }
     }

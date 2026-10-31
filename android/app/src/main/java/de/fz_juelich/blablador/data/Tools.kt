@@ -15,7 +15,7 @@ import okhttp3.Request
 
 /** Tools the chat model can call. */
 object Tools {
-    private fun function(name: String, description: String, properties: JsonObject, required: List<String>) = buildJsonObject {
+    internal fun function(name: String, description: String, properties: JsonObject, required: List<String>) = buildJsonObject {
         put("type", "function")
         put("function", buildJsonObject {
             put("name", name)
@@ -28,7 +28,7 @@ object Tools {
         })
     }
 
-    private fun stringProperty(description: String, options: List<String>? = null) = buildJsonObject {
+    internal fun stringProperty(description: String, options: List<String>? = null) = buildJsonObject {
         put("type", "string")
         put("description", description)
         if (options != null) put("enum", buildJsonArray { options.forEach { add(kotlinx.serialization.json.JsonPrimitive(it)) } })

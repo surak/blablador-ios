@@ -104,12 +104,17 @@ echo "sdk.dir=$ANDROID_HOME" > local.properties
 ```
 app/src/main/java/de/fz_juelich/blablador/
 ├── MainActivity.kt            # Entry point
-├── ChatViewModel.kt           # Conversations, settings, sending/streaming, tool loop
+├── ChatViewModel.kt           # Conversations, settings, replies per chat, tool loop, approvals, trace,
+│                              # scheduled task runs, notifications
 ├── data/
 │   ├── Models.kt              # ChatMessage, Conversation, RemoteModel, DocumentAttachment
 │   ├── BlabladorApi.kt        # /models, streaming /chat/completions, images, OCR, embeddings,
 │   │                          # rerank, speech, transcription, decisions
 │   ├── Tools.kt               # Tool definitions (web search, images, generate_speech)
+│   ├── Planning.kt            # update_plan, trace, @mentions, skills drafted after multi-step tasks
+│   ├── Permissions.kt         # Allow / Ask / Never per kind of tool (and per MCP server)
+│   ├── Tasks.kt               # Scheduled tasks (encrypted tasks.json), schedule_task, alarm, notifications
+│   ├── DeviceTools.kt         # Calendar (CalendarContract), contacts, location; no reminders on Android
 │   ├── Knowledge.kt           # Knowledge bases: chunking, embeddings, vector store, search, rerank
 │   ├── Voice.kt               # Voices, delivery settings, audio decoding/resampling, recorder, playback
 │   ├── Decision.kt            # Clef questions, examples, saved decisions and answers
@@ -123,6 +128,9 @@ app/src/main/java/de/fz_juelich/blablador/
     ├── KnowledgeScreen.kt     # Knowledge base list and documents
     ├── VoiceScreens.kt        # Speech clips, Expressions menu, voices, clone a voice
     ├── DecisionScreen.kt      # Clef decisions
+    ├── ToolsPanel.kt          # The + panel: attach, reply mode, tools, knowledge, connected tools, more
+    ├── AgentViews.kt          # Plan card, trace line and sheet, @mention chips and suggestions
+    ├── AgentScreens.kt        # Permissions and scheduled tasks
     ├── SettingsScreen.kt
     └── Theme.kt
 ```

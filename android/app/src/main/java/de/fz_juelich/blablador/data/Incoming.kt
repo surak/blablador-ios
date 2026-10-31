@@ -12,6 +12,10 @@ sealed interface Incoming {
     data class Share(val text: String, val files: List<File> = emptyList(), val focus: Boolean = true) : Incoming
     /** The "Add to memory" shortcut. */
     data object AddMemory : Incoming
+    /** blablador://chat?id=… from a notification. */
+    data class OpenChat(val id: String) : Incoming
+    /** blablador://tasks from a task's notification: run tasks that are due. */
+    data object Tasks : Incoming
 
     companion object {
         /** Parses a blablador:// link; null for anything else. */
@@ -26,6 +30,8 @@ sealed interface Incoming {
                 "ask" -> query["q"]?.takeIf { it.isNotBlank() }?.let(::Ask)
                 "new" -> Share(listOfNotNull(query["text"], query["url"]).filter { it.isNotBlank() }.joinToString("\n"))
                 "memory" -> AddMemory
+                "chat" -> query["id"]?.takeIf { it.isNotBlank() }?.let(::OpenChat)
+                "tasks" -> Tasks
                 else -> null
             }
         }

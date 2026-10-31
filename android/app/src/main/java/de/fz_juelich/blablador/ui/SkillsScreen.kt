@@ -111,6 +111,9 @@ fun SkillsScreen(vm: ChatViewModel, onClose: () -> Unit) {
                 }
                 importError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
+            Section("Suggestions", footer = "After the assistant finishes a task of several steps, it drafts a skill from what it did. Save it with one tap and the next similar task goes the same way.") {
+                Toggle("Suggest skills after tasks", vm.draftsSkills, vm::suggestSkillsAfterTasks)
+            }
         }
     }
 }

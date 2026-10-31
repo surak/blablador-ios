@@ -247,6 +247,16 @@ class Settings(context: Context) {
         get() = prefs.getBoolean("imageToolsEnabled", true)
         set(value) = prefs.edit().putBoolean("imageToolsEnabled", value).apply()
 
+    /** Calendar, contacts and location tools. */
+    var deviceToolsEnabled: Boolean
+        get() = prefs.getBoolean("deviceToolsEnabled", false)
+        set(value) = prefs.edit().putBoolean("deviceToolsEnabled", value).apply()
+
+    /** After a task of several steps, draft a skill from it for the user to save. */
+    var skillsDraftAutomatically: Boolean
+        get() = prefs.getBoolean("skillsDraftAutomatically", true)
+        set(value) = prefs.edit().putBoolean("skillsDraftAutomatically", value).apply()
+
     /** "device" (ML Kit) or "blablador" (LightOnOCR). */
     var ocrEngine: String
         get() = prefs.getString("ocrEngine", "device")!!

@@ -4,6 +4,13 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Recording a sample to clone a voice. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Finished replies, approvals waiting and scheduled tasks. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Calendar, contacts and location tools (off until turned on in Settings; asked when first used). -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <uses-permission android:name="android.permission.WRITE_CALENDAR" />
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <application
         android:usesCleartextTraffic="false"
@@ -79,6 +86,9 @@
             </intent-filter>
             <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
         </activity>
+
+        <!-- A scheduled task's time: a notification that opens the app to run it. -->
+        <receiver android:name=".data.TaskAlarmReceiver" android:exported="false" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

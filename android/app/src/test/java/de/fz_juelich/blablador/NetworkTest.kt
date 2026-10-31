@@ -123,6 +123,7 @@ class StreamTest {
                 is BlabladorApi.StreamEvent.Reasoning -> reasoning += it.text
                 is BlabladorApi.StreamEvent.Content -> content += it.text
                 is BlabladorApi.StreamEvent.ToolCalls -> calls = it.calls
+                is BlabladorApi.StreamEvent.Usage -> {}
             }
         }
         assertEquals("Let me think.", reasoning)

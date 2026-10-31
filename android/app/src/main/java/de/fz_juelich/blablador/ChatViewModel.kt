@@ -44,6 +44,22 @@ import de.fz_juelich.blablador.data.VoiceLibrary
 import de.fz_juelich.blablador.data.WebSearch
 import de.fz_juelich.blablador.data.jsonString
 import de.fz_juelich.blablador.data.speech
+import de.fz_juelich.blablador.data.DeviceTools
+import de.fz_juelich.blablador.data.Mention
+import de.fz_juelich.blablador.data.Mentions
+import de.fz_juelich.blablador.data.Notifier
+import de.fz_juelich.blablador.data.PlanTools
+import de.fz_juelich.blablador.data.ScheduledTask
+import de.fz_juelich.blablador.data.SkillDrafter
+import de.fz_juelich.blablador.data.StepState
+import de.fz_juelich.blablador.data.TaskStore
+import de.fz_juelich.blablador.data.ToolPermissions
+import de.fz_juelich.blablador.data.Trace
+import de.fz_juelich.blablador.data.TraceCall
+import de.fz_juelich.blablador.data.splitThinking
+import androidx.compose.runtime.mutableStateMapOf
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -81,6 +97,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val audio = AudioStore(application)
     val videos = VideoStore(application)
     val playback = AudioPlayback()
+    val permissions = ToolPermissions(application, { mcp.servers.toList() }, { mcp.save(it) })
+    val tasks = TaskStore(application)
 
     val conversations = mutableStateListOf<Conversation>().apply { addAll(conversationStore.load()) }
     var currentId by mutableStateOf<String?>(null)
@@ -89,8 +107,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         private set
     var modelsError by mutableStateOf<String?>(null)
         private set
-    var isStreaming by mutableStateOf(false)
-        private set
+    /** Replies being written, per chat; they keep going when the user switches chats. */
+    private val running = mutableStateMapOf<String, Job>()
+    /** The open chat is writing a reply. */
+    val isStreaming: Boolean get() = currentId?.let { it in running } ?: false
+    /** Some chat is writing a reply. */
+    val isBusy: Boolean get() = running.isNotEmpty()
+    /** Whether the app is on screen (set by MainActivity), for notifications. */
+    var appVisible = false
 
     var apiKey by mutableStateOf(settings.apiKey)
         private set
@@ -111,8 +135,28 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     var ocrEngine by mutableStateOf(settings.ocrEngine)
         private set
 
-    private var streamJob: Job? = null
-    private val maxToolRounds = 4
+    /** Tool rounds per reply; a reply with a plan may take more. */
+    private val maxToolRounds = 8
+    private val maxPlanRounds = 25
+    private val prettyJson = kotlinx.serialization.json.Json { prettyPrint = true }
+
+    /** Runs the work of a reply for a chat; when it ends, due scheduled tasks get their turn. */
+    private fun start(chat: String?, work: suspend CoroutineScope.() -> Unit) {
+        chat ?: return
+        lateinit var job: Job
+        job = viewModelScope.launch {
+            try { work() } finally {
+                if (running[chat] === job) running.remove(chat)
+                checkTasks()
+            }
+        }
+        running[chat] = job
+    }
+
+    private fun chatContaining(messageId: String) = conversations.firstOrNull { c -> c.messages.any { it.id == messageId } }
+
+    fun canRerun(tool: String) = tool !in setOf("update_plan", "remember", "forget", "use_skill", "suggest_skill", "generate_image", "edit_image",
+        "generate_speech", "create_event", "create_reminder", "schedule_task", "write_file", "edit_file")
     /** Above this many characters (about 30,000 tokens) older messages are replaced by a summary. */
     private val compactionThreshold = 120_000
     /** Messages always sent in full. */
@@ -126,6 +170,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val imageModelName get() = BlabladorApi.IMAGE_MODELS.firstOrNull { it.first == imageModel }?.second ?: imageModel
 
     init {
+        // Scheduled tasks run while the app is open; an alarm at each time brings it back.
+        viewModelScope.launch { while (true) { delay(30_000); checkTasks() } }
+        tasks.scheduleAlarm()
         refresh()
         EncryptedStorage.removeDecryptedCopies(application)
         viewModelScope.launch(Dispatchers.IO) { EncryptedStorage.encryptOldFiles(application) }
@@ -170,6 +217,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setWebSearch(on: Boolean) { webSearchEnabled = on; settings.webSearchEnabled = on }
+
+    var deviceToolsEnabled by mutableStateOf(settings.deviceToolsEnabled)
+        private set
+    fun turnDeviceTools(on: Boolean) { deviceToolsEnabled = on; settings.deviceToolsEnabled = on }
+
+    var draftsSkills by mutableStateOf(settings.skillsDraftAutomatically)
+        private set
+    fun suggestSkillsAfterTasks(on: Boolean) { draftsSkills = on; settings.skillsDraftAutomatically = on }
 
     var pythonEnabled by mutableStateOf(settings.pythonEnabled)
         private set
@@ -267,18 +322,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     // MARK: Conversations
 
     fun newChat() {
-        stop()
         currentId = null
         pendingKnowledge = emptyList()
     }
 
     fun select(conversation: Conversation) {
-        stop()
         currentId = conversation.id
         selectModel(conversation.model)
     }
 
     fun delete(conversation: Conversation) {
+        running.remove(conversation.id)?.cancel()
         if (conversation.id == currentId) newChat()
         images.delete(conversation.allMessages.flatMap { it.images })
         DataFiles.delete(getApplication(), conversation.allMessages.flatMap { it.documents }.mapNotNull { it.dataFile })
@@ -289,6 +343,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun deleteAll() {
+        running.values.toList().forEach { it.cancel() }
+        running.clear()
         newChat()
         images.delete(conversations.flatMap { c -> c.allMessages.flatMap { it.images } })
         DataFiles.delete(getApplication(), conversations.flatMap { c -> c.allMessages.flatMap { it.documents }.mapNotNull { it.dataFile } })
@@ -320,7 +376,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun send(text: String, attachments: List<ByteArray> = emptyList(), documents: List<DocumentAttachment> = emptyList(),
-             createImage: Boolean = false, createVideo: Boolean = false, speak: Boolean = false) {
+             mentions: List<Mention> = emptyList(), createImage: Boolean = false, createVideo: Boolean = false, speak: Boolean = false) {
         val trimmed = text.trim()
         if ((trimmed.isEmpty() && attachments.isEmpty() && documents.isEmpty()) || isStreaming) return
 
@@ -337,7 +393,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             if (trimmed.isNotEmpty()) nameChat(conversation.id, trimmed, selectedModel)
         }
         val names = attachments.map(images::save)
-        update { it.copy(messages = it.messages + ChatMessage(role = ChatRole.user, content = trimmed, images = names, documents = documents)) }
+        update { it.copy(messages = it.messages + ChatMessage(role = ChatRole.user, content = trimmed, images = names, documents = documents, mentions = mentions)) }
+        // A mentioned knowledge base stays on for the chat.
+        mentions.filter { it.kind == Mention.Kind.knowledge && it.value !in activeKnowledge && knowledge.base(it.value) != null }.forEach { toggleKnowledge(it.value) }
 
         when {
             speak && trimmed.isNotEmpty() -> makeSpeech(trimmed)
@@ -371,7 +429,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         if (isStreaming || trimmed.isEmpty() || index < 0 || messages[index].role != ChatRole.user) return
         val (alternatives, version) = versions(messages.drop(index))
         val edited = ChatMessage(role = ChatRole.user, content = trimmed, images = messages[index].images,
-            documents = messages[index].documents, alternatives = alternatives, version = version)
+            documents = messages[index].documents, mentions = messages[index].mentions, alternatives = alternatives, version = version)
         update { dropSummary(it.copy(messages = it.messages.take(index) + edited), index) }
         respond()
     }
@@ -389,17 +447,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private fun dropSummary(conversation: Conversation, index: Int): Conversation =
         if ((conversation.summaryCount ?: 0) > index) conversation.copy(summary = null, summaryCount = null) else conversation
 
+    /** Stops the open chat's reply. */
     fun stop() {
-        streamJob?.cancel()
-        streamJob = null
-        isStreaming = false
+        val id = currentId ?: return
+        running.remove(id)?.cancel()
+        approvals.filter { it.chat == id }.forEach { answer(it, ApprovalChoice.Deny) }
     }
 
     private fun makeImage(prompt: String, source: String?) {
         val reply = ChatMessage(role = ChatRole.assistant, content = "")
         update { it.copy(messages = it.messages + reply) }
-        isStreaming = true
-        streamJob = viewModelScope.launch {
+        start(currentId) {
             try {
                 val image = runImageTool(if (source == null) "generate_image" else "edit_image", prompt.ifEmpty { "Improve this image" }, source, reply.id)
                 updateMessage(reply.id) { it.copy(images = it.images + image) }
@@ -409,7 +467,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 updateMessage(reply.id) { it.copy(content = e.message ?: "Image failed.", isError = true) }
             } finally {
                 updateMessage(reply.id) { it.copy(status = null) }
-                isStreaming = false
                 persist()
             }
         }
@@ -440,10 +497,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private fun makeVideo(prompt: String, firstFrame: String?) {
         val reply = ChatMessage(role = ChatRole.assistant, content = "")
         update { it.copy(messages = it.messages + reply) }
-        isStreaming = true
         val seconds = videoSeconds
         val aspect = videoAspect
-        streamJob = viewModelScope.launch {
+        start(currentId) {
             try {
                 updateMessage(reply.id) { it.copy(status = "Making a $seconds-second video with MiniMax-H3… This takes a few minutes.") }
                 val frame = firstFrame?.let(images::data)?.let { withContext(Dispatchers.Default) { ImageStore.jpeg(it, 1920) } ?: it }
@@ -456,7 +512,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 updateMessage(reply.id) { it.copy(content = e.message ?: "Video failed.", isError = true) }
             } finally {
                 updateMessage(reply.id) { it.copy(status = null) }
-                isStreaming = false
                 persist()
             }
         }
@@ -466,8 +521,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private fun makeSpeech(script: String) {
         val reply = ChatMessage(role = ChatRole.assistant, content = "")
         update { it.copy(messages = it.messages + reply) }
-        isStreaming = true
-        streamJob = viewModelScope.launch {
+        start(currentId) {
             try {
                 val name = runSpeechTool(script, reply.id)
                 updateMessage(reply.id) { it.copy(audio = it.audio + name) }
@@ -478,7 +532,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 updateMessage(reply.id) { it.copy(content = e.message ?: "Speech failed.", isError = true) }
             } finally {
                 updateMessage(reply.id) { it.copy(status = null) }
-                isStreaming = false
                 persist()
             }
         }
@@ -492,47 +545,65 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         return withContext(Dispatchers.IO) { audio.save(api.speech(voices.styled(script), voice, sample)) }
     }
 
-    private val latestImage get() = current?.messages?.lastOrNull { it.images.isNotEmpty() }?.images?.lastOrNull()
+    private fun latestImage(replyId: String) = chatContaining(replyId)?.messages?.lastOrNull { it.images.isNotEmpty() }?.images?.lastOrNull()
 
-    private fun respond(alternatives: List<List<ChatMessage>> = emptyList(), version: Int = 1) {
-        val conversation = current ?: return
+    private fun respond(alternatives: List<List<ChatMessage>> = emptyList(), version: Int = 1, chatId: String? = currentId, task: ScheduledTask? = null) {
+        val id = chatId ?: return
+        val conversation = conversations.firstOrNull { it.id == id } ?: return
+        val lastUser = conversation.messages.lastOrNull { it.role == ChatRole.user }
+        val question = lastUser?.content.orEmpty()
+        val mentions = lastUser?.mentions.orEmpty()
+        val mentioned = mentions.filter { it.kind == Mention.Kind.tool }.map { it.value }.toSet()
+        val useWeb = webSearchEnabled || "web" in mentioned
+        val usePython = pythonEnabled || "python" in mentioned
+        val useDevice = deviceToolsEnabled || "device" in mentioned
+        val useImages = imageToolsEnabled || "image" in mentioned
+
+        val now = Date()
         var system = systemPrompt
-        system += "\n\nToday is ${DateFormat.getDateInstance(DateFormat.FULL).format(Date())}."
-        if (webSearchEnabled) {
-            system += WebSearch.SYSTEM_PROMPT
-        }
-        if (pythonEnabled) system += " " + PythonRunner.SYSTEM_PROMPT
-        if (imageToolsEnabled) {
+        system += "\n\nToday is ${DateFormat.getDateInstance(DateFormat.FULL).format(now)}, local time ${DateFormat.getTimeInstance(DateFormat.SHORT).format(now)}."
+        if (useWeb) system += WebSearch.SYSTEM_PROMPT
+        if (usePython) system += " " + PythonRunner.SYSTEM_PROMPT
+        if (useImages) {
             system += " You can create images with generate_image and modify the latest image in the chat with edit_image. Never describe an image as created unless the tool succeeded."
         }
         if (voices.toolsEnabled) {
             system += " You can speak aloud with generate_speech when the user asks you to say, read or voice something. Never claim you spoke unless the tool succeeded."
         }
-        val asked = conversation.messages.lastOrNull { it.role == ChatRole.user }?.content.orEmpty()
+        if (useDevice) system += " " + DeviceTools.SYSTEM_PROMPT
+        system += " " + PlanTools.SYSTEM_PROMPT
+        system += " Use schedule_task when the user wants something done later or regularly."
         skills.systemPrompt?.let { system += "\n\n" + it }
         system += "\n\n" + SkillLibrary.SYSTEM_PROMPT + " Use search_chats when the user refers to an earlier conversation."
+        Mentions.prompt(mentions, skills::skill, mcp::server)?.let { system += "\n\n" + it }
+        if (task != null) {
+            system += "\n\nThis is a scheduled task running while the user isn't watching: do all of it without asking questions, and write the result so it reads well on its own."
+        }
         val baseSystem = system.trim()
 
-        val reply = ChatMessage(role = ChatRole.assistant, content = "", alternatives = alternatives, version = version)
         val model = selectedModel
-        val bases = activeKnowledge
-        val question = conversation.messages.lastOrNull { it.role == ChatRole.user }?.content.orEmpty()
-        update { it.copy(model = model, messages = it.messages + reply) }
+        val reply = ChatMessage(role = ChatRole.assistant, content = "", alternatives = alternatives, version = version,
+            trace = Trace(model = model),
+            skillsUsed = mentions.filter { it.kind == Mention.Kind.skill }.mapNotNull { skills.skill(it.value)?.name })
+        val bases = conversation.knowledge.filter { knowledge.base(it) != null }
+        updateChat(id) { it.copy(model = model, messages = it.messages + reply) }
 
-        val tools = buildList {
-            if (webSearchEnabled) { add(Tools.webSearch); add(Tools.imageSearch); add(Tools.readPage) }
-            if (pythonEnabled) add(Tools.runPython)
-            if (imageToolsEnabled) { add(Tools.generateImage); add(Tools.editImage) }
+        val tools = permissions.filter(buildList {
+            if (useWeb) { add(Tools.webSearch); add(Tools.imageSearch); add(Tools.readPage) }
+            if (usePython) add(Tools.runPython)
+            if (useImages) { add(Tools.generateImage); add(Tools.editImage) }
             if (voices.toolsEnabled) add(Tools.generateSpeech)
             if (memory.enabled) { add(Tools.remember); add(Tools.forget) }
-            add(Tools.searchChats); add(Tools.suggestSkill)
+            add(Tools.searchChats); add(Tools.suggestSkill); add(PlanTools.tool); add(ScheduledTask.tool)
+            if (useDevice) addAll(DeviceTools.definitions)
             if (skills.skills.isNotEmpty()) add(Tools.useSkill)
-        }
-        isStreaming = true
-        streamJob = viewModelScope.launch {
+        })
+        start(id) {
+            val started = System.currentTimeMillis()
+            var cancelled = false
             try {
                 // Memories go last in the system prompt; with many, picking the relevant ones may need an embedding.
-                val systemText = if (memory.enabled) baseSystem + "\n\n" + memory.systemPrompt(asked, api) else baseSystem
+                val systemText = if (memory.enabled) baseSystem + "\n\n" + memory.systemPrompt(question, api) else baseSystem
                 val wire = history(systemText, conversation)
                 var messages = wire
                 compact(conversation, model, wire, reply.id)?.let { messages = history(systemText, it) }
@@ -552,17 +623,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
                 // PDFs and knowledge excerpts come from outside the chat; see runTurn's memory lock.
-                val outsideContent = conversation.messages.any { it.documents.isNotEmpty() } ||
-                    current?.messages?.firstOrNull { it.id == reply.id }?.citations?.isNotEmpty() == true
-                val mcpTools = mcp.availableTools()
+                val outsideContent = conversation.messages.any { it.documents.isNotEmpty() } || message(reply.id)?.citations?.isNotEmpty() == true
+                val mcpTools = mcp.availableTools().filter { permissions.rule("mcp:${it.server}") != ToolPermissions.Rule.never }
                 if (mcpTools.isNotEmpty()) {
                     val system = jsonString(messages[0]["content"]).orEmpty() +
                         "\n\nTools named <service>__<tool> belong to services the user connected (MCP). Use them when they fit the request."
                     messages = listOf(buildJsonObject { put("role", "system"); put("content", system) }) + messages.drop(1)
                 }
-                val readOutside = runTurn(model, messages, tools + mcpTools.map { it.definition }, reply.id, outsideContent, mcpTools)
+                val readOutside = runTurn(model, messages, tools + mcpTools.map { it.definition }, reply.id, id, outsideContent, mcpTools)
                 learn(question, reply.id, model, userOnly = readOutside)
             } catch (e: CancellationException) {
+                cancelled = true
                 throw e
             } catch (e: BlabladorException) {
                 val message = if (e.status == 400 && e.body.contains("image", ignoreCase = true))
@@ -572,28 +643,86 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: Exception) {
                 updateMessage(reply.id) { it.copy(content = e.message ?: "Request failed.", isError = true) }
             } finally {
-                updateMessage(reply.id) {
-                    val empty = it.content.isEmpty() && it.images.isEmpty() && it.audio.isEmpty() && it.videos.isEmpty() && isActive
-                    if (empty) it.copy(status = null, content = "No response from the model.", isError = true) else it.copy(status = null)
+                val seconds = (System.currentTimeMillis() - started) / 1000.0
+                updateMessage(reply.id) { m ->
+                    val trace = m.trace?.let { t -> t.copy(seconds = seconds, calls = t.calls.map { if (it.state == StepState.running) it.copy(state = StepState.failed) else it }) }
+                    val empty = m.content.isEmpty() && m.images.isEmpty() && m.audio.isEmpty() && m.videos.isEmpty() && !cancelled
+                    if (empty) m.copy(status = null, trace = trace, content = "No response from the model.", isError = true) else m.copy(status = null, trace = trace)
                 }
-                isStreaming = false
                 persist()
+                if (!cancelled) finished(reply.id, id, question, model, started, task)
             }
         }
     }
 
+    /** After a reply: a notification when the user wasn't watching, and a skill drafted from a task of several steps. */
+    private fun finished(replyId: String, chatId: String, question: String, model: String, started: Long, task: ScheduledTask?) {
+        val reply = message(replyId) ?: return
+        val app = getApplication<Application>()
+        if (task != null || ((!appVisible || currentId != chatId) && System.currentTimeMillis() - started > 5_000)) {
+            val body = when {
+                reply.isError -> "Failed: ${reply.content}"
+                reply.content.isEmpty() -> "The reply is ready."
+                else -> splitThinking(reply.content).second
+            }
+            Notifier.notify(app, task?.title ?: conversations.firstOrNull { it.id == chatId }?.title ?: "Blablador", body, chatId)
+        }
+        val trace = reply.trace
+        if (task != null || !draftsSkills || reply.isError || reply.skillsUsed.isNotEmpty() || reply.suggestedSkills.isNotEmpty() ||
+            !SkillDrafter.worthDrafting(trace) || trace == null) return
+        val existing = skills.skills.map { it.name }
+        viewModelScope.launch {
+            val skill = SkillDrafter.draft(question, trace, reply.content, existing, api, model) ?: return@launch
+            updateMessage(replyId) { it.copy(suggestedSkills = it.suggestedSkills + skill) }
+            persist()
+        }
+    }
+
+    // MARK: Scheduled tasks
+
+    /** Runs tasks that became due, one at a time, when no chat is busy. */
+    fun checkTasks() {
+        if (isBusy || apiKey.isEmpty()) return
+        val task = tasks.due().firstOrNull() ?: return
+        tasks.save(task.copy(lastRun = System.currentTimeMillis(), enabled = task.enabled && task.weekdays.isNotEmpty()))
+        val chat = runTask(task)
+        tasks.tasks.firstOrNull { it.id == task.id }?.let { tasks.save(it.copy(lastChat = chat)) }
+    }
+
+    fun runTaskNow(task: ScheduledTask) {
+        if (isBusy) return
+        tasks.save(task.copy(lastRun = System.currentTimeMillis()))
+        runTask(task)
+    }
+
+    /** Runs a scheduled task in a new chat (not opened) and returns the chat's id. */
+    private fun runTask(task: ScheduledTask): String {
+        val date = DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date())
+        val message = ChatMessage(role = ChatRole.user, content = task.prompt,
+            mentions = if (task.webSearch) listOf(Mention(Mention.Kind.tool, "web", "Web search")) else emptyList())
+        val conversation = Conversation(title = "${task.title} · $date", model = selectedModel, messages = listOf(message))
+        conversations.add(0, conversation)
+        persist()
+        respond(chatId = conversation.id, task = task)
+        return conversation.id
+    }
+
     /**
      * Streams the reply, running tools whenever the model asks for them. Memory changes are refused once the reply
-     * has read outside content (web results, PDFs, knowledge bases), so text planted there can't write itself into
-     * every future chat.
+     * has read outside content (web results, PDFs, knowledge bases, device data), so text planted there can't write
+     * itself into every future chat.
      */
-    private suspend fun runTurn(model: String, initial: List<JsonObject>, initialTools: List<JsonObject>, replyId: String, outside: Boolean, mcpTools: List<McpTool> = emptyList()): Boolean {
-        var outsideContent = outside
+    private suspend fun runTurn(model: String, initial: List<JsonObject>, initialTools: List<JsonObject>, replyId: String, chatId: String, outside: Boolean, mcpTools: List<McpTool> = emptyList()): Boolean {
+        val outsideContent = booleanArrayOf(outside)
         val messages = initial.toMutableList()
         var tools = initialTools
+        var round = 0
 
-        for (round in 0..maxToolRounds) {
-            val isFinalRound = round == maxToolRounds
+        while (true) {
+            val hasPlan = message(replyId)?.plan?.isNotEmpty() == true
+            val maxRounds = if (hasPlan) maxOf(maxToolRounds, maxPlanRounds) else maxToolRounds
+            val isFinalRound = round >= maxRounds
+            round++
             if (isFinalRound) {
                 messages += buildJsonObject { put("role", "user"); put("content", "Stop using tools now and write the final answer using the results above.") }
             }
@@ -619,11 +748,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                             updateMessage(replyId) { it.copy(status = null, reasoning = joined(reasoningPrefix, reasoning)) }
                         }
                         is BlabladorApi.StreamEvent.ToolCalls -> calls = event.calls
+                        is BlabladorApi.StreamEvent.Usage -> updateMessage(replyId) { m ->
+                            m.copy(trace = m.trace?.let { it.copy(promptTokens = it.promptTokens + event.prompt, completionTokens = it.completionTokens + event.completion) })
+                        }
                     }
                 }
+                updateMessage(replyId) { m -> m.copy(trace = m.trace?.let { it.copy(rounds = it.rounds + 1) }) }
             } catch (e: BlabladorException) {
                 // Model without tool support: answer without tools.
-                if (e.status == 400 && tools.isNotEmpty() && round == 0 && !e.body.contains("image", ignoreCase = true)) {
+                if (e.status == 400 && tools.isNotEmpty() && round == 1 && !e.body.contains("image", ignoreCase = true)) {
                     tools = emptyList()
                     continue
                 }
@@ -632,156 +765,203 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
             if (isFinalRound || (calls.isEmpty() && containsToolMarkup(text))) {
                 if (stripToolMarkup(text).isEmpty()) updateMessage(replyId) { it.copy(content = prefix) }
-                return outsideContent
+                return outsideContent[0]
             }
-            if (calls.isEmpty()) return outsideContent
+            if (calls.isEmpty()) return outsideContent[0]
 
             messages += buildJsonObject {
                 put("role", "assistant")
                 put("tool_calls", buildJsonArray { calls.forEach { add(it.wire) } })
                 put("content", if (text.isEmpty()) JsonNull else JsonPrimitive(text))
             }
-            // Preambles like "Let me look that up" are status, not part of the answer.
-            updateMessage(replyId) { it.copy(content = prefix) }
+            // Preambles like "Let me look that up" are status, not part of the answer; notes between plan steps are kept.
+            val note = stripToolMarkup(text)
+            val keepsNotes = message(replyId)?.plan?.isNotEmpty() == true
+            updateMessage(replyId) { it.copy(content = if (keepsNotes && note.isNotEmpty()) "$prefix$note\n\n" else prefix) }
 
             for (call in calls) {
                 val arguments = runCatching { BlabladorApi.json.parseToJsonElement(call.arguments).jsonObject }.getOrNull()
-                val query = jsonString(arguments?.get("query")).orEmpty()
-                val prompt = jsonString(arguments?.get("prompt")).orEmpty()
-                val script = jsonString(arguments?.get("script")).orEmpty()
-                val output = when {
-                    (call.name == "generate_image" || call.name == "edit_image") && prompt.isNotEmpty() -> try {
-                        val image = runImageTool(call.name, prompt, latestImage, replyId)
-                        updateMessage(replyId) { it.copy(images = it.images + image) }
-                        "The image was created and is shown to the user. Do not include it or a link in your answer; just briefly comment on it."
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        "Image tool failed: ${e.message}"
-                    }
-                    call.name == "generate_speech" && script.isNotEmpty() -> try {
-                        val name = runSpeechTool(script, replyId)
-                        updateMessage(replyId) { it.copy(audio = it.audio + name) }
-                        "The speech was created and the user can play it. Don't repeat the script; just briefly comment on it."
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        "Speech tool failed: ${e.message}"
-                    }
-                    call.name == "use_skill" -> {
-                        val skill = skills.skill(jsonString(arguments?.get("name")).orEmpty())
-                        if (skill != null) {
-                            updateMessage(replyId) { if (skill.name in it.skillsUsed) it else it.copy(skillsUsed = it.skillsUsed + skill.name) }
-                            "Instructions of the skill \"${skill.name}\":\n\n${skill.instructions}"
-                        } else "There is no skill called \"${jsonString(arguments?.get("name"))}\"."
-                    }
-                    call.name == "suggest_skill" && !jsonString(arguments?.get("instructions")).isNullOrBlank() -> {
-                        val skill = Skill(
-                            name = jsonString(arguments?.get("name")).orEmpty().ifBlank { "New skill" },
-                            description = jsonString(arguments?.get("description")).orEmpty(),
-                            instructions = jsonString(arguments?.get("instructions")).orEmpty(),
-                        )
-                        updateMessage(replyId) { it.copy(suggestedSkills = it.suggestedSkills + skill) }
-                        "The suggestion is shown to the user with a Save button; it is not saved until they press it. Don't repeat the instructions; mention it in one sentence."
-                    }
-                    call.name == "search_chats" && query.isNotEmpty() -> {
-                        outsideContent = true
-                        updateMessage(replyId) { it.copy(status = "Searching earlier chats…") }
-                        ChatSearch.find(query, conversations.toList(), currentId, api, chatIndex)
-                    }
-                    (call.name == "remember" || call.name == "forget") && outsideContent ->
-                        "Memory can't be changed in a reply that used web results, documents or knowledge bases, because they could contain planted instructions. " +
-                            "Tell the user they can ask again in a new message without them, or edit memories in Settings → Memory."
-                    call.name == "remember" && memory.enabled -> {
-                        val fact = jsonString(arguments?.get("fact")).orEmpty().trim()
-                        if (memory.add(fact, current)) {
-                            updateMessage(replyId) { it.copy(remembered = it.remembered + fact) }
-                            "Saved to memory."
-                        } else "Already remembered or empty; nothing saved."
-                    }
-                    call.name == "forget" && memory.enabled -> {
-                        val number = jsonString(arguments?.get("number"))?.toIntOrNull()
-                        val forgotten = number?.let(memory::forget)
-                        if (forgotten != null) {
-                            updateMessage(replyId) { it.copy(forgotten = it.forgotten + forgotten.text) }
-                            "Forgot: ${forgotten.text}. The numbers of later memories moved up by one."
-                        } else "There is no memory number $number."
-                    }
-                    call.name == "image_search" && query.isNotEmpty() -> {
-                        outsideContent = true
-                        updateMessage(replyId) { it.copy(status = "Searching pictures of “$query”") }
-                        try {
-                            val images = WebSearch.searchImages(query)
-                            updateMessage(replyId) { message ->
-                                message.copy(webImages = message.webImages + images.filter { image -> message.webImages.none { it.image == image.image } })
-                            }
-                            if (images.isEmpty()) "No pictures found for \"$query\"."
-                            else "${images.size} pictures are shown to the user: ${images.joinToString("; ") { it.title }}. Don't include image links in your answer."
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (e: Exception) {
-                            "Image search failed: ${e.message}"
-                        }
-                    }
-                    call.name == "run_python" && !jsonString(arguments?.get("code")).isNullOrBlank() -> {
-                        outsideContent = true
-                        runPython(jsonString(arguments?.get("code")).orEmpty(), replyId)
-                    }
-                    mcpTools.any { it.qualifiedName == call.name } -> {
-                        outsideContent = true
-                        runMcpTool(mcpTools.first { it.qualifiedName == call.name }, arguments ?: JsonObject(emptyMap()), replyId)
-                    }
-                    call.name == "read_page" && !jsonString(arguments?.get("url")).isNullOrBlank() -> {
-                        outsideContent = true
-                        val address = jsonString(arguments?.get("url")).orEmpty()
-                        updateMessage(replyId) { it.copy(status = "Reading ${Uri.parse(address).host ?: address}…") }
-                        try {
-                            val page = WebPage.read(address)
-                            var number = 0
-                            updateMessage(replyId) { message ->
-                                val index = message.sources.indexOfFirst { it.url == page.url }
-                                if (index >= 0) { number = index + 1; message }
-                                else {
-                                    number = message.sources.size + 1
-                                    message.copy(sources = message.sources + SearchResult(page.title, page.url, null))
-                                }
-                            }
-                            "[$number] ${page.title}\nURL: ${page.url}\n\n${page.text.ifEmpty { "(No readable text on this page.)" }}"
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (e: Exception) {
-                            "Could not read the page: ${e.message}"
-                        }
-                    }
-                    call.name == "web_search" && query.isNotEmpty() -> {
-                        outsideContent = true
-                        updateMessage(replyId) { it.copy(status = "Searching “$query”") }
-                        try {
-                            val results = WebSearch.search(query, jsonString(arguments?.get("category")), jsonString(arguments?.get("time_range")))
-                            val numbered = mutableListOf<Pair<Int, SearchResult>>()
-                            updateMessage(replyId) { message ->
-                                val sources = message.sources.toMutableList()
-                                for (result in results) {
-                                    val index = sources.indexOfFirst { it.url == result.url }
-                                    if (index >= 0) numbered += (index + 1) to result
-                                    else { sources += result; numbered += sources.size to result }
-                                }
-                                message.copy(sources = sources)
-                            }
-                            WebSearch.toolOutput(query, numbered)
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (e: Exception) {
-                            "Search failed: ${e.message}"
-                        }
-                    }
-                    else -> "Unknown tool ${call.name}."
-                }
+                val started = System.currentTimeMillis()
+                var traced = TraceCall(tool = call.name, arguments = call.arguments)
+                updateMessage(replyId) { m -> m.copy(trace = m.trace?.let { it.copy(calls = it.calls + traced) }) }
+                val (output, state) = execute(call.name, arguments, replyId, chatId, mcpTools, outsideContent)
+                traced = traced.copy(result = output.take(4_000), seconds = (System.currentTimeMillis() - started) / 1000.0, state = state)
+                updateMessage(replyId) { m -> m.copy(trace = m.trace?.let { t -> t.copy(calls = t.calls.map { if (it.id == traced.id) traced else it }) }) }
                 messages += buildJsonObject { put("role", "tool"); put("tool_call_id", call.id); put("content", output) }
             }
             updateMessage(replyId) { it.copy(status = "Thinking…") }
         }
-        return outsideContent
+    }
+
+    /** Runs one recorded tool call again and shows the new result in the trace (the reply itself stays). */
+    fun rerun(callId: String, messageId: String) {
+        val chat = chatContaining(messageId) ?: return
+        var call = message(messageId)?.trace?.calls?.firstOrNull { it.id == callId } ?: return
+        if (!canRerun(call.tool)) return
+        val arguments = runCatching { BlabladorApi.json.parseToJsonElement(call.arguments).jsonObject }.getOrNull()
+        fun write(updated: TraceCall) = updateMessage(messageId) { m -> m.copy(trace = m.trace?.let { t -> t.copy(calls = t.calls.map { if (it.id == updated.id) updated else it }) }) }
+        call = call.copy(state = StepState.running)
+        write(call)
+        viewModelScope.launch {
+            val started = System.currentTimeMillis()
+            val (output, state) = execute(call.tool, arguments, messageId, chat.id, mcp.availableTools(), booleanArrayOf(true))
+            write(call.copy(result = output.take(4_000), seconds = (System.currentTimeMillis() - started) / 1000.0, state = state))
+            updateMessage(messageId) { it.copy(status = null) }
+            persist()
+        }
+    }
+
+    /** Runs one tool call after checking its permission, and returns what goes back to the model. */
+    private suspend fun execute(name: String, arguments: JsonObject?, replyId: String, chatId: String, mcpTools: List<McpTool>, outsideContent: BooleanArray): Pair<String, StepState> {
+        val query = jsonString(arguments?.get("query")).orEmpty()
+        val prompt = jsonString(arguments?.get("prompt")).orEmpty()
+        val script = jsonString(arguments?.get("script")).orEmpty()
+        val app = getApplication<Application>()
+
+        if ((name == "remember" || name == "forget") && outsideContent[0]) {
+            return ("Memory can't be changed in a reply that used web results, documents, knowledge bases or device data, because they could contain planted instructions. " +
+                "Tell the user they can ask again in a new message without them, or edit memories in Settings → Memory.") to StepState.denied
+        }
+        ToolPermissions.kind(name)?.let { kind ->
+            var title = "Let Blablador use $name?"
+            var detail = arguments?.let { prettyJson.encodeToString(JsonObject.serializer(), it) }.orEmpty()
+            DeviceTools.approval(name, arguments)?.let { (t, d) -> title = t; detail = d }
+            if (name == "schedule_task") ScheduledTask.fromArguments(arguments)?.let { title = "Schedule “${it.title}”?"; detail = it.scheduleText + "\n\n" + it.prompt }
+            if (permissions.rule(kind) != ToolPermissions.Rule.allow) updateMessage(replyId) { it.copy(status = "Waiting for approval…") }
+            if (!authorize(kind, chatId, title, detail)) {
+                return "The user didn't allow $name (it can be changed in Settings → Permissions). Continue without it or ask what to do instead." to StepState.denied
+            }
+        }
+
+        return when {
+            name == "update_plan" -> {
+                val items = PlanTools.items(arguments)
+                updateMessage(replyId) { it.copy(plan = items) }
+                PlanTools.summary(items) to StepState.done
+            }
+            (name == "generate_image" || name == "edit_image") && prompt.isNotEmpty() -> try {
+                val image = runImageTool(name, prompt, latestImage(replyId), replyId)
+                updateMessage(replyId) { it.copy(images = it.images + image) }
+                "The image was created and is shown to the user. Do not include it or a link in your answer; just briefly comment on it." to StepState.done
+            } catch (e: CancellationException) { throw e } catch (e: Exception) { "Image tool failed: ${e.message}" to StepState.failed }
+            name == "generate_speech" && script.isNotEmpty() -> try {
+                val audioName = runSpeechTool(script, replyId)
+                updateMessage(replyId) { it.copy(audio = it.audio + audioName) }
+                "The speech was created and the user can play it. Don't repeat the script; just briefly comment on it." to StepState.done
+            } catch (e: CancellationException) { throw e } catch (e: Exception) { "Speech tool failed: ${e.message}" to StepState.failed }
+            name == "use_skill" -> {
+                val skill = skills.skill(jsonString(arguments?.get("name")).orEmpty())
+                if (skill != null) {
+                    updateMessage(replyId) { if (skill.name in it.skillsUsed) it else it.copy(skillsUsed = it.skillsUsed + skill.name) }
+                    "Instructions of the skill \"${skill.name}\":\n\n${skill.instructions}" to StepState.done
+                } else "There is no skill called \"${jsonString(arguments?.get("name"))}\"." to StepState.failed
+            }
+            name == "suggest_skill" && !jsonString(arguments?.get("instructions")).isNullOrBlank() -> {
+                val skill = Skill(
+                    name = jsonString(arguments?.get("name")).orEmpty().ifBlank { "New skill" },
+                    description = jsonString(arguments?.get("description")).orEmpty(),
+                    instructions = jsonString(arguments?.get("instructions")).orEmpty(),
+                )
+                updateMessage(replyId) { it.copy(suggestedSkills = it.suggestedSkills + skill) }
+                "The suggestion is shown to the user with a Save button; it is not saved until they press it. Don't repeat the instructions; mention it in one sentence." to StepState.done
+            }
+            name == "search_chats" && query.isNotEmpty() -> {
+                outsideContent[0] = true
+                updateMessage(replyId) { it.copy(status = "Searching earlier chats…") }
+                ChatSearch.find(query, conversations.toList(), chatId, api, chatIndex) to StepState.done
+            }
+            name == "remember" && memory.enabled -> {
+                val fact = jsonString(arguments?.get("fact")).orEmpty().trim()
+                if (memory.add(fact, conversations.firstOrNull { it.id == chatId })) {
+                    updateMessage(replyId) { it.copy(remembered = it.remembered + fact) }
+                    "Saved to memory." to StepState.done
+                } else "Already remembered or empty; nothing saved." to StepState.done
+            }
+            name == "forget" && memory.enabled -> {
+                val number = jsonString(arguments?.get("number"))?.toIntOrNull()
+                val forgotten = number?.let(memory::forget)
+                if (forgotten != null) {
+                    updateMessage(replyId) { it.copy(forgotten = it.forgotten + forgotten.text) }
+                    "Forgot: ${forgotten.text}. The numbers of later memories moved up by one." to StepState.done
+                } else "There is no memory number $number." to StepState.failed
+            }
+            name == "schedule_task" -> {
+                val task = ScheduledTask.fromArguments(arguments)
+                    ?: return "Couldn't read the schedule: give title, prompt and time as HH:MM, optionally days or a date." to StepState.failed
+                tasks.save(task)
+                requestNotifications()
+                val next = task.next()?.let { " Next run: ${DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(it))}." }.orEmpty()
+                "Scheduled “${task.title}”: ${task.scheduleText}.$next The user can change it in Settings → Scheduled tasks." to StepState.done
+            }
+            name in DeviceTools.names -> {
+                if (!name.startsWith("create_")) outsideContent[0] = true
+                updateMessage(replyId) {
+                    it.copy(status = when (name) { "current_location" -> "Finding your location…"; "find_contacts" -> "Looking up contacts…"; else -> "Checking your calendar…" })
+                }
+                if (!DeviceTools.granted(app, name) && !requestPermissions(DeviceTools.permissions(name))) {
+                    "No access. The user can allow it in the system settings for Blablador." to StepState.denied
+                } else try {
+                    DeviceTools.run(app, name, arguments) to StepState.done
+                } catch (e: CancellationException) { throw e } catch (e: Exception) { (e.message ?: "Failed.") to StepState.failed }
+            }
+            name == "image_search" && query.isNotEmpty() -> {
+                outsideContent[0] = true
+                updateMessage(replyId) { it.copy(status = "Searching pictures of “$query”") }
+                try {
+                    val images = WebSearch.searchImages(query)
+                    updateMessage(replyId) { message ->
+                        message.copy(webImages = message.webImages + images.filter { image -> message.webImages.none { it.image == image.image } })
+                    }
+                    (if (images.isEmpty()) "No pictures found for \"$query\"."
+                    else "${images.size} pictures are shown to the user: ${images.joinToString("; ") { it.title }}. Don't include image links in your answer.") to StepState.done
+                } catch (e: CancellationException) { throw e } catch (e: Exception) { "Image search failed: ${e.message}" to StepState.failed }
+            }
+            name == "run_python" && !jsonString(arguments?.get("code")).isNullOrBlank() -> {
+                outsideContent[0] = true
+                runPython(jsonString(arguments?.get("code")).orEmpty(), replyId)
+            }
+            mcpTools.any { it.qualifiedName == name } -> {
+                outsideContent[0] = true
+                runMcpTool(mcpTools.first { it.qualifiedName == name }, arguments ?: JsonObject(emptyMap()), replyId, chatId)
+            }
+            name == "read_page" && !jsonString(arguments?.get("url")).isNullOrBlank() -> {
+                outsideContent[0] = true
+                val address = jsonString(arguments?.get("url")).orEmpty()
+                updateMessage(replyId) { it.copy(status = "Reading ${Uri.parse(address).host ?: address}…") }
+                try {
+                    val page = WebPage.read(address)
+                    var number = 0
+                    updateMessage(replyId) { message ->
+                        val index = message.sources.indexOfFirst { it.url == page.url }
+                        if (index >= 0) { number = index + 1; message }
+                        else {
+                            number = message.sources.size + 1
+                            message.copy(sources = message.sources + SearchResult(page.title, page.url, null))
+                        }
+                    }
+                    "[$number] ${page.title}\nURL: ${page.url}\n\n${page.text.ifEmpty { "(No readable text on this page.)" }}" to StepState.done
+                } catch (e: CancellationException) { throw e } catch (e: Exception) { "Could not read the page: ${e.message}" to StepState.failed }
+            }
+            name == "web_search" && query.isNotEmpty() -> {
+                outsideContent[0] = true
+                updateMessage(replyId) { it.copy(status = "Searching “$query”") }
+                try {
+                    val results = WebSearch.search(query, jsonString(arguments?.get("category")), jsonString(arguments?.get("time_range")))
+                    val numbered = mutableListOf<Pair<Int, SearchResult>>()
+                    updateMessage(replyId) { message ->
+                        val sources = message.sources.toMutableList()
+                        for (result in results) {
+                            val index = sources.indexOfFirst { it.url == result.url }
+                            if (index >= 0) numbered += (index + 1) to result
+                            else { sources += result; numbered += sources.size to result }
+                        }
+                        message.copy(sources = sources)
+                    }
+                    WebSearch.toolOutput(query, numbered) to StepState.done
+                } catch (e: CancellationException) { throw e } catch (e: Exception) { "Search failed: ${e.message}" to StepState.failed }
+            }
+            else -> "Unknown tool $name, or its arguments are missing." to StepState.failed
+        }
     }
 
     /** User attachments are sent as base64 images and document text; generated images are only mentioned. */
@@ -814,16 +994,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private val toolMarkup = Regex("""<[｜|]\s*DSML\s*[｜|][\s\S]*$""")
     private fun containsToolMarkup(text: String) = toolMarkup.containsMatchIn(text)
-    /** Removes raw tool-call markup some models emit as text instead of structured tool calls. */
-    /** Splits a `<think>…</think>` block some models put at the start of their answer from the answer itself. */
-    private fun splitThinking(text: String): Pair<String, String> {
-        val trimmed = text.trimStart()
-        if (!trimmed.startsWith("<think>")) return "" to text
-        val body = trimmed.removePrefix("<think>")
-        val end = body.indexOf("</think>")
-        return if (end < 0) body to "" else body.substring(0, end) to body.substring(end + "</think>".length).trim()
-    }
-
     /** Thinking from earlier tool rounds, then this round's. */
     private fun joined(earlier: String, new: String) = if (earlier.isEmpty()) new else "$earlier\n\n$new"
 
@@ -833,6 +1003,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun update(change: (Conversation) -> Conversation) {
         val index = conversations.indexOfFirst { it.id == currentId }
+        if (index < 0) return
+        conversations[index] = change(conversations[index]).copy(updatedAt = System.currentTimeMillis())
+        persist()
+    }
+
+    private fun updateChat(id: String, change: (Conversation) -> Conversation) {
+        val index = conversations.indexOfFirst { it.id == id }
         if (index < 0) return
         conversations[index] = change(conversations[index]).copy(updatedAt = System.currentTimeMillis())
         persist()
@@ -854,11 +1031,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** Runs Python with Pyodide; figures are added to the reply as images. */
-    private suspend fun runPython(code: String, replyId: String): String {
+    private suspend fun runPython(code: String, replyId: String): Pair<String, StepState> {
         updateMessage(replyId) { it.copy(status = "Running Python…", toolCalls = it.toolCalls + "Python") }
         // Attached documents in /data: data files as they are, others as text.
         val files = withContext(Dispatchers.IO) {
-            current?.messages.orEmpty().flatMap { it.documents }.associate { document ->
+            chatContaining(replyId)?.messages.orEmpty().flatMap { it.documents }.associate { document ->
                 val name = document.name.replace("/", "_")
                 val data = document.dataFile?.let { DataFiles.data(getApplication(), it) }
                 if (data != null) name to data else (if (name.endsWith(".txt")) name else "$name.txt") to document.text.encodeToByteArray()
@@ -873,11 +1050,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             result.error?.let { output += (if (output.isEmpty()) "" else "\n") + it }
             if (names.isNotEmpty()) output += "\n[${names.size} figure(s) shown to the user]"
             output = output.trim()
-            if (output.isEmpty()) "The code ran without output." else output.takeLast(20_000)
+            (if (output.isEmpty()) "The code ran without output." else output.takeLast(20_000)) to (if (result.error == null) StepState.done else StepState.failed)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            "Python failed: ${e.message}"
+            "Python failed: ${e.message}" to StepState.failed
         }
     }
 
@@ -895,45 +1072,87 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // MARK: Connected tools (MCP)
+    // MARK: Approvals and permissions
 
-    /** A shell command or connected-service tool call waiting for the user's OK. */
-    data class ToolApproval(val title: String, val detail: String, val answer: kotlinx.coroutines.CompletableDeferred<ApprovalChoice>)
+    /** A tool call waiting for the user's OK. */
+    data class ToolApproval(val chat: String, val kind: String, val title: String, val detail: String,
+                            val answer: kotlinx.coroutines.CompletableDeferred<ApprovalChoice>, val id: String = java.util.UUID.randomUUID().toString())
 
-    enum class ApprovalChoice { Once, Always, Deny }
+    enum class ApprovalChoice { Once, Chat, Always, Deny }
 
-    var toolApproval by mutableStateOf<ToolApproval?>(null)
-        private set
+    /** Tool calls waiting for the user's OK, from any chat; the open chat shows its first one. */
+    val approvals = mutableStateListOf<ToolApproval>()
+    val toolApproval: ToolApproval? get() = approvals.firstOrNull { it.chat == currentId }
 
-    fun answerApproval(choice: ApprovalChoice) {
-        toolApproval?.answer?.complete(choice)
-        toolApproval = null
+    fun answerApproval(choice: ApprovalChoice) { toolApproval?.let { answer(it, choice) } }
+
+    private fun answer(approval: ToolApproval, choice: ApprovalChoice) {
+        approvals.remove(approval)
+        approval.answer.complete(choice)
     }
 
-    /** Chat and server pairs where the user allowed MCP tool calls without asking. */
-    private val mcpAllowed = mutableSetOf<String>()
+    /** Kinds of tools the user allowed for one chat ("<chat>|<kind>"), until the app quits. */
+    private val chatAllowed = mutableSetOf<String>()
+
+    /**
+     * Whether a tool of this kind may run: by its rule in Settings → Permissions, the user's earlier "Allow for this
+     * chat", or by asking now.
+     */
+    private suspend fun authorize(kind: String, chat: String, title: String, detail: String): Boolean {
+        when (permissions.rule(kind)) {
+            ToolPermissions.Rule.never -> return false
+            ToolPermissions.Rule.allow -> return true
+            ToolPermissions.Rule.ask -> {}
+        }
+        if ("$chat|$kind" in chatAllowed) return true
+        if (chat != currentId || !appVisible) Notifier.notify(getApplication(), "Blablador needs your OK", title, chat)
+        val deferred = kotlinx.coroutines.CompletableDeferred<ApprovalChoice>()
+        val approval = ToolApproval(chat, kind, title, detail.take(2_000), deferred)
+        approvals += approval
+        val choice = try { deferred.await() } finally { approvals.remove(approval) }
+        when (choice) {
+            ApprovalChoice.Chat -> chatAllowed += "$chat|$kind"
+            ApprovalChoice.Always -> permissions.set(kind, ToolPermissions.Rule.allow)
+            else -> {}
+        }
+        return choice != ApprovalChoice.Deny
+    }
+
+    /** Android permissions the chat screen should ask for (device tools); answered with [answerPermissions]. */
+    var permissionRequest by mutableStateOf<List<String>?>(null)
+        private set
+    private var permissionAnswer: kotlinx.coroutines.CompletableDeferred<Boolean>? = null
+
+    private suspend fun requestPermissions(names: List<String>): Boolean {
+        if (!appVisible) return false
+        val deferred = kotlinx.coroutines.CompletableDeferred<Boolean>()
+        permissionAnswer = deferred
+        permissionRequest = names
+        return try { deferred.await() } finally { permissionRequest = null; permissionAnswer = null }
+    }
+
+    fun answerPermissions(granted: Boolean) { permissionAnswer?.complete(granted) }
+
+    /** Asks the screen for the notification permission (Android 13+) when something will notify later. */
+    var wantsNotifications by mutableStateOf(false)
+    private fun requestNotifications() { if (!Notifier.allowed(getApplication())) wantsNotifications = true }
 
     /** Runs a tool of a connected MCP server after the user's OK. */
-    private suspend fun runMcpTool(tool: McpTool, arguments: JsonObject, replyId: String): String {
+    private suspend fun runMcpTool(tool: McpTool, arguments: JsonObject, replyId: String, chatId: String): Pair<String, StepState> {
         val server = mcp.server(tool.server)
-        val key = "$currentId|${tool.server}"
-        if (server?.askBeforeCalls != false && key !in mcpAllowed) {
-            updateMessage(replyId) { it.copy(status = "Waiting for approval…") }
-            val shown = kotlinx.serialization.json.Json { prettyPrint = true }.encodeToString(JsonObject.serializer(), arguments)
-            val answer = kotlinx.coroutines.CompletableDeferred<ApprovalChoice>()
-            toolApproval = ToolApproval("Let ${server?.name ?: "this server"} use ${tool.name}?", shown.take(2_000), answer)
-            val choice = try { answer.await() } finally { if (toolApproval?.answer === answer) toolApproval = null }
-            if (choice == ApprovalChoice.Always) mcpAllowed += key
-            if (choice == ApprovalChoice.Deny) return "The user declined this tool call. Ask what to do instead or continue without it."
+        val shown = prettyJson.encodeToString(JsonObject.serializer(), arguments)
+        if (permissions.rule("mcp:${tool.server}") != ToolPermissions.Rule.allow) updateMessage(replyId) { it.copy(status = "Waiting for approval…") }
+        if (!authorize("mcp:${tool.server}", chatId, "Let ${server?.name ?: "this server"} use ${tool.name}?", shown)) {
+            return "The user declined this tool call. Ask what to do instead or continue without it." to StepState.denied
         }
         updateMessage(replyId) { it.copy(status = "Using ${tool.name}…", toolCalls = it.toolCalls + "${server?.name ?: "Server"}: ${tool.name}") }
         return try {
-            val (text, _) = mcp.call(tool, arguments)
-            if (text.isEmpty()) "(The tool returned nothing.)" else text.take(30_000)
+            val (text, isError) = mcp.call(tool, arguments)
+            (if (text.isEmpty()) "(The tool returned nothing.)" else text.take(30_000)) to (if (isError) StepState.failed else StepState.done)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            "Tool failed: ${e.message}"
+            "Tool failed: ${e.message}" to StepState.failed
         }
     }
 

@@ -70,6 +70,12 @@ data class ChatMessage(
     val citations: List<KnowledgeCitation> = emptyList(),
     /** The model's thinking trace, streamed separately from the answer. */
     val reasoning: String = "",
+    /** The plan the model keeps with update_plan. */
+    val plan: List<PlanItem> = emptyList(),
+    /** Model, time, tokens and tool calls of a reply. */
+    val trace: Trace? = null,
+    /** Tools, skills, knowledge bases and servers the user mentioned with @ (user messages). */
+    val mentions: List<Mention> = emptyList(),
     /** Transient status shown while tools run, e.g. "Searching the web…". Not saved. */
     @kotlinx.serialization.Transient val status: String? = null,
 )

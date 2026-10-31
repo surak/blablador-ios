@@ -140,6 +140,8 @@ private sealed interface Page {
     data object Memory : Page
     data object Skills : Page
     data object Mcp : Page
+    data object Tasks : Page
+    data object Permissions : Page
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -158,7 +160,21 @@ fun ChatScreen(vm: ChatViewModel) {
     var imageMode by remember { mutableStateOf(false) }
     var speechMode by remember { mutableStateOf(false) }
     var videoMode by remember { mutableStateOf(false) }
+    val mentions = remember { mutableStateListOf<de.fz_juelich.blablador.data.Mention>() }
     val focus = remember { FocusRequester() }
+
+    // Device tools ask for Android permissions when they first run; tasks and background replies notify.
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { results ->
+        vm.answerPermissions(results.isNotEmpty() && results.values.all { it })
+    }
+    LaunchedEffect(vm.permissionRequest) { vm.permissionRequest?.let { permissionLauncher.launch(it.toTypedArray()) } }
+    val notificationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { vm.wantsNotifications = false }
+    LaunchedEffect(vm.wantsNotifications) {
+        if (vm.wantsNotifications) {
+            if (android.os.Build.VERSION.SDK_INT >= 33) notificationLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            else vm.wantsNotifications = false
+        }
+    }
 
     val speaker = rememberSpeaker()
 
@@ -196,6 +212,8 @@ fun ChatScreen(vm: ChatViewModel) {
                 if (incoming.focus) runCatching { focus.requestFocus() }
             }
             Incoming.AddMemory -> addingMemory = true
+            is Incoming.OpenChat -> vm.conversations.firstOrNull { it.id == incoming.id }?.let { pages.clear(); vm.select(it) }
+            Incoming.Tasks -> vm.checkTasks()
             null -> {}
         }
     }
@@ -217,7 +235,8 @@ fun ChatScreen(vm: ChatViewModel) {
     when (val page = pages.lastOrNull()) {
         Page.Settings -> {
             SettingsScreen(vm, onOpenKnowledge = { open(Page.Knowledge()) }, onOpenVoices = { open(Page.Voices) },
-                onOpenDecision = { open(Page.Decision) }, onOpenMemory = { open(Page.Memory) }, onOpenSkills = { open(Page.Skills) }, onOpenMcp = { open(Page.Mcp) }, onClose = ::close)
+                onOpenDecision = { open(Page.Decision) }, onOpenMemory = { open(Page.Memory) }, onOpenSkills = { open(Page.Skills) }, onOpenMcp = { open(Page.Mcp) },
+                onOpenTasks = { open(Page.Tasks) }, onOpenPermissions = { open(Page.Permissions) }, onClose = ::close)
             return
         }
         is Page.Knowledge -> { KnowledgeScreen(vm, page.baseId, onClose = ::close); return }
@@ -232,6 +251,8 @@ fun ChatScreen(vm: ChatViewModel) {
         }
         Page.Skills -> { SkillsScreen(vm, onClose = ::close); return }
         Page.Mcp -> { McpScreen(vm, onClose = ::close); return }
+        Page.Tasks -> { TasksScreen(vm, onClose = ::close); return }
+        Page.Permissions -> { PermissionsScreen(vm, onClose = ::close); return }
         null -> {}
     }
 
@@ -246,7 +267,14 @@ fun ChatScreen(vm: ChatViewModel) {
             },
             confirmButton = {
                 Row {
-                    TextButton(onClick = { vm.answerApproval(ChatViewModel.ApprovalChoice.Always) }) { Text("Allow for this chat") }
+                    var more by remember { mutableStateOf(false) }
+                    Box {
+                        TextButton(onClick = { more = true }) { Text("Allow more") }
+                        DropdownMenu(expanded = more, onDismissRequest = { more = false }) {
+                            DropdownMenuItem(text = { Text("Allow for this chat") }, onClick = { more = false; vm.answerApproval(ChatViewModel.ApprovalChoice.Chat) })
+                            DropdownMenuItem(text = { Text("Always allow") }, onClick = { more = false; vm.answerApproval(ChatViewModel.ApprovalChoice.Always) })
+                        }
+                    }
                     TextButton(onClick = { vm.answerApproval(ChatViewModel.ApprovalChoice.Once) }) { Text("Allow") }
                 }
             },
@@ -302,7 +330,7 @@ fun ChatScreen(vm: ChatViewModel) {
                 }
                 ActiveKnowledge(vm, onOpen = { open(Page.Knowledge(it)) })
                 Composer(
-                    vm, draft, { draft = it }, attachments, documents,
+                    vm, draft, { draft = it }, attachments, documents, mentions,
                     imageMode, { imageMode = it; if (it) { speechMode = false; videoMode = false } },
                     speechMode, { speechMode = it; if (it) { imageMode = false; videoMode = false } },
                     videoMode, { videoMode = it; if (it) { imageMode = false; speechMode = false } },
@@ -312,8 +340,9 @@ fun ChatScreen(vm: ChatViewModel) {
                     val text = draft
                     val images = attachments.toList()
                     val docs = documents.toList()
-                    draft = ""; attachments.clear(); documents.clear()
-                    vm.send(text, images, docs, createImage = imageMode, createVideo = videoMode, speak = speechMode)
+                    val mentioned = mentions.toList()
+                    draft = ""; attachments.clear(); documents.clear(); mentions.clear()
+                    vm.send(text, images, docs, mentioned, createImage = imageMode, createVideo = videoMode, speak = speechMode)
                 }
             }
         }
@@ -440,11 +469,14 @@ private fun MessageList(conversation: Conversation, vm: ChatViewModel, speaker: 
                 onContinueVideo = onContinueVideo,
                 isSkillSaved = { vm.skills.skill(it) != null },
                 onSaveSkill = vm.skills::save,
+                canRerun = vm::canRerun,
+                onRerun = { vm.rerun(it, message.id) },
             )
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun Composer(
     vm: ChatViewModel,
@@ -452,6 +484,7 @@ private fun Composer(
     onDraft: (String) -> Unit,
     attachments: MutableList<ByteArray>,
     documents: MutableList<DocumentAttachment>,
+    mentions: MutableList<de.fz_juelich.blablador.data.Mention>,
     imageMode: Boolean,
     onImageMode: (Boolean) -> Unit,
     speechMode: Boolean,
@@ -465,7 +498,6 @@ private fun Composer(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var menu by remember { mutableStateOf(false) }
-    var knowledgeMenu by remember { mutableStateOf(false) }
     var naming by remember { mutableStateOf(false) }
     var reading by remember { mutableIntStateOf(0) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -543,6 +575,14 @@ private fun Composer(
                 Text("Reading text…", style = MaterialTheme.typography.labelMedium)
             }
         }
+        if (mentions.isNotEmpty()) MentionChips(mentions.toList()) { mention -> mentions.removeAll { it.id == mention.id } }
+        mentionQuery(draft)?.let { query ->
+            val all = de.fz_juelich.blablador.data.Mentions.all(vm.skills.skills.toList(), vm.knowledge.bases.map { it.id to it.name }, vm.mcp.servers.toList())
+            MentionSuggestions(query, all) { mention ->
+                onDraft(draft.replace(mentionPattern, { if (it.value.startsWith("@")) "" else " " }))
+                if (mentions.none { it.id == mention.id }) mentions.add(mention)
+            }
+        }
         AnimatedVisibility(imageMode) { ImageModeChip(vm, editing = attachments.isNotEmpty()) { onImageMode(false) } }
         AnimatedVisibility(videoMode) { VideoModeChip(vm, fromImage = attachments.isNotEmpty()) { onVideoMode(false) } }
         AnimatedVisibility(speechMode) {
@@ -552,67 +592,7 @@ private fun Composer(
             }
         }
         Row(verticalAlignment = Alignment.Bottom) {
-            Box {
-                IconButton(onClick = { menu = true }) { Icon(Icons.Outlined.Add, "Add") }
-                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    DropdownMenuItem(text = { Text("Camera") }, leadingIcon = { Icon(Icons.Outlined.CameraAlt, null) }, onClick = {
-                        menu = false
-                        val file = File(context.cacheDir, "camera").apply { mkdirs() }.let { File(it, "photo.jpg") }
-                        cameraUri = FileProvider.getUriForFile(context, context.packageName + ".files", file)
-                        camera.launch(cameraUri!!)
-                    })
-                    DropdownMenuItem(text = { Text("Photos") }, leadingIcon = { Icon(Icons.Outlined.Photo, null) }, onClick = {
-                        menu = false; photos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                    })
-                    DropdownMenuItem(text = { Text("Paste image") }, leadingIcon = { Icon(Icons.Outlined.ContentPaste, null) }, onClick = {
-                        menu = false
-                        // Images copied in other apps arrive as content URIs on the clipboard.
-                        val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
-                        val clip = clipboard?.primaryClip
-                        val uris = (0 until (clip?.itemCount ?: 0)).mapNotNull { clip?.getItemAt(it)?.uri }
-                            .filter { context.contentResolver.getType(it)?.startsWith("image/") == true }
-                        if (uris.isEmpty()) error = "The clipboard has no image. Copy an image first, then choose Paste image."
-                        else uris.forEach { addPhoto(it) }
-                    })
-                    DropdownMenuItem(text = { Text("File (image, PDF or data)") }, leadingIcon = { Icon(Icons.Outlined.PictureAsPdf, null) }, onClick = {
-                        menu = false; pdfs.launch(arrayOf("application/pdf", "image/*") + DataFiles.MIME_TYPES)
-                    })
-                    DropdownMenuItem(text = { Text("Text from photo") }, leadingIcon = { Icon(Icons.Outlined.DocumentScanner, null) }, onClick = {
-                        menu = false; ocrPhotos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                    })
-                    HorizontalDivider()
-                    DropdownMenuItem(text = { Text("Knowledge") }, leadingIcon = { Icon(Icons.AutoMirrored.Outlined.LibraryBooks, null) },
-                        trailingIcon = { if (vm.activeKnowledge.isNotEmpty()) Text("${vm.activeKnowledge.size}") },
-                        onClick = { menu = false; knowledgeMenu = true })
-                    DropdownMenuItem(text = { Text("Create or edit image") }, leadingIcon = { Icon(Icons.Outlined.Brush, null) },
-                        trailingIcon = { if (imageMode) Icon(Icons.Outlined.Check, null) },
-                        onClick = { menu = false; onImageMode(!imageMode) })
-                    DropdownMenuItem(text = { Text("Create video") }, leadingIcon = { Icon(Icons.Outlined.Movie, null) },
-                        trailingIcon = { if (videoMode) Icon(Icons.Outlined.Check, null) },
-                        onClick = { menu = false; onVideoMode(!videoMode) })
-                    DropdownMenuItem(text = { Text("Speak (Drama 3)") }, leadingIcon = { Icon(Icons.Outlined.GraphicEq, null) },
-                        trailingIcon = { if (speechMode) Icon(Icons.Outlined.Check, null) },
-                        onClick = { menu = false; onSpeechMode(!speechMode) })
-                    DropdownMenuItem(text = { Text("Web search") }, leadingIcon = { Icon(Icons.Outlined.Language, null) },
-                        trailingIcon = { if (vm.webSearchEnabled) Icon(Icons.Outlined.Check, null) },
-                        onClick = { menu = false; vm.setWebSearch(!vm.webSearchEnabled) })
-                    HorizontalDivider()
-                    DropdownMenuItem(text = { Text("Decide (Clef)") }, leadingIcon = { Icon(Icons.Outlined.Balance, null) },
-                        onClick = { menu = false; onNavigate(Page.Decision) })
-                }
-                DropdownMenu(expanded = knowledgeMenu, onDismissRequest = { knowledgeMenu = false }) {
-                    if (vm.knowledge.bases.isEmpty()) DropdownMenuItem(text = { Text("No knowledge bases yet") }, onClick = {}, enabled = false)
-                    vm.knowledge.bases.forEach { base ->
-                        DropdownMenuItem(text = { Text(base.name) }, onClick = { vm.toggleKnowledge(base.id) },
-                            leadingIcon = { if (base.id in vm.activeKnowledge) Icon(Icons.Outlined.Check, null) else Spacer(Modifier.size(24.dp)) })
-                    }
-                    HorizontalDivider()
-                    DropdownMenuItem(text = { Text("New knowledge base…") }, leadingIcon = { Icon(Icons.Outlined.Add, null) },
-                        onClick = { knowledgeMenu = false; naming = true })
-                    DropdownMenuItem(text = { Text("Manage knowledge…") }, leadingIcon = { Icon(Icons.Outlined.Settings, null) },
-                        onClick = { knowledgeMenu = false; onNavigate(Page.Knowledge()) })
-                }
-            }
+            IconButton(onClick = { menu = true }) { Icon(Icons.Outlined.Add, "Add and tools") }
             TextField(
                 value = draft, onValueChange = onDraft,
                 modifier = Modifier.weight(1f).focusRequester(focus),
@@ -648,6 +628,46 @@ private fun Composer(
             }
         }
     }
+    if (menu) androidx.compose.material3.ModalBottomSheet(onDismissRequest = { menu = false }) {
+        ToolsPanel(vm, imageMode, videoMode, speechMode,
+            onMode = { mode ->
+                when (mode) {
+                    "image" -> onImageMode(true)
+                    "video" -> onVideoMode(true)
+                    "speech" -> onSpeechMode(true)
+                    else -> { onImageMode(false); onVideoMode(false); onSpeechMode(false) }
+                }
+            },
+            onAction = { action ->
+                menu = false
+                when (action) {
+                    PanelAction.Camera -> {
+                        val file = File(context.cacheDir, "camera").apply { mkdirs() }.let { File(it, "photo.jpg") }
+                        cameraUri = FileProvider.getUriForFile(context, context.packageName + ".files", file)
+                        camera.launch(cameraUri!!)
+                    }
+                    PanelAction.Photos -> photos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    PanelAction.Paste -> {
+                        // Images copied in other apps arrive as content URIs on the clipboard.
+                        val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
+                        val clip = clipboard?.primaryClip
+                        val uris = (0 until (clip?.itemCount ?: 0)).mapNotNull { clip?.getItemAt(it)?.uri }
+                            .filter { context.contentResolver.getType(it)?.startsWith("image/") == true }
+                        if (uris.isEmpty()) error = "The clipboard has no image. Copy an image first, then choose Paste."
+                        else uris.forEach { addPhoto(it) }
+                    }
+                    PanelAction.Files -> pdfs.launch(arrayOf("application/pdf", "image/*") + DataFiles.MIME_TYPES)
+                    PanelAction.ScanText -> ocrPhotos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    PanelAction.Decide -> onNavigate(Page.Decision)
+                    PanelAction.Knowledge -> onNavigate(Page.Knowledge())
+                    PanelAction.NewKnowledge -> naming = true
+                    PanelAction.Mcp -> onNavigate(Page.Mcp)
+                    PanelAction.Skills -> onNavigate(Page.Skills)
+                    PanelAction.Tasks -> onNavigate(Page.Tasks)
+                    PanelAction.Permissions -> onNavigate(Page.Permissions)
+                }
+            })
+    }
     if (naming) NameDialog("New knowledge base", "", onDismiss = { naming = false }) { name ->
         naming = false
         val base = vm.knowledge.create(name)
@@ -663,6 +683,11 @@ private fun Composer(
         )
     }
 }
+
+/** An "@name" being typed at the end of the draft. */
+private val mentionPattern = Regex("""(^|\s)@[^\s@]*$""")
+
+private fun mentionQuery(draft: String): String? = mentionPattern.find(draft)?.value?.substringAfter('@')
 
 /** Knowledge bases searched in this chat; tap to open, × to stop using. */
 @Composable

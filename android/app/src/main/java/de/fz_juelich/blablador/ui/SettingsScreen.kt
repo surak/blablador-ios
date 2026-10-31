@@ -46,7 +46,8 @@ import de.fz_juelich.blablador.data.BlabladorApi
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(vm: ChatViewModel, onOpenKnowledge: () -> Unit, onOpenVoices: () -> Unit, onOpenDecision: () -> Unit, onOpenMemory: () -> Unit, onOpenSkills: () -> Unit, onOpenMcp: () -> Unit, onClose: () -> Unit) {
+fun SettingsScreen(vm: ChatViewModel, onOpenKnowledge: () -> Unit, onOpenVoices: () -> Unit, onOpenDecision: () -> Unit, onOpenMemory: () -> Unit, onOpenSkills: () -> Unit, onOpenMcp: () -> Unit,
+                   onOpenTasks: () -> Unit, onOpenPermissions: () -> Unit, onClose: () -> Unit) {
     var key by remember { mutableStateOf(vm.apiKey) }
     var endpoint by remember { mutableStateOf(vm.endpoint) }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -116,14 +117,17 @@ fun SettingsScreen(vm: ChatViewModel, onOpenKnowledge: () -> Unit, onOpenVoices:
                 Link("Decide (Clef)", "", onOpenDecision)
             }
 
-            Section("Memory and skills", footer = "Facts about you the assistant remembers across chats, and instructions for tasks you repeat.") {
+            Section("Memory and skills", footer = "Facts about you the assistant remembers across chats, instructions for tasks you repeat, prompts that run at set times, and what the assistant may do without asking.") {
                 Link("Memory", if (vm.memory.enabled) "${vm.memory.memories.size}" else "Off", onOpenMemory)
                 Link("Skills", "${vm.skills.skills.size}", onOpenSkills)
                 Link("Connected tools (MCP)", "${vm.mcp.servers.size}", onOpenMcp)
+                Link("Scheduled tasks", "${vm.tasks.tasks.size}", onOpenTasks)
+                Link("Permissions", "", onOpenPermissions)
             }
 
             Section("Web search", footer = "Lets the model search the web via search.blablador.fz-juelich.de when it needs current information.") {
                 Toggle("Web search", vm.webSearchEnabled, vm::setWebSearch)
+                Toggle("Calendar, reminders, contacts and location", vm.deviceToolsEnabled, vm::turnDeviceTools)
             }
 
             Section("Python", footer = "Lets the model run Python on this device for calculations, data analysis and plots, with numpy, pandas and matplotlib. The code runs in a sandbox without access to your files; the first run downloads about 20 MB.") {
