@@ -60,6 +60,13 @@ import androidx.compose.material.icons.outlined.DocumentScanner
 import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Lightbulb
+import androidx.compose.material.icons.outlined.ShowChart
+import androidx.compose.material.icons.outlined.Newspaper
+import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.material.icons.outlined.Checklist
+import androidx.compose.material.icons.outlined.Functions
+import androidx.compose.material.icons.outlined.FindInPage
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.PictureAsPdf
@@ -308,7 +315,9 @@ fun ChatScreen(vm: ChatViewModel) {
                 Box(Modifier.weight(1f)) {
                     val conversation = vm.current
                     if (conversation == null || conversation.messages.isEmpty()) {
-                        Welcome(vm.userName) { vm.send(it) }
+                        Welcome(vm.userName) { suggestion ->
+                            if (suggestion.opensDecision) open(Page.Decision) else vm.send(suggestion.text, mentions = suggestion.mentions)
+                        }
                     } else {
                         MessageList(conversation, vm, speaker, onContinueVideo = { name ->
                             scope.launch {
@@ -410,16 +419,30 @@ private fun HistoryDrawer(vm: ChatViewModel, onPick: () -> Unit) {
     }
 }
 
+/** An example on the empty chat: sent with its @mention, or opening the Decide screen. */
+private class Suggestion(val icon: ImageVector, val text: String, val mentions: List<de.fz_juelich.blablador.data.Mention> = emptyList(), val opensDecision: Boolean = false)
+
+private fun tool(value: String) = de.fz_juelich.blablador.data.Mentions.tools.filter { it.value == value }
+
+private val allSuggestions = listOf(
+    Suggestion(Icons.Outlined.ShowChart, "Plot the world population since 1950 and fit a trend line", tool("python")),
+    Suggestion(Icons.Outlined.Balance, "Help me make a decision, step by step", opensDecision = true),
+    Suggestion(Icons.Outlined.Newspaper, "What's new in supercomputing this week?", tool("web")),
+    Suggestion(Icons.Outlined.CalendarMonth, "What's on my calendar this week?", tool("device")),
+    Suggestion(Icons.Outlined.Schedule, "Every weekday at 8, summarise the top AI news for me", tool("schedule")),
+    Suggestion(Icons.Outlined.Brush, "Draw a fox reading a book in a cosy library", tool("image")),
+    Suggestion(Icons.Outlined.Checklist, "Plan a weekend trip to Jülich with a budget and a packing list", tool("plan")),
+    Suggestion(Icons.Outlined.Functions, "Solve x³ − 6x² + 11x − 6 = 0 and show the steps", tool("python")),
+    Suggestion(Icons.Outlined.FindInPage, "Read fz-juelich.de and tell me what's new there", tool("web")),
+    Suggestion(Icons.Outlined.Lightbulb, "Explain quantum computing in simple terms"),
+)
+
 @Composable
-private fun Welcome(userName: String, onPick: (String) -> Unit) {
+private fun Welcome(userName: String, onPick: (Suggestion) -> Unit) {
     val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
     val salutation = when (hour) { in 5..11 -> "Good morning"; in 12..17 -> "Good afternoon"; in 18..21 -> "Good evening"; else -> "Hello" }
-    val suggestions: List<Pair<ImageVector, String>> = listOf(
-        Icons.Outlined.Lightbulb to "Explain quantum computing in simple terms",
-        Icons.Outlined.EditNote to "Help me write an email to my team",
-        Icons.Outlined.Code to "Write a Python script to rename files",
-        Icons.Outlined.Public to "Plan a weekend trip to Jülich",
-    )
+    // Four examples, picked when the empty chat appears.
+    val suggestions = remember { allSuggestions.shuffled().take(4) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(28.dp)) {
         Spacer(Modifier.height(24.dp))
         Column {
@@ -429,14 +452,14 @@ private fun Welcome(userName: String, onPick: (String) -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f), lineHeight = 40.sp)
         }
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            suggestions.forEach { (icon, text) ->
+            suggestions.forEach { suggestion ->
                 Column(
                     Modifier.size(160.dp).clip(RoundedCornerShape(18.dp)).background(MaterialTheme.colorScheme.surfaceVariant)
-                        .clickable { onPick(text) }.padding(14.dp),
+                        .clickable { onPick(suggestion) }.padding(14.dp),
                     verticalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    Text(text, style = MaterialTheme.typography.bodyMedium)
-                    Icon(icon, null, Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.background).padding(8.dp))
+                    Text(suggestion.text, style = MaterialTheme.typography.bodyMedium)
+                    Icon(suggestion.icon, null, Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.background).padding(8.dp))
                 }
             }
         }
