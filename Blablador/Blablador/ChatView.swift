@@ -777,6 +777,7 @@ private struct ComposerView: View {
             }
             Button("Photos") { showOCRPicker = true }
             Button("Files") { scanning = true; showFileImporter = true }
+            Button("Cancel", role: .cancel) {}
         } message: {
             Text("Blablador reads the text in pictures and attaches it to your message.")
         }
