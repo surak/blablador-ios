@@ -168,7 +168,8 @@ fun MarkdownText(text: String, modifier: Modifier = Modifier) {
     val blocks = remember(text) { parse(text) }
     val codeBackground = MaterialTheme.colorScheme.surfaceVariant
     SelectionContainer(modifier) {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        // About 680 dp wide at most (scaled with the text size), so lines stay readable on tablets.
+        Column(Modifier.widthIn(max = (680 * androidx.compose.ui.platform.LocalDensity.current.fontScale).dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             for (block in blocks) when (block) {
                 is Block.Text -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     for (part in parts(block.body)) PartView(part, codeBackground)
@@ -191,12 +192,16 @@ internal sealed interface Part {
     data class Paragraph(val text: String) : Part
     data class Quote(val text: String) : Part
     data object Rule : Part
+    data class ListItem(val marker: String, val text: String, val depth: Int)
+    data class Items(val items: List<ListItem>) : Part
 }
 
 internal fun parts(body: String): List<Part> {
     val result = mutableListOf<Part>()
     val paragraph = mutableListOf<String>()
     val quote = mutableListOf<String>()
+    val items = mutableListOf<Part.ListItem>()
+    fun flushList() { if (items.isNotEmpty()) { result += Part.Items(items.toList()); items.clear() } }
     fun flush() {
         if (paragraph.isNotEmpty()) { result += Part.Paragraph(paragraph.joinToString("\n")); paragraph.clear() }
         if (quote.isNotEmpty()) { result += Part.Quote(quote.joinToString("\n")); quote.clear() }
@@ -204,9 +209,26 @@ internal fun parts(body: String): List<Part> {
     for (line in body.split("\n")) {
         val trimmed = line.trim()
         val heading = Regex("""^(#{1,6})\s+(.*)$""").find(trimmed)
+        val item = Regex("""^([-*+•]|\d+[.)])\s+(.*)$""").find(trimmed)
+        val boldLine = Regex("""^\*\*([^*]{1,80})\*\*:?$""").find(trimmed)
+        val indent = line.takeWhile { it == ' ' }.length
+        // Blank lines between items keep the list together; an indented line continues the previous item.
+        if (trimmed.isEmpty() && items.isNotEmpty()) continue
+        if (items.isNotEmpty() && item == null && indent >= 2 && !trimmed.startsWith("#") && !trimmed.startsWith(">")) {
+            val last = items.removeAt(items.size - 1)
+            items += last.copy(text = last.text + " " + trimmed)
+            continue
+        }
+        if (item == null) flushList()
         when {
             trimmed.isEmpty() -> flush()
             Regex("""^(-{3,}|\*{3,}|_{3,})$""").matches(trimmed) -> { flush(); result += Part.Rule }
+            item != null -> {
+                flush()
+                val marker = item.groupValues[1].let { if (it.first().isDigit()) it.dropLast(1) + "." else "•" }
+                items += Part.ListItem(marker, item.groupValues[2], minOf(indent / 2, 4))
+            }
+            boldLine != null -> { flush(); result += Part.Heading(4, boldLine.groupValues[1].trimEnd(':')) }
             heading != null -> { flush(); result += Part.Heading(heading.groupValues[1].length, heading.groupValues[2]) }
             trimmed.startsWith(">") -> {
                 if (paragraph.isNotEmpty()) { result += Part.Paragraph(paragraph.joinToString("\n")); paragraph.clear() }
@@ -219,6 +241,7 @@ internal fun parts(body: String): List<Part> {
         }
     }
     flush()
+    flushList()
     return result
 }
 
@@ -230,9 +253,18 @@ private fun PartView(part: Part, codeBackground: androidx.compose.ui.graphics.Co
             style = when (part.level) {
                 1 -> MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
                 2 -> MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 19.sp)
-                else -> MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+                3 -> MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+                else -> MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold)
             },
-            modifier = Modifier.padding(top = if (part.level <= 2) 10.dp else 6.dp))
+            modifier = Modifier.padding(top = if (part.level <= 2) 12.dp else 8.dp))
+        is Part.Items -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            for (item in part.items) androidx.compose.foundation.layout.Row(Modifier.padding(start = (20 * item.depth).dp)) {
+                // The marker has its own column, so wrapped lines hang under the text.
+                Text(item.marker, style = body, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.End,
+                    modifier = Modifier.widthIn(min = if (item.marker == "•") 10.dp else 20.dp))
+                Text(inline(item.text, codeBackground), style = body, modifier = Modifier.padding(start = 8.dp))
+            }
+        }
         is Part.Paragraph -> Text(paragraphs(part.text, codeBackground), style = body)
         is Part.Quote -> androidx.compose.foundation.layout.Row(Modifier.height(androidx.compose.foundation.layout.IntrinsicSize.Min)) {
             androidx.compose.foundation.layout.Box(Modifier.width(3.dp).fillMaxHeight().background(Brand.gradient))
