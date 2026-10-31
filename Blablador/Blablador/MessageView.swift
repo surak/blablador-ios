@@ -673,6 +673,8 @@ struct MarkdownText: View {
             }
         }
         .textSelection(.enabled)
+        // About 80 characters per line at most, like a printed page; tables and code may be wider.
+        .frame(maxWidth: 680 * textScale, alignment: .leading)
     }
 
     /// Index of the line that closes display maths opened on `start`, or nil while it's still being written.
@@ -724,23 +726,54 @@ struct MarkdownText: View {
     enum Part: Equatable {
         case heading(level: Int, text: String)
         case paragraph([String])
+        /// List items: marker ("•" or "3."), text and nesting depth.
+        case list([ListItem])
         case quote([String])
         case rule
     }
 
-    /// Splits text into headings, paragraphs and quotes at blank lines, headings and rules.
+    struct ListItem: Equatable {
+        let marker: String
+        let text: String
+        let depth: Int
+    }
+
+    /// Splits text into headings, paragraphs, lists and quotes at blank lines, headings and rules. A line that is
+    /// all bold ("**Structure**") is a heading too: models often write section titles that way.
     static func parts(_ body: String) -> [Part] {
         var parts: [Part] = []
         var lines: [String] = []
+        var items: [ListItem] = []
         var quoting = false
         func flush() {
             if !lines.isEmpty { parts.append(quoting ? .quote(lines) : .paragraph(lines)) }
+            if !items.isEmpty { parts.append(.list(items)) }
             lines = []
+            items = []
         }
         for raw in body.components(separatedBy: "\n") {
             let trimmed = raw.trimmingCharacters(in: .whitespaces)
             if trimmed.isEmpty {
+                // A blank line between list items keeps the list together.
+                if items.isEmpty { flush() }
+            } else if let bullet = trimmed.range(of: #"^([-*+•]|\d+[.)])\s+"#, options: .regularExpression) {
+                if !lines.isEmpty || quoting {
+                    let pending = items
+                    items = []
+                    flush()
+                    items = pending
+                }
+                quoting = false
+                let marker = trimmed[bullet].trimmingCharacters(in: .whitespaces)
+                let indent = raw.prefix { $0 == " " || $0 == "\t" }.count
+                items.append(ListItem(marker: marker.first?.isNumber == true ? marker.replacingOccurrences(of: ")", with: ".") : "•",
+                                      text: String(trimmed[bullet.upperBound...]), depth: min(indent / 2, 4)))
+            } else if !items.isEmpty, raw.hasPrefix("  "), let last = items.indices.last {
+                // A wrapped continuation line of the last list item.
+                items[last] = ListItem(marker: items[last].marker, text: items[last].text + " " + trimmed, depth: items[last].depth)
+            } else if let title = trimmed.range(of: #"^\*\*([^*]{1,80})\*\*:?$"#, options: .regularExpression), title.lowerBound == trimmed.startIndex {
                 flush()
+                parts.append(.heading(level: 4, text: trimmed.trimmingCharacters(in: CharacterSet(charactersIn: "*:"))))
             } else if let heading = trimmed.range(of: #"^#{1,6}\s+"#, options: .regularExpression) {
                 flush()
                 parts.append(.heading(level: trimmed[heading].filter { $0 == "#" }.count, text: String(trimmed[heading.upperBound...])))
@@ -752,7 +785,7 @@ struct MarkdownText: View {
                 quoting = true
                 lines.append(String(trimmed.dropFirst()).trimmingCharacters(in: .whitespaces))
             } else {
-                if quoting { flush() }
+                if quoting || !items.isEmpty { flush() }
                 quoting = false
                 lines.append(raw)
             }
@@ -767,12 +800,28 @@ struct MarkdownText: View {
         case let .heading(level, text):
             Text(inline(text))
                 .font(Self.headingFont(level: level, scale: textScale))
-                .padding(.top, level <= 2 ? 10 : 6)
+                .padding(.top, level <= 2 ? 12 : 8)
                 .accessibilityAddTraits(.isHeader)
         case let .paragraph(lines):
             Text(attributed(lines))
                 .scaledFont(.body)
                 .lineSpacing(3)
+        case let .list(items):
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(item.marker)
+                            .scaledFont(.body)
+                            .foregroundStyle(.secondary)
+                            .frame(minWidth: item.marker == "•" ? 10 : 20, alignment: .trailing)
+                        Text(inline(item.text))
+                            .scaledFont(.body)
+                            .lineSpacing(3)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.leading, CGFloat(item.depth) * 20)
+                }
+            }
         case let .quote(lines):
             Text(attributed(lines))
                 .scaledFont(.body)
@@ -787,7 +836,7 @@ struct MarkdownText: View {
 
     private static func headingFont(level: Int, scale: CGFloat) -> Font {
 #if os(macOS)
-        let size: CGFloat = level == 1 ? 21 : level == 2 ? 18 : level == 3 ? 15.5 : 14
+        let size: CGFloat = level == 1 ? 21 : level == 2 ? 18 : level == 3 ? 16 : 15
         return .system(size: size * scale, weight: level <= 2 ? .bold : .semibold)
 #else
         return .system(level == 1 ? .title2 : level == 2 ? .title3 : .headline, weight: level <= 2 ? .bold : .semibold)

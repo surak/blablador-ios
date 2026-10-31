@@ -51,6 +51,20 @@ final class RenderPreview: XCTestCase {
         - Second point [2]
         """
         save(MarkdownText(text: sample).padding(), "markdown", size: CGSize(width: 620, height: 700))
+        let doc = """
+        This one is **the statutes (*estatuto*) of a Brazilian motorcycle club — “Steel Goose Moto Group”** — written in Portuguese. Here's the gist:
+
+        **What it legally is (Cap. I)**
+        - A non-profit civil association, "social and recreational", founded **7 September 1992** in Conselheiro Lafaiete, Minas Gerais; unlimited duration, unlimited members, **not registered with any official body**.
+        - It's deliberately **undemocratic by design**: no obligation to hold assemblies or elections.
+          - The **Founding President is "sovereign"** in choosing directors.
+        - Objectives: bring bikers together, organise rides and events, promote safe riding.
+
+        **Structure**
+        1. Local units called **“Facções”** (factions), each with its own board.
+        2. Central administration (Cap. III): President, Vice-President, National Director.
+        """
+        save(MarkdownText(text: doc).padding(), "markdown2", size: CGSize(width: 1100, height: 620))
         let store = ChatStore()
         let panel = ToolsPanelContent(imageMode: .constant(false), videoMode: .constant(true), speechMode: .constant(false)) { _ in }
             .environmentObject(store)
