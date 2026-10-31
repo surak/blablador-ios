@@ -510,6 +510,21 @@ private fun DocumentButton(markdown: String, tint: androidx.compose.ui.graphics.
     val saveSlides = saver("application/vnd.openxmlformats-officedocument.presentationml.presentation") { de.fz_juelich.blablador.data.OfficeExport.pptx(markdown) }
     val name = de.fz_juelich.blablador.data.DocumentExport.fileName(markdown)
     val hasTables = remember(markdown) { de.fz_juelich.blablador.data.OfficeExport.tables(markdown).isNotEmpty() }
+    /** Writes the file to the cache and lets the user pick an app to open it. */
+    fun openIn(ext: String, mime: String, type: String, make: () -> ByteArray?) {
+        val data = make() ?: return
+        val file = java.io.File(java.io.File(context.cacheDir, "exports").apply { mkdirs() }, "$name.$ext")
+        file.writeBytes(data)
+        val uri = androidx.core.content.FileProvider.getUriForFile(context, context.packageName + ".files", file)
+        val view = Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        if (view.resolveActivity(context.packageManager) == null &&
+            context.packageManager.queryIntentActivities(view, 0).isEmpty()) {
+            android.widget.Toast.makeText(context, "No app on this device opens $type files", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+        runCatching { context.startActivity(Intent.createChooser(view, "Open with")) }
+            .onFailure { android.widget.Toast.makeText(context, "No app on this device opens $type files", android.widget.Toast.LENGTH_SHORT).show() }
+    }
     fun copy() {
         val clip = android.content.ClipData.newHtmlText("Blablador", de.fz_juelich.blablador.data.DocumentExport.plain(markdown),
             de.fz_juelich.blablador.data.DocumentExport.html(markdown))
@@ -529,6 +544,21 @@ private fun DocumentButton(markdown: String, tint: androidx.compose.ui.graphics.
             DropdownMenuItem(text = { Text("Word document…") }, onClick = { menu = false; saveWord.launch("$name.docx") })
             if (hasTables) DropdownMenuItem(text = { Text("Excel spreadsheet…") }, onClick = { menu = false; saveExcel.launch("$name.xlsx") })
             DropdownMenuItem(text = { Text("PowerPoint slides…") }, onClick = { menu = false; saveSlides.launch("$name.pptx") })
+            HorizontalDivider()
+            Text("Open in an app", style = MaterialTheme.typography.labelMedium, color = tint,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+            DropdownMenuItem(text = { Text("Open as Word document") }, onClick = {
+                menu = false
+                openIn("docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "Word") { de.fz_juelich.blablador.data.DocumentExport.docx(markdown) }
+            })
+            if (hasTables) DropdownMenuItem(text = { Text("Open as spreadsheet") }, onClick = {
+                menu = false
+                openIn("xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "spreadsheet") { de.fz_juelich.blablador.data.OfficeExport.xlsx(markdown) }
+            })
+            DropdownMenuItem(text = { Text("Open as slides") }, onClick = {
+                menu = false
+                openIn("pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation", "slides") { de.fz_juelich.blablador.data.OfficeExport.pptx(markdown) }
+            })
         }
     }
 }

@@ -2,6 +2,7 @@
 <paths>
     <cache-path name="camera" path="camera/" />
     <cache-path name="decrypted" path="decrypted/" />
+    <cache-path name="exports" path="exports/" />
     <files-path name="images" path="images/" />
     <files-path name="audio" path="audio/" />
     <files-path name="videos" path="videos/" />
