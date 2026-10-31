@@ -480,7 +480,8 @@ private fun Welcome(userName: String, onPick: (Suggestion) -> Unit) {
     val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
     val salutation = when (hour) { in 5..11 -> "Good morning"; in 12..17 -> "Good afternoon"; in 18..21 -> "Good evening"; else -> "Hello" }
     // Four examples, picked when the empty chat appears.
-    val suggestions = remember { allSuggestions.shuffled().take(4) }
+    // Six examples: the voice-cloning one always, the rest at random.
+    val suggestions = remember { (allSuggestions.filter { it.opensVoice } + allSuggestions.filter { !it.opensVoice }.shuffled().take(5)).shuffled() }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(28.dp)) {
         Spacer(Modifier.height(24.dp))
         Column {
@@ -489,15 +490,25 @@ private fun Welcome(userName: String, onPick: (Suggestion) -> Unit) {
             Text("How can I help you today?", fontSize = 34.sp, fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f), lineHeight = 40.sp)
         }
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            suggestions.forEach { suggestion ->
-                Column(
-                    Modifier.size(160.dp).clip(RoundedCornerShape(18.dp)).background(MaterialTheme.colorScheme.surfaceVariant)
-                        .clickable { onPick(suggestion) }.padding(14.dp),
-                    verticalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Text(suggestion.text, style = MaterialTheme.typography.bodyMedium)
-                    Icon(suggestion.icon, null, Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.background).padding(8.dp))
+        androidx.compose.foundation.layout.BoxWithConstraints {
+            val columns = maxOf(1, (maxWidth / 210.dp).toInt())
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                suggestions.chunked(columns).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        row.forEach { suggestion ->
+                            Row(
+                                Modifier.weight(1f).heightIn(min = 74.dp).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceVariant)
+                                    .clickable { onPick(suggestion) }.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                Box(Modifier.size(34.dp).clip(CircleShape).background(MaterialTheme.colorScheme.background), contentAlignment = Alignment.Center) {
+                                    Icon(suggestion.icon, null, Modifier.size(18.dp), tint = Brand.violet)
+                                }
+                                Text(suggestion.text, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                        repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
+                    }
                 }
             }
         }
