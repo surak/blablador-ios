@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -140,7 +141,7 @@ private fun displayMathEnd(lines: List<String>, start: Int): Int? {
 
 /** Inline Markdown: **bold**, *italic*, `code`, ~~strike~~ and [links](url). */
 fun inline(text: String, codeBackground: androidx.compose.ui.graphics.Color): AnnotatedString = buildAnnotatedString {
-    val pattern = Regex("""\*\*(.+?)\*\*|__(.+?)__|(?<![*\w])\*(?!\s)(.+?)(?<!\s)\*(?!\*)|`([^`]+)`|~~(.+?)~~|\[([^\]]+)]\(([^)\s]+)\)""")
+    val pattern = Regex("""\*\*(.+?)\*\*|__(.+?)__|(?<![*\w])\*(?!\s)(.+?)(?<!\s)\*(?!\*)|`([^`]+)`|~~(.+?)~~|\[([^\]]+)]\(([^)\s]+)\)|[ \t]?((?:\[\d+])+)(?!\()""")
     var last = 0
     for (match in pattern.findAll(text)) {
         append(text.substring(last, match.range.first))
@@ -153,6 +154,9 @@ fun inline(text: String, codeBackground: androidx.compose.ui.graphics.Color): An
             g[6].isNotEmpty() && !isSafeLink(g[7]) -> append(g[6])
             g[6].isNotEmpty() -> withLink(androidx.compose.ui.text.LinkAnnotation.Url(g[7],
                 androidx.compose.ui.text.TextLinkStyles(SpanStyle(color = Brand.blue)))) { append(g[6]) }
+            // " [27][29][30]" becomes one small raised mark "[27,29,30]".
+            g[8].isNotEmpty() -> withStyle(SpanStyle(fontSize = 10.sp, fontWeight = FontWeight.Medium, color = androidx.compose.ui.graphics.Color.Gray,
+                baselineShift = androidx.compose.ui.text.style.BaselineShift.Superscript)) { append(citationMark(g[8])) }
         }
         last = match.range.last + 1
     }
@@ -166,13 +170,76 @@ fun MarkdownText(text: String, modifier: Modifier = Modifier) {
     SelectionContainer(modifier) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             for (block in blocks) when (block) {
-                is Block.Text -> Text(paragraphs(block.body, codeBackground), style = MaterialTheme.typography.bodyLarge)
+                is Block.Text -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for (part in parts(block.body)) PartView(part, codeBackground)
+                }
                 is Block.Code -> CodeBlock(block.language, block.body)
                 is Block.Math -> WebBlock(WebBlockKind.Markdown, block.body)
                 is Block.Artifact -> ArtifactBlock(block.language, block.body)
                 is Block.Table -> MarkdownTable(block, codeBackground)
             }
         }
+    }
+}
+
+/** "[27][29][30]" → "[27,29,30]". */
+internal fun citationMark(run: String) = "[" + Regex("""\d+""").findAll(run).joinToString(",") { it.value } + "]"
+
+/** A piece of a text block: split at blank lines, headings and rules. */
+internal sealed interface Part {
+    data class Heading(val level: Int, val text: String) : Part
+    data class Paragraph(val text: String) : Part
+    data class Quote(val text: String) : Part
+    data object Rule : Part
+}
+
+internal fun parts(body: String): List<Part> {
+    val result = mutableListOf<Part>()
+    val paragraph = mutableListOf<String>()
+    val quote = mutableListOf<String>()
+    fun flush() {
+        if (paragraph.isNotEmpty()) { result += Part.Paragraph(paragraph.joinToString("\n")); paragraph.clear() }
+        if (quote.isNotEmpty()) { result += Part.Quote(quote.joinToString("\n")); quote.clear() }
+    }
+    for (line in body.split("\n")) {
+        val trimmed = line.trim()
+        val heading = Regex("""^(#{1,6})\s+(.*)$""").find(trimmed)
+        when {
+            trimmed.isEmpty() -> flush()
+            Regex("""^(-{3,}|\*{3,}|_{3,})$""").matches(trimmed) -> { flush(); result += Part.Rule }
+            heading != null -> { flush(); result += Part.Heading(heading.groupValues[1].length, heading.groupValues[2]) }
+            trimmed.startsWith(">") -> {
+                if (paragraph.isNotEmpty()) { result += Part.Paragraph(paragraph.joinToString("\n")); paragraph.clear() }
+                quote += trimmed.removePrefix(">").trimStart()
+            }
+            else -> {
+                if (quote.isNotEmpty()) { result += Part.Quote(quote.joinToString("\n")); quote.clear() }
+                paragraph += line
+            }
+        }
+    }
+    flush()
+    return result
+}
+
+@Composable
+private fun PartView(part: Part, codeBackground: androidx.compose.ui.graphics.Color) {
+    val body = MaterialTheme.typography.bodyLarge.let { it.copy(lineHeight = (it.lineHeight.value + 3).sp) }
+    when (part) {
+        is Part.Heading -> Text(inline(part.text, codeBackground),
+            style = when (part.level) {
+                1 -> MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                2 -> MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 19.sp)
+                else -> MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+            },
+            modifier = Modifier.padding(top = if (part.level <= 2) 10.dp else 6.dp))
+        is Part.Paragraph -> Text(paragraphs(part.text, codeBackground), style = body)
+        is Part.Quote -> androidx.compose.foundation.layout.Row(Modifier.height(androidx.compose.foundation.layout.IntrinsicSize.Min)) {
+            androidx.compose.foundation.layout.Box(Modifier.width(3.dp).fillMaxHeight().background(Brand.gradient))
+            Text(paragraphs(part.text, codeBackground), style = body, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 10.dp))
+        }
+        Part.Rule -> androidx.compose.material3.HorizontalDivider(Modifier.padding(vertical = 6.dp))
     }
 }
 
