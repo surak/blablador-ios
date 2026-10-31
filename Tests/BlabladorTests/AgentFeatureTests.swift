@@ -90,4 +90,14 @@ final class AgentFeatureTests: XCTestCase {
         XCTAssertNil(message.trace)
         XCTAssertTrue(message.mentions.isEmpty)
     }
+
+    func testInterruptedRepliesStopLookingBusy() {
+        var conversation = Conversation(title: "Task", model: "m")
+        conversation.messages = [ChatMessage(role: .user, content: "Run"), ChatMessage(role: .assistant, content: ""), ChatMessage(role: .assistant, content: "Done")]
+        let marked = ConversationLibrary.markingInterrupted(conversation)
+        XCTAssertTrue(marked.messages[1].isError)
+        XCTAssertTrue(marked.messages[1].content.contains("interrupted"))
+        XCTAssertFalse(marked.messages[2].isError)
+        XCTAssertEqual(marked.messages[0].content, "Run")
+    }
 }

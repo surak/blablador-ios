@@ -135,7 +135,7 @@ struct CommandApprovalCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label(approval.title, systemImage: approval.icon)
+            Label { Text(approval.title) } icon: { ToolIcon(name: approval.icon, size: 20) }
                 .scaledFont(.subheadline, weight: .semibold)
             ScrollView(.horizontal, showsIndicators: false) {
                 Text(approval.detail)

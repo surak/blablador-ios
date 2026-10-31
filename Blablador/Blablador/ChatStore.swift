@@ -51,8 +51,23 @@ final class ConversationLibrary: ObservableObject {
         Task.detached(priority: .utility) { EncryptedStorage.encryptOldFiles() }
         if let data = EncryptedStorage.read(Self.storageURL),
            let saved = try? JSONDecoder().decode([Conversation].self, from: data) {
-            conversations = saved
+            conversations = saved.map(Self.markingInterrupted)
         }
+    }
+
+    /// Replies left empty when the app quit or was stopped in the background are marked, so they don't look like
+    /// they are still being written.
+    static func markingInterrupted(_ conversation: Conversation) -> Conversation {
+        var conversation = conversation
+        for index in conversation.messages.indices {
+            let message = conversation.messages[index]
+            if message.role == .assistant, message.content.isEmpty, !message.isError, message.images.isEmpty, message.audio.isEmpty,
+               message.videos.isEmpty, message.steps.isEmpty {
+                conversation.messages[index].content = "The reply was interrupted. Tap Regenerate to try again."
+                conversation.messages[index].isError = true
+            }
+        }
+        return conversation
     }
 
     func persist() {

@@ -10,7 +10,7 @@ enum MentionCatalog {
         Mention(kind: .tool, value: "chats", name: "Earlier chats", icon: "text.magnifyingglass"),
         Mention(kind: .tool, value: "memory", name: "Memory", icon: "brain"),
         Mention(kind: .tool, value: "image", name: "Image", icon: "paintbrush.pointed"),
-        Mention(kind: .tool, value: "schedule", name: "Schedule", icon: "clock.badge"),
+        Mention(kind: .tool, value: "schedule", name: "Schedule", icon: ToolIcon.schedule),
         Mention(kind: .tool, value: "plan", name: "Plan", icon: "checklist")
     ]
 
@@ -58,7 +58,7 @@ struct MentionSuggestions: View {
                     ForEach(matches.prefix(30)) { mention in
                         Button { onPick(mention) } label: {
                             HStack(spacing: 8) {
-                                Image(systemName: mention.icon)
+                                ToolIcon(name: mention.icon, size: 18)
                                     .foregroundStyle(Theme.gradient)
                                     .frame(width: 20)
                                 Text(mention.name).lineLimit(1)
@@ -95,7 +95,7 @@ struct MentionChips: View {
             HStack(spacing: 6) {
                 ForEach(mentions) { mention in
                     HStack(spacing: 4) {
-                        Image(systemName: mention.icon)
+                        ToolIcon(name: mention.icon, size: 14)
                         Text("@" + mention.name).lineLimit(1)
                         if let onRemove {
                             Button { onRemove(mention) } label: { Image(systemName: "xmark") }
@@ -244,7 +244,7 @@ struct ToolsPanelContent: View {
                         VStack(spacing: 0) {
                             link("Skills", "wand.and.stars", skills.skills.isEmpty ? "Instructions for tasks you repeat" : "\(skills.skills.count) skills · use one with @") { SkillsView() }
                             Divider().padding(.leading, 44)
-                            link("Scheduled tasks", "clock.badge", scheduler.tasks.isEmpty ? "Run prompts at set times" : "\(scheduler.tasks.filter(\.enabled).count) active") { TasksView() }
+                            link("Scheduled tasks", ToolIcon.schedule, scheduler.tasks.isEmpty ? "Run prompts at set times" : "\(scheduler.tasks.filter(\.enabled).count) active") { TasksView() }
                             Divider().padding(.leading, 44)
                             link("Permissions", "hand.raised", "What the assistant may do without asking") { PermissionsView() }
                             Divider().padding(.leading, 44)
@@ -310,7 +310,7 @@ struct ToolsPanelContent: View {
 
     private func row<Trailing: View>(_ title: String, _ icon: String, _ detail: String, @ViewBuilder trailing: () -> Trailing) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: icon)
+            ToolIcon(name: icon)
                 .foregroundStyle(Theme.gradient)
                 .frame(width: 22)
             VStack(alignment: .leading, spacing: 1) {

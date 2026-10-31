@@ -266,7 +266,9 @@ struct TasksView: View {
                 }
                 ForEach(scheduler.tasks) { task in
                     Button { editing = task } label: {
-                        HStack {
+                        HStack(spacing: 12) {
+                            ScheduleIcon(size: 26)
+                                .opacity(task.enabled ? 1 : 0.4)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(task.title).foregroundStyle(task.enabled ? .primary : .secondary)
                                 Text(task.enabled ? task.scheduleText : "Off").scaledFont(.caption).foregroundStyle(.secondary)
@@ -387,6 +389,48 @@ private struct TaskEditor: View {
                 }
                 .disabled(task.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
+        }
+    }
+}
+
+/// The icon for scheduled tasks: Blablador's logo with a small clock at the top right that glows in and out.
+struct ScheduleIcon: View {
+    var size: CGFloat = 22
+    @State private var glowing = false
+
+    var body: some View {
+        Image("Avatar")
+            .resizable()
+            .interpolation(.high)
+            .frame(width: size, height: size)
+            .overlay(alignment: .topTrailing) {
+                Image(systemName: "clock.fill")
+                    .font(.system(size: size * 0.5, weight: .semibold))
+                    .foregroundStyle(.white, Theme.gradient)
+                    .background(Circle().fill(Theme.background).padding(-1))
+                    .shadow(color: .purple.opacity(glowing ? 0.9 : 0), radius: glowing ? size * 0.3 : 0)
+                    .opacity(glowing ? 1 : 0.55)
+                    .offset(x: size * 0.22, y: -size * 0.22)
+            }
+            .onAppear {
+                withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) { glowing = true }
+            }
+            .accessibilityHidden(true)
+    }
+}
+
+/// An SF Symbol by name, or the schedule icon for "schedule".
+struct ToolIcon: View {
+    let name: String
+    var size: CGFloat = 20
+
+    static let schedule = "schedule"
+
+    var body: some View {
+        if name == Self.schedule {
+            ScheduleIcon(size: size)
+        } else {
+            Image(systemName: name)
         }
     }
 }

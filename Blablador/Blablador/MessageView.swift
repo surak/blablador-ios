@@ -150,7 +150,8 @@ struct MessageView: View {
                         AgentStepsView(steps: message.steps)
                     }
                     if message.content.isEmpty {
-                        if message.status == nil && message.images.isEmpty && message.audio.isEmpty && message.videos.isEmpty && message.steps.isEmpty && message.reasoning.isEmpty { TypingIndicator() }
+                        // Only while this reply is being written; a finished empty reply shows nothing moving.
+                        if isLast && isStreaming && message.status == nil && message.images.isEmpty && message.audio.isEmpty && message.videos.isEmpty && message.steps.isEmpty && message.reasoning.isEmpty { TypingIndicator() }
                     } else if message.isError {
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
                             Image(systemName: "exclamationmark.triangle")

@@ -36,7 +36,7 @@ final class ToolPermissions: ObservableObject {
         Kind(id: "calendarWrite", name: "Add events and reminders", icon: "calendar.badge.plus", detail: "Create new events and reminders", defaultRule: .ask),
         Kind(id: "contacts", name: "Look up contacts", icon: "person.crop.circle", detail: "Names, phone numbers, emails", defaultRule: .allow),
         Kind(id: "location", name: "Current location", icon: "location", detail: "Where this device is, roughly", defaultRule: .ask),
-        Kind(id: "schedule", name: "Schedule tasks", icon: "clock.badge", detail: "Create tasks that run at set times", defaultRule: .ask),
+        Kind(id: "schedule", name: "Schedule tasks", icon: ToolIcon.schedule, detail: "Create tasks that run at set times", defaultRule: .ask),
         Kind(id: "files", name: "Edit files (agent)", icon: "doc.badge.gearshape", detail: "Write and edit files in the agent's folder", defaultRule: .allow),
         Kind(id: "command", name: "Run commands (agent)", icon: "terminal", detail: "Shell commands in the agent's folder", defaultRule: .ask)
     ]
@@ -142,7 +142,7 @@ struct PermissionsView: View {
                     Text(detail).scaledFont(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
             } icon: {
-                Image(systemName: icon)
+                ToolIcon(name: icon)
             }
         }
     }
