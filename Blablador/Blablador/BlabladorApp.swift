@@ -6,6 +6,10 @@ struct BlabladorApp: App {
     @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
 #endif
 
+    init() {
+        Notifier.shared.install()
+    }
+
     var body: some Scene {
         WindowGroup(id: "chat") {
             ChatWindow()
@@ -31,7 +35,10 @@ private struct ShareInboxPickup: ViewModifier {
         content
             .onAppear { SiriCommandCenter.shared.takeInbox() }
             .onChange(of: phase) { _, phase in
-                if phase == .active { SiriCommandCenter.shared.takeInbox() }
+                if phase == .active {
+                    SiriCommandCenter.shared.takeInbox()
+                    TaskScheduler.shared.check()
+                }
             }
     }
 }
@@ -65,6 +72,8 @@ private struct ChatWindow: View {
         ChatView()
             .environmentObject(store)
             .focusedSceneObject(store)
+            // Scheduled tasks run in the first window's chat list (shared by all windows).
+            .onAppear { if TaskScheduler.shared.store == nil { TaskScheduler.shared.start(with: store) } }
 #if os(macOS)
             .environment(\.textScale, pow(1.1, CGFloat(textSizeStep)))
             .scaledFont(.body)

@@ -258,6 +258,8 @@ struct BlabladorAPI {
         case content(String)
         case reasoning(String)
         case toolCalls([ToolCall])
+        /// Tokens the request used, sent at the end when the server reports them.
+        case usage(prompt: Int, completion: Int)
     }
 
     struct ToolCall {
@@ -295,6 +297,8 @@ struct BlabladorAPI {
                     request.timeoutInterval = minutes == 0 ? 7 * 24 * 3600 : TimeInterval(minutes * 60)
                     var body: [String: Any] = ["model": model, "messages": messages, "stream": true]
                     if !tools.isEmpty { body["tools"] = tools }
+                    // Blablador reports token counts at the end of the stream; other servers may reject the option.
+                    if Embeddings.available { body["stream_options"] = ["include_usage": true] }
                     request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
                     let (bytes, response) = try await URLSession.shared.bytes(for: request)
@@ -310,8 +314,11 @@ struct BlabladorAPI {
                         let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
                         if payload == "[DONE]" { break }
                         guard let data = payload.data(using: .utf8),
-                              let chunk = try? JSONDecoder().decode(ChatChunk.self, from: data),
-                              let delta = chunk.choices.first?.delta else { continue }
+                              let chunk = try? JSONDecoder().decode(ChatChunk.self, from: data) else { continue }
+                        if let usage = chunk.usage {
+                            continuation.yield(.usage(prompt: usage.prompt_tokens ?? 0, completion: usage.completion_tokens ?? 0))
+                        }
+                        guard let delta = chunk.choices.first?.delta else { continue }
                         if let thinking = delta.reasoning_content ?? delta.reasoning, !thinking.isEmpty {
                             continuation.yield(.reasoning(thinking))
                         }
@@ -366,5 +373,11 @@ private struct ChatChunk: Decodable {
         let delta: Delta
     }
 
+    struct Usage: Decodable {
+        let prompt_tokens: Int?
+        let completion_tokens: Int?
+    }
+
     let choices: [Choice]
+    let usage: Usage?
 }

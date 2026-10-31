@@ -87,6 +87,9 @@ struct MessageView: View {
                     ForEach(message.documents) { document in
                         DocumentChip(document: document)
                     }
+                    if !message.mentions.isEmpty {
+                        MentionChips(mentions: message.mentions)
+                    }
                     if !message.content.isEmpty {
                         Text(message.content)
                             .scaledFont(.body)
@@ -124,6 +127,9 @@ struct MessageView: View {
                             .scaledFont(.subheadline)
                             .foregroundStyle(.secondary)
                             .symbolEffect(.pulse)
+                    }
+                    if !message.plan.isEmpty {
+                        PlanCard(items: message.plan)
                     }
                     if !message.reasoning.isEmpty {
                         ThinkingView(text: message.reasoning, isThinking: isLast && isStreaming && message.content.isEmpty)
@@ -182,6 +188,9 @@ struct MessageView: View {
                     }
                     if !(isLast && isStreaming) && (!message.content.isEmpty || !message.images.isEmpty || !message.audio.isEmpty || !message.videos.isEmpty) {
                         actions
+                    }
+                    if let trace = message.trace, !(isLast && isStreaming) {
+                        TraceLine(trace: trace, messageID: message.id)
                     }
                 }
                 Spacer(minLength: 0)

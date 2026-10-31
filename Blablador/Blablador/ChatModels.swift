@@ -39,10 +39,16 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     /// own version of this message; `version` numbers them in the order they were made.
     var alternatives: [[ChatMessage]] = []
     var version = 1
+    /// The plan the model keeps with update_plan.
+    var plan: [PlanItem] = []
+    /// Model, time, tokens and tool calls of a reply.
+    var trace: Trace?
+    /// Tools, skills, knowledge bases and servers the user mentioned with @ (user messages).
+    var mentions: [Mention] = []
     /// Transient status shown while tools run, e.g. "Searching the web…"
     var status: String?
 
-    private enum CodingKeys: String, CodingKey { case id, role, content, date, isError, sources, webImages, remembered, forgotten, skillsUsed, suggestedSkills, alternatives, version, images, documents, audio, videos, citations, steps, reasoning }
+    private enum CodingKeys: String, CodingKey { case id, role, content, date, isError, sources, webImages, remembered, forgotten, skillsUsed, suggestedSkills, alternatives, version, images, documents, audio, videos, citations, steps, reasoning, plan, trace, mentions }
 
     init(role: ChatRole, content: String, images: [String] = [], documents: [DocumentAttachment] = []) {
         self.role = role
@@ -73,6 +79,9 @@ struct ChatMessage: Identifiable, Codable, Equatable {
         citations = try c.decodeIfPresent([KnowledgeCitation].self, forKey: .citations) ?? []
         steps = try c.decodeIfPresent([AgentStep].self, forKey: .steps) ?? []
         reasoning = try c.decodeIfPresent(String.self, forKey: .reasoning) ?? ""
+        plan = try c.decodeIfPresent([PlanItem].self, forKey: .plan) ?? []
+        trace = try c.decodeIfPresent(Trace.self, forKey: .trace)
+        mentions = try c.decodeIfPresent([Mention].self, forKey: .mentions) ?? []
     }
 }
 

@@ -120,8 +120,10 @@ struct SettingsView: View {
                     }
                     NavigationLink("Skills") { SkillsView() }
                     NavigationLink("Connected tools (MCP)") { MCPServersView() }
+                    NavigationLink("Scheduled tasks") { TasksView() }
+                    NavigationLink("Permissions") { PermissionsView() }
                 } footer: {
-                    Text("Facts about you the assistant remembers across chats, and instructions for tasks you repeat.")
+                    Text("Facts about you the assistant remembers across chats, instructions for tasks you repeat, prompts that run at set times, and what the assistant may do without asking.")
                 }
 
                 VoiceSettingsSection()
@@ -130,6 +132,10 @@ struct SettingsView: View {
                     Toggle("Web search", isOn: Binding(
                         get: { store.webSearchEnabled },
                         set: { store.webSearchEnabled = $0 }
+                    ))
+                    Toggle("Calendar, reminders, contacts and location", isOn: Binding(
+                        get: { DeviceTools.enabled },
+                        set: { DeviceTools.enabled = $0; store.objectWillChange.send() }
                     ))
                 } footer: {
                     Text("Lets the model search the web via search.blablador.fz-juelich.de when it needs current information.")

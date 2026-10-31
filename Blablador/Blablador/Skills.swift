@@ -50,6 +50,11 @@ final class SkillLibrary: ObservableObject {
 
     @Published private(set) var skills: [Skill] = []
 
+    /// After a task of several steps, draft a skill from it for the user to save (Settings → Skills).
+    @AppStorage("skillsDraftAutomatically") var draftsAutomatically = true {
+        willSet { objectWillChange.send() }
+    }
+
     private init() {
         if let data = EncryptedStorage.read(Self.fileURL),
            let skills = try? JSONDecoder().decode([Skill].self, from: data) {
@@ -200,6 +205,11 @@ struct SkillsView: View {
             }
             if let importError {
                 Text(importError).foregroundStyle(.red)
+            }
+            Section {
+                Toggle("Suggest skills after tasks", isOn: Binding(get: { library.draftsAutomatically }, set: { library.draftsAutomatically = $0 }))
+            } footer: {
+                Text("After the assistant finishes a task of several steps, it drafts a skill from what it did. Save it with one tap and the next similar task goes the same way.")
             }
         }
         .formStyle(.grouped)

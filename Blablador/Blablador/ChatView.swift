@@ -16,6 +16,7 @@ struct ChatView: View {
     @State private var draft = ""
     @State private var attachments: [Data] = []
     @State private var documents: [DocumentAttachment] = []
+    @State private var mentions: [Mention] = []
     @State private var imageMode = false
     @State private var videoMode = false
     @State private var speechMode = false
@@ -117,6 +118,11 @@ struct ChatView: View {
         }
         .onChange(of: siri.pendingCommand) { _, command in handleSiri(command) }
         .onChange(of: siri.pendingShare) { _, _ in handleShare() }
+        .onChange(of: siri.pendingChat) { _, id in
+            guard let id, isFrontWindow, let chat = store.conversations.first(where: { $0.id == id }) else { return }
+            siri.pendingChat = nil
+            store.select(chat)
+        }
         .onAppear { handleShare() }
 #if os(macOS)
         .onChange(of: windowState) { _, _ in
@@ -152,7 +158,7 @@ struct ChatView: View {
                 CommandApprovalCard(approval: approval) { store.answerApproval($0) }
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
-            ComposerView(draft: $draft, attachments: $attachments, documents: $documents, imageMode: $imageMode, videoMode: $videoMode, speechMode: $speechMode, droppedFiles: $droppedFiles, speech: speech, focused: $inputFocused, onSend: send)
+            ComposerView(draft: $draft, attachments: $attachments, documents: $documents, mentions: $mentions, imageMode: $imageMode, videoMode: $videoMode, speechMode: $speechMode, droppedFiles: $droppedFiles, speech: speech, focused: $inputFocused, onSend: send)
         }
         // Drop images and PDFs from Finder or Files onto the chat to attach them.
         .dropDestination(for: URL.self) { urls, _ in
@@ -359,10 +365,12 @@ struct ChatView: View {
         let text = draft
         let images = attachments
         let pdfs = documents
+        let mentioned = mentions
         draft = ""
         attachments = []
         documents = []
-        store.send(text, attachments: images, documents: pdfs, createImage: imageMode, createVideo: videoMode, speak: speechMode)
+        mentions = []
+        store.send(text, attachments: images, documents: pdfs, mentions: mentioned, createImage: imageMode, createVideo: videoMode, speak: speechMode)
     }
 
     /// Something shared with or opened in Blablador: a new chat with it in the composer, ready to ask about.
@@ -519,6 +527,7 @@ private struct ComposerView: View {
     @Binding var draft: String
     @Binding var attachments: [Data]
     @Binding var documents: [DocumentAttachment]
+    @Binding var mentions: [Mention]
     @Binding var imageMode: Bool
     @Binding var videoMode: Bool
     @Binding var speechMode: Bool
@@ -544,6 +553,17 @@ private struct ComposerView: View {
     @State private var ocrItems: [PhotosPickerItem] = []
     @State private var readingPDFs = 0
     @State private var pdfError: String?
+    @State private var showPanel = false
+    /// Something picked in the panel that opens another sheet once the panel has closed.
+    @State private var pendingAction: ToolsPanel.Action?
+
+    /// An "@name" being typed at the end of the draft.
+    private static let mentionReference = #"(^|\s)@[^\s@]*$"#
+
+    private var mentionQuery: String? {
+        guard let range = draft.range(of: Self.mentionReference, options: .regularExpression) else { return nil }
+        return String(draft[range].drop { $0 != "@" }.dropFirst())
+    }
 
     /// A "#name" being typed at the end of the draft.
     private static let knowledgeReference = #"(^|\s)#[^\s#]*$"#
@@ -583,6 +603,17 @@ private struct ComposerView: View {
             if !store.activeKnowledge.isEmpty {
                 ActiveKnowledgeStrip()
             }
+            if !mentions.isEmpty {
+                MentionChips(mentions: mentions) { mention in mentions.removeAll { $0.id == mention.id } }
+            }
+            if let query = mentionQuery {
+                MentionSuggestions(query: query) { mention in
+                    if let range = draft.range(of: Self.mentionReference, options: .regularExpression) {
+                        draft.replaceSubrange(range, with: draft[range].first == "@" ? "" : " ")
+                    }
+                    if !mentions.contains(mention) { mentions.append(mention) }
+                }
+            }
             if let query = knowledgeQuery {
                 KnowledgeSuggestions(query: query) { base in
                     // Replace the typed #reference with the chip.
@@ -607,7 +638,15 @@ private struct ComposerView: View {
                 .padding(.top, 4)
             }
             HStack(alignment: .bottom, spacing: 4) {
-                addMenu
+                Button { showPanel = true } label: {
+                    Image(systemName: "plus")
+                        .scaledFont(.title3)
+                        .frame(width: 40, height: 40)
+                        .foregroundStyle(.primary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Add and tools")
+                .help("Attach files, choose tools and more")
 
                 TextField(placeholder, text: $draft, axis: .vertical)
                     .textFieldStyle(.plain)
@@ -677,6 +716,19 @@ private struct ComposerView: View {
 
     var body: some View {
         field
+        .sheet(isPresented: $showPanel, onDismiss: runPendingAction) {
+            ToolsPanel(imageMode: $imageMode, videoMode: $videoMode, speechMode: $speechMode) { action in
+                pendingAction = action
+                showPanel = false
+            }
+            .environmentObject(store)
+#if os(iOS)
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+#else
+            .frame(minWidth: 440, minHeight: 620)
+#endif
+        }
         .photosPicker(isPresented: $showPhotoPicker, selection: $photoItems, maxSelectionCount: 4, matching: .images)
         .onChange(of: photoItems) { _, items in
             guard !items.isEmpty else { return }
@@ -873,61 +925,22 @@ private struct ComposerView: View {
         }
     }
 
-    private var addMenu: some View {
-        Menu {
-            if CameraPicker.isAvailable {
-                Button { showCamera = true } label: {
-                    Label("Camera", systemImage: "camera")
-                }
-            }
-            Button { showPhotoPicker = true } label: {
-                Label("Photos", systemImage: "photo.on.rectangle")
-            }
-            Button { pasteImage() } label: {
-                Label("Paste image", systemImage: "doc.on.clipboard")
-            }
-            Button { showFileImporter = true } label: {
-                Label("File (image, PDF or data)…", systemImage: "doc")
-            }
-            Button { showOCRPicker = true } label: {
-                Label("Text from photo", systemImage: "text.viewfinder")
-            }
-            KnowledgeMenu { showKnowledge = true }
+    private func runPendingAction() {
+        guard let action = pendingAction else { return }
+        pendingAction = nil
+        switch action {
+        case .camera: showCamera = true
+        case .photos: showPhotoPicker = true
+        case .files: showFileImporter = true
+        case .paste: pasteImage()
+        case .scanText: showOCRPicker = true
+        case .decide: showDecision = true
+        case .newKnowledge: showKnowledge = true
+        case .workspace:
 #if os(macOS)
-            Button {
-                if let url = chooseWorkspace() { store.workspace = url }
-            } label: {
-                Label("Agent: work in a folder…", systemImage: "terminal")
-            }
+            if let url = chooseWorkspace() { store.workspace = url }
 #endif
-            Button { showDecision = true } label: {
-                Label("Decide…", systemImage: "arrow.triangle.branch")
-            }
-            Divider()
-            Toggle(isOn: $imageMode) {
-                Label("Create or edit image", systemImage: "paintbrush.pointed")
-            }
-            Toggle(isOn: $videoMode) {
-                Label("Create video", systemImage: "film")
-            }
-            Toggle(isOn: $speechMode) {
-                Label("Speak", systemImage: "waveform")
-            }
-            Toggle(isOn: Binding(
-                get: { store.webSearchEnabled },
-                set: { store.webSearchEnabled = $0 }
-            )) {
-                Label("Web search", systemImage: "globe")
-            }
-        } label: {
-            Image(systemName: "plus")
-                .scaledFont(.title3)
-                .frame(width: 40, height: 40)
-                .foregroundStyle(.primary)
         }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .accessibilityLabel("Add")
     }
 
     private var videoModeChip: some View {

@@ -128,7 +128,7 @@ struct WorkspaceChip: View {
     }
 }
 
-/// Asks before the agent runs a shell command.
+/// Asks before a tool runs: a shell command, a connected service, a new event… "Always allow" changes the rule in Settings → Permissions.
 struct CommandApprovalCard: View {
     let approval: ChatStore.CommandApproval
     let onAnswer: (ChatStore.ApprovalChoice) -> Void
@@ -148,7 +148,11 @@ struct CommandApprovalCard: View {
                 Button("Deny", role: .cancel) { onAnswer(.deny) }
                     .keyboardShortcut(.cancelAction)
                 Spacer()
-                Button("Allow for this chat") { onAnswer(.always) }
+                Menu("Allow more") {
+                    Button("Allow for this chat") { onAnswer(.chat) }
+                    Button("Always allow") { onAnswer(.always) }
+                }
+                .fixedSize()
                 Button(approval.confirm) { onAnswer(.once) }
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)

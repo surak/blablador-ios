@@ -97,6 +97,7 @@ final class StreamTests: XCTestCase {
             case let .reasoning(text): reasoning += text
             case let .content(text): content += text
             case let .toolCalls(found): calls = found
+            case .usage: break
             }
         }
         XCTAssertEqual(reasoning, "Let me think.")

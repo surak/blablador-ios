@@ -74,7 +74,12 @@ final class ChatStore: ObservableObject {
 
     @Published var currentID: UUID?
     @Published var models: [RemoteModel] = []
-    @Published var isStreaming = false
+    /// Replies being written, per chat; they keep going when the user switches chats.
+    @Published private var running: [UUID: Task<Void, Never>] = [:]
+    /// The open chat is writing a reply.
+    var isStreaming: Bool { currentID.map { running[$0] != nil } ?? false }
+    /// Some chat is writing a reply.
+    var isBusy: Bool { !running.isEmpty }
     @Published var modelsError: String?
     /// Set by the Settings… menu command (⌘,) to open the settings sheet.
     @Published var settingsRequested = false
@@ -134,9 +139,49 @@ final class ChatStore: ObservableObject {
         BlabladorAPI.imageModels.first { $0.id == imageModel }?.name ?? imageModel
     }
 
-    private static let maxToolRounds = 4
+    /// Tool rounds per reply; a reply with a plan may take more.
+    private static let maxToolRounds = 8
+    private static let maxPlanRounds = 25
 
-    private var streamTask: Task<Void, Never>?
+    /// Runs the work of a reply for a chat. On iOS it asks for time to finish when the app goes to the background.
+    private func start(_ chat: UUID?, _ work: @escaping @MainActor () async -> Void) {
+        guard let chat else { return }
+#if os(iOS)
+        let background = UIApplication.shared.beginBackgroundTask(withName: "Reply")
+#endif
+        var task: Task<Void, Never>!
+        task = Task {
+            await work()
+            if running[chat] == task { running[chat] = nil }
+#if os(iOS)
+            UIApplication.shared.endBackgroundTask(background)
+#endif
+            TaskScheduler.shared.check()
+        }
+        running[chat] = task
+    }
+
+    /// The message with this id, in any chat.
+    func message(_ id: UUID) -> ChatMessage? {
+        for conversation in conversations {
+            if let message = conversation.messages.first(where: { $0.id == id }) { return message }
+        }
+        return nil
+    }
+
+    private func chat(_ id: UUID) -> Conversation? { conversations.first { $0.id == id } }
+
+    private func chat(containing messageID: UUID) -> Conversation? {
+        conversations.first { $0.messages.contains { $0.id == messageID } }
+    }
+
+    private static var appIsActive: Bool {
+#if os(iOS)
+        UIApplication.shared.applicationState == .active
+#else
+        NSApplication.shared.isActive
+#endif
+    }
 
     init() {
         apiKey = KeychainHelper.read("apiKey") ?? ""
@@ -192,7 +237,6 @@ final class ChatStore: ObservableObject {
     // MARK: - Conversations
 
     func newChat() {
-        stop()
         currentID = nil
         pendingKnowledge = []
         pendingWorkspace = nil
@@ -225,12 +269,12 @@ final class ChatStore: ObservableObject {
     }
 
     func select(_ conversation: Conversation) {
-        stop()
         currentID = conversation.id
         selectedModel = conversation.model
     }
 
     func delete(_ conversation: Conversation) {
+        running[conversation.id]?.cancel()
         if conversation.id == currentID { newChat() }
         ImageStore.delete(conversation.allMessages.flatMap(\.images))
         DataFiles.delete(conversation.allMessages.flatMap(\.documents).compactMap(\.dataFile))
@@ -241,6 +285,7 @@ final class ChatStore: ObservableObject {
     }
 
     func deleteAll() {
+        running.values.forEach { $0.cancel() }
         newChat()
         ImageStore.delete(conversations.flatMap { $0.allMessages.flatMap(\.images) })
         DataFiles.delete(conversations.flatMap { $0.allMessages.flatMap(\.documents).compactMap(\.dataFile) })
@@ -254,7 +299,7 @@ final class ChatStore: ObservableObject {
 
     /// Sends a chat message. With `createImage`, the text is used directly as an image prompt;
     /// with `speak`, it is read aloud with Drama 3.
-    func send(_ text: String, attachments: [Data] = [], documents: [DocumentAttachment] = [], createImage: Bool = false, createVideo: Bool = false, speak: Bool = false) {
+    func send(_ text: String, attachments: [Data] = [], documents: [DocumentAttachment] = [], mentions: [Mention] = [], createImage: Bool = false, createVideo: Bool = false, speak: Bool = false) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty || !attachments.isEmpty || !documents.isEmpty, !isStreaming else { return }
 
@@ -270,7 +315,13 @@ final class ChatStore: ObservableObject {
             if !trimmed.isEmpty { nameChat(conversation.id, from: trimmed, model: selectedModel) }
         }
         let images = attachments.map(ImageStore.save)
-        update { $0.messages.append(ChatMessage(role: .user, content: trimmed, images: images, documents: documents)) }
+        var message = ChatMessage(role: .user, content: trimmed, images: images, documents: documents)
+        message.mentions = mentions
+        update { $0.messages.append(message) }
+        // A mentioned knowledge base stays on for the chat, like one picked with #.
+        for mention in mentions where mention.kind == .knowledge {
+            if let id = UUID(uuidString: mention.value), !activeKnowledge.contains(id) { toggleKnowledge(id) }
+        }
 
         if speak, !trimmed.isEmpty {
             makeSpeech(script: trimmed)
@@ -287,8 +338,7 @@ final class ChatStore: ObservableObject {
     private func makeImage(prompt: String, editing source: String?) {
         let reply = ChatMessage(role: .assistant, content: "")
         update { $0.messages.append(reply) }
-        isStreaming = true
-        streamTask = Task {
+        start(currentID) { [self] in
             do {
                 let image = try await runImageTool(
                     name: source == nil ? "generate_image" : "edit_image",
@@ -306,7 +356,6 @@ final class ChatStore: ObservableObject {
                 }
             }
             updateMessage(reply.id) { $0.status = nil }
-            isStreaming = false
             persist()
         }
     }
@@ -340,9 +389,8 @@ final class ChatStore: ObservableObject {
     private func makeVideo(prompt: String, firstFrame: String?) {
         let reply = ChatMessage(role: .assistant, content: "")
         update { $0.messages.append(reply) }
-        isStreaming = true
         let seconds = videoSeconds, aspect = videoAspect
-        streamTask = Task {
+        start(currentID) { [self] in
             do {
                 updateMessage(reply.id) { $0.status = "Making a \(seconds)-second video with MiniMax-H3… This takes a few minutes." }
                 let frame = firstFrame.flatMap(ImageStore.data(for:)).map { ImageStore.jpeg(from: $0, maxPixelSize: 1920) ?? $0 }
@@ -358,7 +406,6 @@ final class ChatStore: ObservableObject {
                 }
             }
             updateMessage(reply.id) { $0.status = nil }
-            isStreaming = false
             persist()
         }
     }
@@ -367,8 +414,7 @@ final class ChatStore: ObservableObject {
     private func makeSpeech(script: String) {
         let reply = ChatMessage(role: .assistant, content: "")
         update { $0.messages.append(reply) }
-        isStreaming = true
-        streamTask = Task {
+        start(currentID) { [self] in
             do {
                 let audio = try await runSpeechTool(script: script, replyID: reply.id)
                 updateMessage(reply.id) { $0.audio.append(audio) }
@@ -382,7 +428,6 @@ final class ChatStore: ObservableObject {
                 }
             }
             updateMessage(reply.id) { $0.status = nil }
-            isStreaming = false
             persist()
         }
     }
@@ -395,9 +440,9 @@ final class ChatStore: ObservableObject {
         return AudioStore.save(data)
     }
 
-    /// Most recent image in the current conversation, used as the source for edits.
-    private var latestImage: String? {
-        current?.messages.last { !$0.images.isEmpty }?.images.last
+    /// Most recent image in the conversation of a reply, used as the source for edits.
+    private func latestImage(for replyID: UUID) -> String? {
+        chat(containing: replyID)?.messages.last { !$0.images.isEmpty }?.images.last
     }
 
     /// Drops the last assistant reply and asks again.
@@ -423,6 +468,7 @@ final class ChatStore: ObservableObject {
         guard !isStreaming, !text.isEmpty, let messages = current?.messages,
               let index = messages.firstIndex(where: { $0.id == messageID }), messages[index].role == .user else { return }
         var edited = ChatMessage(role: .user, content: text, images: messages[index].images, documents: messages[index].documents)
+        edited.mentions = messages[index].mentions
         (edited.alternatives, edited.version) = Self.versions(replacing: Array(messages[index...]))
         update { conversation in
             conversation.messages = Array(conversation.messages[..<index]) + [edited]
@@ -471,11 +517,12 @@ final class ChatStore: ObservableObject {
         }
     }
 
+    /// Stops the open chat's reply.
     func stop() {
-        streamTask?.cancel()
-        streamTask = nil
-        isStreaming = false
-        answerApproval(.deny)
+        guard let currentID else { return }
+        running[currentID]?.cancel()
+        running[currentID] = nil
+        for approval in approvals where approval.chat == currentID { answer(approval.id, .deny) }
     }
 
     // MARK: - Agent
@@ -491,7 +538,7 @@ final class ChatStore: ObservableObject {
             if currentID == nil {
                 pendingWorkspace = newValue?.path
             } else {
-                if let currentID { commandsAllowed.remove(currentID) }
+                if let currentID { chatAllowed = chatAllowed.filter { !$0.hasPrefix("\(currentID)|") } }
                 update {
                     $0.workspace = newValue?.path
                     $0.allowsCommands = nil
@@ -500,59 +547,80 @@ final class ChatStore: ObservableObject {
         }
     }
 
-    /// Chats whose commands run without asking. Kept in memory only, so it ends when the app quits.
-    @Published private var commandsAllowed: Set<UUID> = []
+    /// Kinds of tools the user allowed for one chat ("<chat>|<kind>"), until the app quits.
+    @Published private var chatAllowed: Set<String> = []
 
+    /// Shell commands run without asking in the open chat.
     var allowsCommands: Bool {
-        get { currentID.map(commandsAllowed.contains) ?? false }
+        get { currentID.map { chatAllowed.contains("\($0)|command") } ?? false || ToolPermissions.shared.rule("command") == .allow }
         set {
             guard let currentID else { return }
-            if newValue { commandsAllowed.insert(currentID) } else { commandsAllowed.remove(currentID) }
+            if newValue { chatAllowed.insert("\(currentID)|command") } else { chatAllowed.remove("\(currentID)|command") }
         }
     }
 
-    /// A shell command or connected-service tool call waiting for the user's OK.
+    /// A tool call waiting for the user's OK.
     struct CommandApproval: Identifiable {
         let id = UUID()
+        let chat: UUID
+        let kind: String
         let title: String
         let detail: String
         var icon = "terminal"
         var confirm = "Run"
     }
 
-    /// Chat and server pairs where the user allowed MCP tool calls without asking.
-    private var mcpAllowed: Set<String> = []
+    enum ApprovalChoice { case once, chat, always, deny }
 
-    enum ApprovalChoice { case once, always, deny }
+    /// Tool calls waiting for the user's OK, from any chat; the open chat shows its first one.
+    @Published private(set) var approvals: [CommandApproval] = []
+    private var approvalContinuations: [UUID: CheckedContinuation<ApprovalChoice, Never>] = [:]
 
-    /// A shell command waiting for the user's OK.
-    @Published private(set) var commandApproval: CommandApproval?
-    private var approvalContinuation: CheckedContinuation<ApprovalChoice, Never>?
+    var commandApproval: CommandApproval? { approvals.first { $0.chat == currentID } }
 
     func answerApproval(_ choice: ApprovalChoice) {
-        commandApproval = nil
-        approvalContinuation?.resume(returning: choice)
-        approvalContinuation = nil
+        if let approval = commandApproval { answer(approval.id, choice) }
     }
 
-    private func approve(_ command: String, in folder: URL) async -> Bool {
-        if allowsCommands { return true }
-        let choice = await withCheckedContinuation { continuation in
-            approvalContinuation = continuation
-            commandApproval = CommandApproval(title: "Run this command in \(folder.lastPathComponent)?", detail: command)
+    private func answer(_ id: UUID, _ choice: ApprovalChoice) {
+        approvals.removeAll { $0.id == id }
+        approvalContinuations.removeValue(forKey: id)?.resume(returning: choice)
+    }
+
+    /// Whether a tool of this kind may run: by its rule in Settings → Permissions, the user's earlier "Allow for this
+    /// chat", or by asking now.
+    private func authorize(_ kind: String, chat: UUID, title: String, detail: String, icon: String, confirm: String = "Allow") async -> Bool {
+        let permissions = ToolPermissions.shared
+        switch permissions.rule(kind) {
+        case .never: return false
+        case .allow: return true
+        case .ask: break
         }
-        if choice == .always { allowsCommands = true }
+        if chatAllowed.contains("\(chat)|\(kind)") { return true }
+        if chat != currentID || !Self.appIsActive {
+            Notifier.notify(title: "Blablador needs your OK", body: title, chat: chat)
+        }
+        let approval = CommandApproval(chat: chat, kind: kind, title: title, detail: String(detail.prefix(2_000)), icon: icon, confirm: confirm)
+        let choice = await withCheckedContinuation { continuation in
+            approvalContinuations[approval.id] = continuation
+            approvals.append(approval)
+        }
+        switch choice {
+        case .chat: chatAllowed.insert("\(chat)|\(kind)")
+        case .always: permissions.set(kind, .allow)
+        default: break
+        }
         return choice != .deny
     }
 
     /// Runs Python with Pyodide, recording it as a step; figures are added to the reply as images.
-    private func runPython(_ code: String, replyID: UUID) async -> String {
+    private func runPython(_ code: String, replyID: UUID) async -> (String, AgentStep.State) {
         var step = AgentStep(tool: "python", title: "Ran Python", detail: code)
         updateMessage(replyID) { $0.steps.append(step) }
         updateMessage(replyID) { $0.status = "Running Python…" }
         // Attached documents, as text files in /data.
         var files: [String: Data] = [:]
-        for document in current?.messages.flatMap(\.documents) ?? [] {
+        for document in chat(containing: replyID)?.messages.flatMap(\.documents) ?? [] {
             let name = document.name.replacingOccurrences(of: "/", with: "_")
             if let stored = document.dataFile, let data = DataFiles.data(for: stored) {
                 files[name] = data
@@ -576,16 +644,17 @@ final class ChatStore: ObservableObject {
             if let error = result.error { output += (output.isEmpty ? "" : "\n") + error }
             if !names.isEmpty { output += "\n[\(names.count) figure(s) shown to the user]" }
             output = output.trimmingCharacters(in: .whitespacesAndNewlines)
-            finish(result.error == nil ? .done : .failed, output.isEmpty ? "(No output)" : output)
-            return output.isEmpty ? "The code ran without output." : String(output.suffix(20_000))
+            let state: AgentStep.State = result.error == nil ? .done : .failed
+            finish(state, output.isEmpty ? "(No output)" : output)
+            return (output.isEmpty ? "The code ran without output." : String(output.suffix(20_000)), state)
         } catch {
             finish(.failed, error.localizedDescription)
-            return "Python failed: \(error.localizedDescription)"
+            return ("Python failed: \(error.localizedDescription)", .failed)
         }
     }
 
     /// Runs a tool of a connected MCP server after the user's OK, recording it as a step.
-    private func runMCPTool(_ tool: MCPTool, _ arguments: [String: Any], replyID: UUID) async -> String {
+    private func runMCPTool(_ tool: MCPTool, _ arguments: [String: Any], replyID: UUID, chatID: UUID) async -> (String, AgentStep.State) {
         let server = MCPLibrary.shared.server(tool.server)
         var step = AgentStep(tool: "mcp", title: "\(server?.name ?? "Server"): \(tool.name)")
         updateMessage(replyID) { $0.steps.append(step) }
@@ -596,35 +665,26 @@ final class ChatStore: ObservableObject {
                 if let index = message.steps.firstIndex(where: { $0.id == step.id }) { message.steps[index] = step }
             }
         }
-        let key = "\(currentID?.uuidString ?? "")|\(tool.server)"
-        if server?.askBeforeCalls != false, !mcpAllowed.contains(key) {
-            updateMessage(replyID) { $0.status = "Waiting for approval…" }
-            let shown = (try? JSONSerialization.data(withJSONObject: arguments, options: [.prettyPrinted, .sortedKeys]))
-                .map { String(decoding: $0, as: UTF8.self) } ?? "{}"
-            let choice = await withCheckedContinuation { continuation in
-                approvalContinuation = continuation
-                commandApproval = CommandApproval(title: "Let \(server?.name ?? "this server") use \(tool.name)?", detail: String(shown.prefix(2_000)),
-                                                  icon: "puzzlepiece.extension", confirm: "Allow")
-            }
-            if choice == .always { mcpAllowed.insert(key) }
-            guard choice != .deny else {
-                finish(.denied, "Not run.")
-                return "The user declined this tool call. Ask what to do instead or continue without it."
-            }
+        let shown = (try? JSONSerialization.data(withJSONObject: arguments, options: [.prettyPrinted, .sortedKeys]))
+            .map { String(decoding: $0, as: UTF8.self) } ?? "{}"
+        if ToolPermissions.shared.rule("mcp:\(tool.server)") != .allow { updateMessage(replyID) { $0.status = "Waiting for approval…" } }
+        guard await authorize("mcp:\(tool.server)", chat: chatID, title: "Let \(server?.name ?? "this server") use \(tool.name)?", detail: shown, icon: "puzzlepiece.extension") else {
+            finish(.denied, "Not run.")
+            return ("The user declined this tool call. Ask what to do instead or continue without it.", .denied)
         }
         updateMessage(replyID) { $0.status = "Using \(tool.name)…" }
         do {
             let result = try await MCPLibrary.shared.call(tool, arguments: arguments)
             finish(result.isError ? .failed : .done, result.text)
-            return result.text.isEmpty ? "(The tool returned nothing.)" : String(result.text.prefix(30_000))
+            return (result.text.isEmpty ? "(The tool returned nothing.)" : String(result.text.prefix(30_000)), result.isError ? .failed : .done)
         } catch {
             finish(.failed, error.localizedDescription)
-            return "Tool failed: \(error.localizedDescription)"
+            return ("Tool failed: \(error.localizedDescription)", .failed)
         }
     }
 
     /// Runs one agent tool, recording it as a step, and returns the output for the model.
-    private func runAgentTool(_ name: String, _ arguments: [String: Any], in folder: URL, replyID: UUID) async -> String {
+    private func runAgentTool(_ name: String, _ arguments: [String: Any], in folder: URL, replyID: UUID, chatID: UUID) async -> (String, AgentStep.State) {
         var step = AgentStep(tool: name, title: AgentTools.title(for: name, arguments))
         updateMessage(replyID) { $0.steps.append(step) }
         func finish(_ state: AgentStep.State, _ detail: String) {
@@ -637,75 +697,99 @@ final class ChatStore: ObservableObject {
         do {
             if name == "run_command" {
                 let command = arguments["command"] as? String ?? ""
-                updateMessage(replyID) { $0.status = "Waiting for approval…" }
-                guard await approve(command, in: folder) else {
+                if !allowsCommands { updateMessage(replyID) { $0.status = "Waiting for approval…" } }
+                guard await authorize("command", chat: chatID, title: "Run this command in \(folder.lastPathComponent)?", detail: command, icon: "terminal", confirm: "Run") else {
                     finish(.denied, "Not run.")
-                    return "The user declined to run this command. Ask what to do instead or continue without it."
+                    return ("The user declined to run this command. Ask what to do instead or continue without it.", .denied)
                 }
                 updateMessage(replyID) { $0.status = "Running \(command.prefix(60))…" }
                 let output = try await AgentTools.runCommand(command, in: folder, timeout: arguments["timeout"] as? Int ?? 120)
-                finish(output.hasSuffix("Exit code: 0") ? .done : .failed, output)
-                return output
+                let state: AgentStep.State = output.hasSuffix("Exit code: 0") ? .done : .failed
+                finish(state, output)
+                return (output, state)
+            }
+            if name == "write_file" || name == "edit_file" {
+                let path = arguments["path"] as? String ?? ""
+                guard await authorize("files", chat: chatID, title: "\(name == "write_file" ? "Write" : "Edit") \(path)?", detail: String((arguments["content"] as? String ?? arguments["new_text"] as? String ?? "").prefix(2_000)), icon: "doc.badge.gearshape") else {
+                    finish(.denied, "Not changed.")
+                    return ("The user declined this change. Ask what to do instead or continue without it.", .denied)
+                }
             }
             let output = try AgentTools.run(name, arguments, in: folder)
             finish(.done, output)
-            return output
+            return (output, .done)
         } catch {
             finish(.failed, error.localizedDescription)
-            return "Error: \(error.localizedDescription)"
+            return ("Error: \(error.localizedDescription)", .failed)
         }
     }
 
-    private func respond(alternatives: [[ChatMessage]] = [], version: Int = 1) {
-        guard let conversation = current else { return }
+    private func respond(alternatives: [[ChatMessage]] = [], version: Int = 1, in chatID: UUID? = nil, task: ScheduledTask? = nil) {
+        guard let chatID = chatID ?? currentID, let conversation = chat(chatID) else { return }
+        let lastUser = conversation.messages.last { $0.role == .user }
+        let question = lastUser?.content ?? ""
+        let mentions = lastUser?.mentions ?? []
+        let mentioned = Set(mentions.filter { $0.kind == .tool }.map(\.value))
+        let useWeb = webSearchEnabled || mentioned.contains("web")
+        let usePython = pythonEnabled || mentioned.contains("python")
+        let useDevice = DeviceTools.enabled || mentioned.contains("device")
+        let useImages = imageToolsEnabled || mentioned.contains("image")
 
-        var wire: [[String: Any]] = []
         var system = systemPrompt
-        let today = Date().formatted(date: .complete, time: .omitted)
-        system += "\n\nToday is \(today)."
-        if webSearchEnabled {
+        system += "\n\nToday is \(Date().formatted(date: .complete, time: .omitted)), local time \(Date().formatted(date: .omitted, time: .shortened))."
+        if useWeb {
             system += WebSearch.systemPrompt
         }
-        if pythonEnabled { system += " " + PythonRunner.systemPrompt }
-        if imageToolsEnabled {
+        if usePython { system += " " + PythonRunner.systemPrompt }
+        if useImages {
             system += " You can create images with generate_image and modify the latest image in the chat with edit_image. Never describe an image as created unless the tool succeeded."
         }
         if VoiceLibrary.shared.toolsEnabled {
             system += " You can speak aloud with generate_speech when the user asks you to say, read or voice something. Never claim you spoke unless the tool succeeded."
         }
+        if useDevice { system += " " + DeviceTools.systemPrompt }
+        system += " " + PlanTools.systemPrompt
+        system += " Use schedule_task when the user wants something done later or regularly."
         let memory = MemoryStore.shared
-        let question = conversation.messages.last { $0.role == .user }?.content ?? ""
         let skills = SkillLibrary.shared
         if let skillPrompt = skills.systemPrompt { system += "\n\n" + skillPrompt }
         system += "\n\n" + SkillTools.systemPrompt + " Use search_chats when the user refers to an earlier conversation."
-        let folder = workspace
+        let folder = conversation.workspace.map { URL(fileURLWithPath: $0, isDirectory: true) }
         if let folder { system += "\n\n" + AgentTools.systemPrompt(workspace: folder) }
+        if let hint = Self.mentionPrompt(mentions) { system += "\n\n" + hint }
+        if task != nil {
+            system += "\n\nThis is a scheduled task running while the user isn't watching: do all of it without asking questions, and write the result so it reads well on its own."
+        }
         system = system.trimmingCharacters(in: .whitespacesAndNewlines)
         let systemText = system
-        wire = Self.history(system: systemText, conversation)
 
+        let model = selectedModel
         var reply = ChatMessage(role: .assistant, content: "")
         reply.alternatives = alternatives
         reply.version = version
-        let model = selectedModel
-        let knowledge = activeKnowledge
-        update {
+        reply.trace = Trace(model: model)
+        reply.skillsUsed = mentions.filter { $0.kind == .skill }.compactMap { skills.skill(named: $0.value)?.name }
+        let knowledge = (conversation.knowledge ?? []).filter { KnowledgeLibrary.shared.base($0) != nil }
+        updateChat(chatID) {
             $0.model = model
             $0.messages.append(reply)
         }
 
-        isStreaming = true
         var tools: [[String: Any]] = []
-        if webSearchEnabled { tools += [WebSearch.tool, WebSearch.imageTool, WebPage.tool] }
-        if imageToolsEnabled { tools += [ImageTools.generate, ImageTools.edit] }
+        if useWeb { tools += [WebSearch.tool, WebSearch.imageTool, WebPage.tool] }
+        if useImages { tools += [ImageTools.generate, ImageTools.edit] }
         if VoiceLibrary.shared.toolsEnabled { tools.append(SpeechTools.generate) }
         if memory.enabled { tools += [MemoryTools.remember, MemoryTools.forget] }
-        tools += [ChatSearch.tool, SkillTools.suggest]
-        if pythonEnabled { tools.append(PythonRunner.tool) }
+        tools += [ChatSearch.tool, SkillTools.suggest, PlanTools.tool, TaskScheduler.tool]
+        if usePython { tools.append(PythonRunner.tool) }
+        if useDevice { tools += DeviceTools.definitions }
         if !skills.skills.isEmpty { tools.append(SkillTools.use) }
         if folder != nil { tools += AgentTools.definitions }
+        tools = ToolPermissions.shared.filter(tools)
         let api = api
-        streamTask = Task {
+        start(chatID) { [self] in
+            let started = Date()
+            var readOutside = false
             do {
                 // Memories go last in the system prompt; with many, picking the relevant ones may need an embedding.
                 var systemText = systemText
@@ -729,14 +813,14 @@ final class ChatStore: ObservableObject {
                 }
                 // PDFs and knowledge excerpts come from outside the chat; see runTurn's memory lock.
                 let outsideContent = conversation.messages.contains { !$0.documents.isEmpty }
-                    || current?.messages.first { $0.id == reply.id }?.citations.isEmpty == false
+                    || message(reply.id)?.citations.isEmpty == false
                 var tools = tools
-                let mcpTools = await MCPLibrary.shared.availableTools()
+                let mcpTools = await MCPLibrary.shared.availableTools().filter { ToolPermissions.shared.rule("mcp:\($0.server)") != .never }
                 if !mcpTools.isEmpty {
                     tools += mcpTools.map(\.definition)
                     wire[0]["content"] = (wire[0]["content"] as? String ?? "") + "\n\nTools named <service>__<tool> belong to services the user connected (MCP). Use them when they fit the request."
                 }
-                let readOutside = try await runTurn(model: model, messages: wire, tools: tools, replyID: reply.id, workspace: folder, outsideContent: outsideContent, mcp: mcpTools)
+                readOutside = try await runTurn(model: model, messages: wire, tools: tools, replyID: reply.id, chatID: chatID, workspace: folder, outsideContent: outsideContent, mcp: mcpTools)
                 learn(question: question, replyID: reply.id, model: model, userOnly: readOutside)
             } catch is CancellationError {
             } catch let error as URLError where error.code == .cancelled {
@@ -751,16 +835,83 @@ final class ChatStore: ObservableObject {
                     $0.isError = true
                 }
             }
+            let cancelled = Task.isCancelled
             updateMessage(reply.id) { message in
                 message.status = nil
-                if message.content.isEmpty, message.images.isEmpty, message.audio.isEmpty, message.videos.isEmpty, message.steps.isEmpty, !Task.isCancelled {
+                message.trace?.seconds = Date().timeIntervalSince(started)
+                for index in message.trace?.calls.indices ?? 0..<0 where message.trace?.calls[index].state == .running {
+                    message.trace?.calls[index].state = .failed
+                }
+                if message.content.isEmpty, message.images.isEmpty, message.audio.isEmpty, message.videos.isEmpty, message.steps.isEmpty, !cancelled {
                     message.content = "No response from the model."
                     message.isError = true
                 }
             }
-            isStreaming = false
+            persist()
+            if !cancelled { finished(replyID: reply.id, chatID: chatID, question: question, model: model, started: started, task: task) }
+        }
+    }
+
+    /// After a reply: a notification when the user wasn't watching, and a skill drafted from a task of several steps.
+    private func finished(replyID: UUID, chatID: UUID, question: String, model: String, started: Date, task: ScheduledTask?) {
+        guard let reply = message(replyID) else { return }
+        if task != nil || ((!Self.appIsActive || currentID != chatID) && Date().timeIntervalSince(started) > 5) {
+            let body = reply.isError ? "Failed: \(reply.content)" : reply.content.isEmpty ? "The reply is ready." : Self.splitThinking(reply.content).answer
+            Notifier.notify(title: task?.title ?? chat(chatID)?.title ?? "Blablador", body: body, chat: chatID)
+        }
+        let skills = SkillLibrary.shared
+        guard task == nil, skills.draftsAutomatically, !reply.isError, reply.skillsUsed.isEmpty, reply.suggestedSkills.isEmpty,
+              let trace = reply.trace, SkillDrafter.worthDrafting(trace) else { return }
+        let api = api
+        let existing = skills.skills.map(\.name)
+        Task {
+            guard let skill = await SkillDrafter.draft(request: question, trace: trace, answer: reply.content, existing: existing, api: api, model: model) else { return }
+            updateMessage(replyID) { $0.suggestedSkills.append(skill) }
             persist()
         }
+    }
+
+    /// Runs a scheduled task in a new chat (not opened) and returns the chat's id.
+    @discardableResult
+    func runTask(_ task: ScheduledTask) -> UUID {
+        var conversation = Conversation(title: "\(task.title) · \(Date().formatted(date: .abbreviated, time: .omitted))", model: selectedModel)
+        var message = ChatMessage(role: .user, content: task.prompt)
+        if task.webSearch { message.mentions = [Mention(kind: .tool, value: "web", name: "Web search", icon: "globe")] }
+        conversation.messages = [message]
+        conversations.insert(conversation, at: 0)
+        persist()
+        respond(in: conversation.id, task: task)
+        return conversation.id
+    }
+
+    /// What @mentions add to the system prompt for one message.
+    static let toolHints = [
+        "web": "web search (web_search, read_page)",
+        "python": "Python (run_python)",
+        "device": "the user's calendar, reminders, contacts or location",
+        "chats": "earlier chats (search_chats)",
+        "memory": "long-term memory (remember what matters)",
+        "image": "image creation (generate_image, edit_image)",
+        "schedule": "a scheduled task (schedule_task)",
+        "plan": "a plan (update_plan), working through it step by step"
+    ]
+
+    static func mentionPrompt(_ mentions: [Mention]) -> String? {
+        let parts: [String] = mentions.compactMap { mention in
+            switch mention.kind {
+            case .tool:
+                return toolHints[mention.value] ?? mention.name
+            case .skill:
+                guard let skill = SkillLibrary.shared.skill(named: mention.value) else { return nil }
+                return "the skill \"\(skill.name)\", whose instructions are:\n\(skill.instructions)\n"
+            case .knowledge:
+                return "the knowledge base \"\(mention.name)\" (relevant excerpts are below)"
+            case .server:
+                guard let server = MCPLibrary.shared.servers.first(where: { $0.id.uuidString == mention.value }) else { return nil }
+                return "the tools of \(server.name) (named \(server.slug)__…)"
+            }
+        }
+        return parts.isEmpty ? nil : "For this message the user asked you to use " + parts.joined(separator: "; ") + "."
     }
 
     /// Replaces a new chat's provisional title (its first words) with a short name from the helper model.
@@ -855,25 +1006,28 @@ final class ChatStore: ObservableObject {
         }
     }
 
-    /// Streams the reply, running web searches whenever the model asks for them. Returns whether it read outside content.
+    /// Streams the reply, running the tools the model asks for. Returns whether it read outside content.
     /// Memory changes are refused once the reply has read outside content (web results, PDFs, knowledge bases,
-    /// files), so text planted there can't write itself into every future chat.
+    /// files, calendars, contacts), so text planted there can't write itself into every future chat.
     @discardableResult
-    private func runTurn(model: String, messages: [[String: Any]], tools: [[String: Any]], replyID: UUID, workspace: URL? = nil, outsideContent: Bool = false, mcp: [MCPTool] = []) async throws -> Bool {
+    private func runTurn(model: String, messages: [[String: Any]], tools: [[String: Any]], replyID: UUID, chatID: UUID, workspace: URL? = nil, outsideContent: Bool = false, mcp: [MCPTool] = []) async throws -> Bool {
         var outsideContent = outsideContent
         var messages = messages
         var tools = tools
-        let maxRounds = workspace == nil ? Self.maxToolRounds : AgentTools.maxRounds
+        var round = 0
 
-        for round in 0...maxRounds {
-            let isFinalRound = round == maxRounds
+        while true {
+            let hasPlan = message(replyID)?.plan.isEmpty == false
+            let maxRounds = max(workspace == nil ? Self.maxToolRounds : AgentTools.maxRounds, hasPlan ? Self.maxPlanRounds : 0)
+            let isFinalRound = round >= maxRounds
+            round += 1
             if isFinalRound {
                 // Keep the tools declared (removing them makes DeepSeek print raw tool markup),
                 // but tell the model to answer with what it has.
                 messages.append(["role": "user", "content": "Stop using tools now and write the final answer using the results above."])
             }
-            let prefix = current?.messages.first { $0.id == replyID }?.content ?? ""
-            let reasoningPrefix = current?.messages.first { $0.id == replyID }?.reasoning ?? ""
+            let prefix = message(replyID)?.content ?? ""
+            let reasoningPrefix = message(replyID)?.reasoning ?? ""
             var text = ""
             var reasoning = ""
             var calls: [BlabladorAPI.ToolCall] = []
@@ -897,16 +1051,22 @@ final class ChatStore: ObservableObject {
                         }
                     case let .toolCalls(toolCalls):
                         calls = toolCalls
+                    case let .usage(prompt, completion):
+                        updateMessage(replyID) {
+                            $0.trace?.promptTokens += prompt
+                            $0.trace?.completionTokens += completion
+                        }
                     }
                 }
-            } catch BlabladorAPIError.http(let status, let body) where status == 400 && !tools.isEmpty && round == 0 && !body.localizedCaseInsensitiveContains("image") {
-                // Model without tool support: answer without web search.
+                updateMessage(replyID) { $0.trace?.rounds += 1 }
+            } catch BlabladorAPIError.http(let status, let body) where status == 400 && !tools.isEmpty && round == 1 && !body.localizedCaseInsensitiveContains("image") {
+                // Model without tool support: answer without tools.
                 tools = []
                 continue
             }
 
             if isFinalRound || (calls.isEmpty && Self.containsToolMarkup(text)) {
-                // Model still wants to search; nothing more to run.
+                // Model still wants to use tools; nothing more to run.
                 if Self.stripToolMarkup(text).isEmpty {
                     updateMessage(replyID) { $0.content = prefix }
                 }
@@ -918,139 +1078,209 @@ final class ChatStore: ObservableObject {
             assistant["content"] = text.isEmpty ? NSNull() : text
             messages.append(assistant)
             // Preambles like "Let me look that up" are status, not part of the answer;
-            // an agent's notes between steps are kept.
+            // notes between steps of an agent or a plan are kept.
             let note = Self.stripToolMarkup(text)
-            updateMessage(replyID) { $0.content = workspace != nil && !note.isEmpty ? prefix + note + "\n\n" : prefix }
+            let keepsNotes = workspace != nil || message(replyID)?.plan.isEmpty == false
+            updateMessage(replyID) { $0.content = keepsNotes && !note.isEmpty ? prefix + note + "\n\n" : prefix }
 
             for call in calls {
-                let arguments = (try? JSONSerialization.jsonObject(with: Data(call.arguments.utf8))) as? [String: Any]
-                let query = arguments?["query"] as? String ?? ""
-                let prompt = arguments?["prompt"] as? String ?? ""
-                let script = arguments?["script"] as? String ?? ""
-
-                let output: String
-                if call.name == "generate_image" || call.name == "edit_image", !prompt.isEmpty {
-                    do {
-                        let image = try await runImageTool(name: call.name, prompt: prompt, source: latestImage, replyID: replyID)
-                        updateMessage(replyID) { $0.images.append(image) }
-                        output = "The image was created and is shown to the user. Do not include it or a link in your answer; just briefly comment on it."
-                    } catch {
-                        output = "Image tool failed: \(error.localizedDescription)"
-                    }
-                } else if call.name == "generate_speech", !script.isEmpty {
-                    do {
-                        let audio = try await runSpeechTool(script: script, replyID: replyID)
-                        updateMessage(replyID) { $0.audio.append(audio) }
-                        output = "The speech was created and the user can play it. Don't repeat the script; just briefly comment on it."
-                    } catch {
-                        output = "Speech tool failed: \(error.localizedDescription)"
-                    }
-                } else if let workspace, AgentTools.names.contains(call.name) {
-                    outsideContent = true
-                    output = await runAgentTool(call.name, arguments ?? [:], in: workspace, replyID: replyID)
-                } else if call.name == "use_skill", let name = arguments?["name"] as? String {
-                    if let skill = SkillLibrary.shared.skill(named: name) {
-                        updateMessage(replyID) { if !$0.skillsUsed.contains(skill.name) { $0.skillsUsed.append(skill.name) } }
-                        output = "Instructions of the skill \"\(skill.name)\":\n\n\(skill.instructions)"
-                    } else {
-                        output = "There is no skill called \"\(name)\"."
-                    }
-                } else if call.name == "suggest_skill", let name = arguments?["name"] as? String,
-                          let instructions = arguments?["instructions"] as? String, !instructions.isEmpty {
-                    let skill = Skill(name: name, description: arguments?["description"] as? String ?? "", instructions: instructions)
-                    updateMessage(replyID) { $0.suggestedSkills.append(skill) }
-                    output = "The suggestion is shown to the user with a Save button; it is not saved until they press it. Don't repeat the instructions; mention it in one sentence."
-                } else if call.name == "search_chats", !query.isEmpty {
-                    outsideContent = true
-                    updateMessage(replyID) { $0.status = "Searching earlier chats…" }
-                    output = await ChatSearch.find(query, in: library.conversations, excluding: currentID, api: api)
-                } else if call.name == "remember" || call.name == "forget", outsideContent {
-                    output = "Memory can't be changed in a reply that used web results, documents, knowledge bases or files, because they could contain planted instructions. Tell the user they can ask again in a new message without them, or edit memories in Settings → Memory."
-                } else if call.name == "remember", let fact = arguments?["fact"] as? String, MemoryStore.shared.enabled {
-                    if MemoryStore.shared.add(fact, from: current) {
-                        updateMessage(replyID) { $0.remembered.append(fact.trimmingCharacters(in: .whitespacesAndNewlines)) }
-                        output = "Saved to memory."
-                    } else {
-                        output = "Already remembered or empty; nothing saved."
-                    }
-                } else if call.name == "forget", MemoryStore.shared.enabled,
-                          let number = (arguments?["number"] as? Int) ?? Int(arguments?["number"] as? String ?? "") {
-                    if let forgotten = MemoryStore.shared.forget(number: number) {
-                        updateMessage(replyID) { $0.forgotten.append(forgotten.text) }
-                        output = "Forgot: \(forgotten.text). The numbers of later memories moved up by one."
-                    } else {
-                        output = "There is no memory number \(number)."
-                    }
-                } else if call.name == "image_search", !query.isEmpty {
-                    outsideContent = true
-                    updateMessage(replyID) { $0.status = "Searching pictures of “\(query)”" }
-                    do {
-                        let images = try await WebSearch.searchImages(query)
-                        updateMessage(replyID) { message in
-                            message.webImages += images.filter { image in !message.webImages.contains { $0.image == image.image } }
-                        }
-                        output = images.isEmpty
-                            ? "No pictures found for \"\(query)\"."
-                            : "\(images.count) pictures are shown to the user: " + images.map(\.title).joined(separator: "; ") + ". Don't include image links in your answer."
-                    } catch {
-                        output = "Image search failed: \(error.localizedDescription)"
-                    }
-                } else if call.name == "run_python", let code = arguments?["code"] as? String, !code.isEmpty {
-                    outsideContent = true
-                    output = await runPython(code, replyID: replyID)
-                } else if let tool = mcp.first(where: { $0.qualifiedName == call.name }) {
-                    outsideContent = true
-                    output = await runMCPTool(tool, arguments ?? [:], replyID: replyID)
-                } else if call.name == "read_page", let address = arguments?["url"] as? String {
-                    outsideContent = true
-                    updateMessage(replyID) { $0.status = "Reading \(URL(string: address)?.host() ?? address)…" }
-                    do {
-                        let page = try await WebPage.read(address)
-                        var number = 0
-                        updateMessage(replyID) { message in
-                            if let index = message.sources.firstIndex(where: { $0.url == page.url.absoluteString }) {
-                                number = index + 1
-                            } else {
-                                message.sources.append(SearchResult(title: page.title, url: page.url.absoluteString, content: nil))
-                                number = message.sources.count
-                            }
-                        }
-                        output = "[\(number)] \(page.title)\nURL: \(page.url.absoluteString)\n\n\(page.text.isEmpty ? "(No readable text on this page.)" : page.text)"
-                    } catch {
-                        output = "Could not read the page: \(error.localizedDescription)"
-                    }
-                } else if call.name == "web_search", !query.isEmpty {
-                    outsideContent = true
-                    updateMessage(replyID) { $0.status = "Searching “\(query)”" }
-                    do {
-                        let results = try await WebSearch.search(
-                            query,
-                            category: arguments?["category"] as? String,
-                            timeRange: arguments?["time_range"] as? String
-                        )
-                        var numbered: [(number: Int, result: SearchResult)] = []
-                        updateMessage(replyID) { message in
-                            for result in results {
-                                if let index = message.sources.firstIndex(where: { $0.url == result.url }) {
-                                    numbered.append((index + 1, result))
-                                } else {
-                                    message.sources.append(result)
-                                    numbered.append((message.sources.count, result))
-                                }
-                            }
-                        }
-                        output = WebSearch.toolOutput(query: query, results: numbered)
-                    } catch {
-                        output = "Search failed: \(error.localizedDescription)"
-                    }
-                } else {
-                    output = "Unknown tool \(call.name)."
+                let arguments = (try? JSONSerialization.jsonObject(with: Data(call.arguments.utf8))) as? [String: Any] ?? [:]
+                let started = Date()
+                var traced = TraceCall(tool: call.name, arguments: call.arguments)
+                updateMessage(replyID) { $0.trace?.calls.append(traced) }
+                let (output, state) = await execute(call.name, arguments, replyID: replyID, chatID: chatID, workspace: workspace, mcp: mcp, outsideContent: &outsideContent)
+                traced.result = String(output.prefix(4_000))
+                traced.seconds = Date().timeIntervalSince(started)
+                traced.state = state
+                updateMessage(replyID) { message in
+                    if let index = message.trace?.calls.firstIndex(where: { $0.id == traced.id }) { message.trace?.calls[index] = traced }
                 }
                 messages.append(["role": "tool", "tool_call_id": call.id, "content": output])
             }
             updateMessage(replyID) { $0.status = "Thinking…" }
         }
-        return outsideContent
+    }
+
+    /// Tools whose call can be repeated from the trace without changing anything.
+    static func canRerun(_ tool: String) -> Bool {
+        !["update_plan", "remember", "forget", "use_skill", "suggest_skill", "generate_image", "edit_image", "generate_speech",
+          "create_event", "create_reminder", "schedule_task", "write_file", "edit_file"].contains(tool)
+    }
+
+    /// Runs one recorded tool call again and shows the new result in the trace (the reply itself stays).
+    func rerun(_ callID: UUID, in messageID: UUID) {
+        guard let conversation = chat(containing: messageID),
+              var call = message(messageID)?.trace?.calls.first(where: { $0.id == callID }), Self.canRerun(call.tool) else { return }
+        let arguments = (try? JSONSerialization.jsonObject(with: Data(call.arguments.utf8))) as? [String: Any] ?? [:]
+        func write(_ call: TraceCall) {
+            updateMessage(messageID) { message in
+                if let index = message.trace?.calls.firstIndex(where: { $0.id == call.id }) { message.trace?.calls[index] = call }
+            }
+        }
+        call.state = .running
+        write(call)
+        let workspace = conversation.workspace.map { URL(fileURLWithPath: $0, isDirectory: true) }
+        Task {
+            let mcp = await MCPLibrary.shared.availableTools()
+            var outside = true
+            let started = Date()
+            let (output, state) = await execute(call.tool, arguments, replyID: messageID, chatID: conversation.id, workspace: workspace, mcp: mcp, outsideContent: &outside)
+            call.result = String(output.prefix(4_000))
+            call.seconds = Date().timeIntervalSince(started)
+            call.state = state
+            write(call)
+            updateMessage(messageID) { $0.status = nil }
+            persist()
+        }
+    }
+
+    /// Runs one tool call after checking its permission, and returns what goes back to the model.
+    private func execute(_ name: String, _ arguments: [String: Any], replyID: UUID, chatID: UUID, workspace: URL?, mcp: [MCPTool], outsideContent: inout Bool) async -> (String, AgentStep.State) {
+        let query = arguments["query"] as? String ?? ""
+        let prompt = arguments["prompt"] as? String ?? ""
+        let script = arguments["script"] as? String ?? ""
+
+        if name == "remember" || name == "forget", outsideContent {
+            return ("Memory can't be changed in a reply that used web results, documents, knowledge bases, files or device data, because they could contain planted instructions. Tell the user they can ask again in a new message without them, or edit memories in Settings → Memory.", .denied)
+        }
+        // Agent tools and connected services ask in their own way below.
+        if let kind = ToolPermissions.kind(of: name), kind != "command", kind != "files" {
+            var title = "Let Blablador use \(name)?"
+            var detail = (try? JSONSerialization.data(withJSONObject: arguments, options: [.prettyPrinted, .sortedKeys])).map { String(decoding: $0, as: UTF8.self) } ?? ""
+            if let device = DeviceTools.approval(name, arguments) { (title, detail) = device }
+            if name == "schedule_task", let task = TaskScheduler.task(from: arguments) {
+                title = "Schedule “\(task.title)”?"
+                detail = task.scheduleText + "\n\n" + task.prompt
+            }
+            let icon = ToolPermissions.kinds.first { $0.id == kind }?.icon ?? "hand.raised"
+            if name.hasPrefix("create_") || name == "schedule_task" || ToolPermissions.shared.rule(kind) != .allow {
+                updateMessage(replyID) { $0.status = "Waiting for approval…" }
+            }
+            guard await authorize(kind, chat: chatID, title: title, detail: detail, icon: icon) else {
+                return ("The user didn't allow \(name) (it can be changed in Settings → Permissions). Continue without it or ask what to do instead.", .denied)
+            }
+        }
+
+        if name == "update_plan" {
+            let items = PlanTools.items(from: arguments)
+            updateMessage(replyID) { $0.plan = items }
+            return (PlanTools.summary(items), .done)
+        } else if name == "generate_image" || name == "edit_image", !prompt.isEmpty {
+            do {
+                let image = try await runImageTool(name: name, prompt: prompt, source: latestImage(for: replyID), replyID: replyID)
+                updateMessage(replyID) { $0.images.append(image) }
+                return ("The image was created and is shown to the user. Do not include it or a link in your answer; just briefly comment on it.", .done)
+            } catch {
+                return ("Image tool failed: \(error.localizedDescription)", .failed)
+            }
+        } else if name == "generate_speech", !script.isEmpty {
+            do {
+                let audio = try await runSpeechTool(script: script, replyID: replyID)
+                updateMessage(replyID) { $0.audio.append(audio) }
+                return ("The speech was created and the user can play it. Don't repeat the script; just briefly comment on it.", .done)
+            } catch {
+                return ("Speech tool failed: \(error.localizedDescription)", .failed)
+            }
+        } else if let workspace, AgentTools.names.contains(name) {
+            outsideContent = true
+            return await runAgentTool(name, arguments, in: workspace, replyID: replyID, chatID: chatID)
+        } else if name == "use_skill", let skillName = arguments["name"] as? String {
+            guard let skill = SkillLibrary.shared.skill(named: skillName) else { return ("There is no skill called \"\(skillName)\".", .failed) }
+            updateMessage(replyID) { if !$0.skillsUsed.contains(skill.name) { $0.skillsUsed.append(skill.name) } }
+            return ("Instructions of the skill \"\(skill.name)\":\n\n\(skill.instructions)", .done)
+        } else if name == "suggest_skill", let skillName = arguments["name"] as? String,
+                  let instructions = arguments["instructions"] as? String, !instructions.isEmpty {
+            let skill = Skill(name: skillName, description: arguments["description"] as? String ?? "", instructions: instructions)
+            updateMessage(replyID) { $0.suggestedSkills.append(skill) }
+            return ("The suggestion is shown to the user with a Save button; it is not saved until they press it. Don't repeat the instructions; mention it in one sentence.", .done)
+        } else if name == "search_chats", !query.isEmpty {
+            outsideContent = true
+            updateMessage(replyID) { $0.status = "Searching earlier chats…" }
+            return (await ChatSearch.find(query, in: library.conversations, excluding: chatID, api: api), .done)
+        } else if name == "remember", let fact = arguments["fact"] as? String, MemoryStore.shared.enabled {
+            guard MemoryStore.shared.add(fact, from: chat(chatID)) else { return ("Already remembered or empty; nothing saved.", .done) }
+            updateMessage(replyID) { $0.remembered.append(fact.trimmingCharacters(in: .whitespacesAndNewlines)) }
+            return ("Saved to memory.", .done)
+        } else if name == "forget", MemoryStore.shared.enabled,
+                  let number = (arguments["number"] as? Int) ?? Int(arguments["number"] as? String ?? "") {
+            guard let forgotten = MemoryStore.shared.forget(number: number) else { return ("There is no memory number \(number).", .failed) }
+            updateMessage(replyID) { $0.forgotten.append(forgotten.text) }
+            return ("Forgot: \(forgotten.text). The numbers of later memories moved up by one.", .done)
+        } else if name == "schedule_task" {
+            guard let task = TaskScheduler.task(from: arguments) else {
+                return ("Couldn't read the schedule: give title, prompt and time as HH:MM, optionally days or a date.", .failed)
+            }
+            TaskScheduler.shared.save(task)
+            let next = task.next().map { " Next run: \($0.formatted(date: .abbreviated, time: .shortened))." } ?? ""
+            return ("Scheduled “\(task.title)”: \(task.scheduleText).\(next) The user can change it in Settings → Scheduled tasks.", .done)
+        } else if DeviceTools.names.contains(name) {
+            if !name.hasPrefix("create_") { outsideContent = true }
+            updateMessage(replyID) { $0.status = name == "current_location" ? "Finding your location…" : name == "find_contacts" ? "Looking up contacts…" : "Checking your calendar…" }
+            do {
+                return (try await DeviceTools.run(name, arguments), .done)
+            } catch {
+                return (error.localizedDescription, .failed)
+            }
+        } else if name == "image_search", !query.isEmpty {
+            outsideContent = true
+            updateMessage(replyID) { $0.status = "Searching pictures of “\(query)”" }
+            do {
+                let images = try await WebSearch.searchImages(query)
+                updateMessage(replyID) { message in
+                    message.webImages += images.filter { image in !message.webImages.contains { $0.image == image.image } }
+                }
+                return (images.isEmpty
+                    ? "No pictures found for \"\(query)\"."
+                    : "\(images.count) pictures are shown to the user: " + images.map(\.title).joined(separator: "; ") + ". Don't include image links in your answer.", .done)
+            } catch {
+                return ("Image search failed: \(error.localizedDescription)", .failed)
+            }
+        } else if name == "run_python", let code = arguments["code"] as? String, !code.isEmpty {
+            outsideContent = true
+            return await runPython(code, replyID: replyID)
+        } else if let tool = mcp.first(where: { $0.qualifiedName == name }) {
+            outsideContent = true
+            return await runMCPTool(tool, arguments, replyID: replyID, chatID: chatID)
+        } else if name == "read_page", let address = arguments["url"] as? String {
+            outsideContent = true
+            updateMessage(replyID) { $0.status = "Reading \(URL(string: address)?.host() ?? address)…" }
+            do {
+                let page = try await WebPage.read(address)
+                var number = 0
+                updateMessage(replyID) { message in
+                    if let index = message.sources.firstIndex(where: { $0.url == page.url.absoluteString }) {
+                        number = index + 1
+                    } else {
+                        message.sources.append(SearchResult(title: page.title, url: page.url.absoluteString, content: nil))
+                        number = message.sources.count
+                    }
+                }
+                return ("[\(number)] \(page.title)\nURL: \(page.url.absoluteString)\n\n\(page.text.isEmpty ? "(No readable text on this page.)" : page.text)", .done)
+            } catch {
+                return ("Could not read the page: \(error.localizedDescription)", .failed)
+            }
+        } else if name == "web_search", !query.isEmpty {
+            outsideContent = true
+            updateMessage(replyID) { $0.status = "Searching “\(query)”" }
+            do {
+                let results = try await WebSearch.search(query, category: arguments["category"] as? String, timeRange: arguments["time_range"] as? String)
+                var numbered: [(number: Int, result: SearchResult)] = []
+                updateMessage(replyID) { message in
+                    for result in results {
+                        if let index = message.sources.firstIndex(where: { $0.url == result.url }) {
+                            numbered.append((index + 1, result))
+                        } else {
+                            message.sources.append(result)
+                            numbered.append((message.sources.count, result))
+                        }
+                    }
+                }
+                return (WebSearch.toolOutput(query: query, results: numbered), .done)
+            } catch {
+                return ("Search failed: \(error.localizedDescription)", .failed)
+            }
+        }
+        return ("Unknown tool \(name), or its arguments are missing.", .failed)
     }
 
     /// User attachments are sent as base64 images; generated images are only mentioned in text.
@@ -1114,6 +1344,13 @@ final class ChatStore: ObservableObject {
 
     private func update(_ change: (inout Conversation) -> Void) {
         guard let index = conversations.firstIndex(where: { $0.id == currentID }) else { return }
+        change(&conversations[index])
+        conversations[index].updatedAt = Date()
+        persist()
+    }
+
+    private func updateChat(_ id: UUID, _ change: (inout Conversation) -> Void) {
+        guard let index = conversations.firstIndex(where: { $0.id == id }) else { return }
         change(&conversations[index])
         conversations[index].updatedAt = Date()
         persist()

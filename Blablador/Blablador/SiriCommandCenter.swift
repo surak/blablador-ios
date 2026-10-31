@@ -9,6 +9,8 @@ final class SiriCommandCenter: ObservableObject {
     /// Files and text handed to the app ("Open in Blablador", the share extension, blablador:// links), for a new
     /// chat's composer.
     @Published private(set) var pendingShare: Share?
+    /// A chat to open, from a tapped notification.
+    @Published var pendingChat: UUID?
 
     struct Share: Equatable {
         var text = ""
@@ -53,6 +55,7 @@ final class SiriCommandCenter: ObservableObject {
         let value = { (name: String) in components.queryItems?.first { $0.name == name }?.value ?? "" }
         switch url.host() {
         case "inbox": takeInbox()
+        case "chat": pendingChat = UUID(uuidString: value("id"))
         case "ask": if !value("q").isEmpty { handle(command: value("q")) }
         case "new": share(text: [value("text"), value("url")].filter { !$0.isEmpty }.joined(separator: "\n"))
         default: break
