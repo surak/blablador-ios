@@ -127,4 +127,10 @@ class AgentFeatureTest {
         assertEquals("", marked[2].content)
         assertFalse(marked[0].isError || marked[3].isError)
     }
+
+    @Test
+    fun notificationsShowPlainText() {
+        assertEquals("News\n⏰ Reminder: Call Maria about JUWELS",
+            de.fz_juelich.blablador.data.Notifier.plain("## News\n⏰ Reminder: **Call Maria** about `JUWELS` [1]"))
+    }
 }

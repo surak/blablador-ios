@@ -577,7 +577,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         system += "\n\n" + SkillLibrary.SYSTEM_PROMPT + " Use search_chats when the user refers to an earlier conversation."
         Mentions.prompt(mentions, skills::skill, mcp::server)?.let { system += "\n\n" + it }
         if (task != null) {
-            system += "\n\nThis is a scheduled task running while the user isn't watching: do all of it without asking questions, and write the result so it reads well on its own."
+            system += "\n\nThis message is a scheduled task the user set up earlier (\"${task.title}\", ${task.scheduleText.lowercase()}); it runs now while they aren't watching, " +
+                "and your answer is shown as a notification. Do all of it without asking questions. If it is a reminder, reply with the reminder itself, " +
+                "addressed to the user, e.g. \"Time to call Maria.\" Write the result so it reads well on its own."
         }
         val baseSystem = system.trim()
 

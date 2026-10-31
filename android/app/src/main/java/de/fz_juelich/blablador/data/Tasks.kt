@@ -112,7 +112,7 @@ data class ScheduledTask(
             "Schedule a prompt to run by itself at a set time, once or on repeating weekdays, e.g. a daily news summary. Each run makes a new chat and a notification. The user confirms first.",
             buildJsonObject {
                 put("title", Tools.stringProperty("Short name, e.g. \"Morning HPC news\"."))
-                put("prompt", Tools.stringProperty("What to do at each run, written as a complete request."))
+                put("prompt", Tools.stringProperty("What to do at each run, written as a complete request to the assistant, e.g. \"Summarise today's top AI news\". For a plain reminder: \"Remind the user to call Maria.\""))
                 put("time", Tools.stringProperty("Local time HH:MM."))
                 put("days", buildJsonObject {
                     put("type", "array")
@@ -203,6 +203,12 @@ class TaskAlarmReceiver : BroadcastReceiver() {
 object Notifier {
     private const val CHANNEL = "replies"
 
+    /** Notification text without Markdown marks and [n] citations. */
+    fun plain(text: String): String = text
+        .replace(Regex("""\*\*|__|`|\[(\d+)]"""), "")
+        .replace(Regex("""(?m)^#+\s*"""), "")
+        .trim()
+
     fun allowed(context: Context) = Build.VERSION.SDK_INT < 33 ||
         ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
@@ -218,8 +224,8 @@ object Notifier {
         val notification = NotificationCompat.Builder(context, CHANNEL)
             .setSmallIcon(context.applicationInfo.icon)
             .setContentTitle(title)
-            .setContentText(body.take(200))
-            .setStyle(NotificationCompat.BigTextStyle().bigText(body.take(500)))
+            .setContentText(plain(body).take(200))
+            .setStyle(NotificationCompat.BigTextStyle().bigText(plain(body).take(500)))
             .setContentIntent(pending)
             .setAutoCancel(true)
             .build()
