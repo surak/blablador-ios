@@ -92,6 +92,8 @@ struct WhatsNewView: View {
 extension WhatsNew {
     static let seenKey = "whatsNewSeen"
     static let openPanel = Notification.Name("BlabladorOpenToolsPanel")
+    /// Runs an action of the + panel (Files, Scan text…) from elsewhere, e.g. an example on the empty chat.
+    static let runPanelAction = Notification.Name("BlabladorRunPanelAction")
 
     /// The newest release notes not seen yet; nil on a fresh install (marked as seen) or when there's nothing new.
     @MainActor

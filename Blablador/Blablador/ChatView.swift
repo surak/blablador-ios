@@ -189,17 +189,32 @@ struct ChatView: View {
             } else {
                 WelcomeView { suggestion in
                     inputFocused = false
-                    if suggestion.opensDecision {
+                    switch suggestion.action {
+                    case .send:
+                        store.send(suggestion.text, mentions: suggestion.mentions)
+                    case let .fill(text):
+                        draft = text
+                        inputFocused = true
+                    case let .panel(action, fill):
+                        if let fill { draft = fill }
+                        NotificationCenter.default.post(name: WhatsNew.runPanelAction, object: action)
+                    case .decision:
                         showDecision = true
-                    } else if suggestion.opensVoiceClone {
+                    case .cloneVoice:
                         if VoiceLibrary.shared.cloned.isEmpty {
                             showCloneVoice = true
                         } else {
                             speechMode = true
                             draft = "Hello! This is my own voice, made by Blablador."
                         }
-                    } else {
-                        store.send(suggestion.text, mentions: suggestion.mentions)
+                    case let .video(prompt):
+                        videoMode = true
+                        draft = prompt
+                        inputFocused = true
+                    case let .image(prompt):
+                        imageMode = true
+                        draft = prompt
+                        inputFocused = true
                     }
                 }
             }
@@ -526,42 +541,71 @@ private struct ModelMenu: View {
 
 /// An example on the empty chat that shows something the app can do.
 struct Suggestion: Hashable {
+    /// What tapping the example does.
+    enum Action: Hashable {
+        /// Send the text right away (with its mentions).
+        case send
+        /// Put text in the composer for the user to finish, e.g. by pasting a link.
+        case fill(String)
+        /// Open something from the + panel (files, scan text…), with optional text in the composer.
+        case panel(ToolsPanel.Action, fill: String?)
+        case decision, cloneVoice
+        case video(String), image(String)
+    }
+
     let icon: String
     let text: String
     var mentions: [Mention] = []
-    var opensDecision = false
-    var opensVoiceClone = false
+    var action = Action.send
 
-    /// `count` examples at random, always with the voice one, which people otherwise don't find.
+    /// Always among the examples: features people otherwise don't find.
+    var isFeatured: Bool { if case .cloneVoice = action { true } else { text.contains("Google Doc") } }
+
+    /// `count` examples at random, with the featured ones.
     @MainActor
     static func pick(_ count: Int) -> [Suggestion] {
-        let voice = all.filter(\.opensVoiceClone)
-        return (voice + all.filter { !$0.opensVoiceClone }.shuffled().prefix(count - voice.count)).shuffled()
+        let featured = all.filter(\.isFeatured)
+        return (featured + all.filter { !$0.isFeatured }.shuffled().prefix(count - featured.count)).shuffled()
     }
 
     private static func tool(_ value: String) -> [Mention] { MentionCatalog.tools.filter { $0.value == value } }
 
     @MainActor
-    static let all: [Suggestion] = [
-        Suggestion(icon: "chart.xyaxis.line", text: "Plot the world population since 1950 and fit a trend line", mentions: tool("python")),
-        Suggestion(icon: "arrow.triangle.branch", text: "Help me make a decision, step by step", opensDecision: true),
-        Suggestion(icon: "newspaper", text: "What's new in supercomputing this week?", mentions: tool("web")),
-        Suggestion(icon: "calendar", text: "What's on my calendar this week?", mentions: tool("device")),
-        Suggestion(icon: "clock", text: "Every weekday at 8, summarise the top AI news for me", mentions: tool("schedule")),
-        Suggestion(icon: "paintbrush.pointed", text: "Draw a fox reading a book in a cosy library", mentions: tool("image")),
-        Suggestion(icon: "checklist", text: "Plan a weekend trip to Jülich with a budget and a packing list", mentions: tool("plan")),
-        Suggestion(icon: "function", text: "Solve x³ − 6x² + 11x − 6 = 0 and show the steps", mentions: tool("python")),
-        Suggestion(icon: "doc.text.magnifyingglass", text: "Read fz-juelich.de and tell me what's new there", mentions: tool("web")),
-        Suggestion(icon: "person.wave.2", text: "Speak in my own voice: clone it in a few seconds", opensVoiceClone: true),
-        Suggestion(icon: "lightbulb", text: "Explain quantum computing in simple terms")
-    ]
+    static var all: [Suggestion] {
+        var all: [Suggestion] = [
+            Suggestion(icon: "doc.text", text: "Summarise a Google Doc: paste its link", action: .fill("Summarise this Google Doc and list what needs doing: ")),
+            Suggestion(icon: "person.wave.2", text: "Speak in my own voice: clone it in a few seconds", action: .cloneVoice),
+            Suggestion(icon: "chart.xyaxis.line", text: "Plot the world population since 1950 and fit a trend line", mentions: tool("python")),
+            Suggestion(icon: "tablecells", text: "Analyse a spreadsheet and chart the trends", action: .panel(.files, fill: "Analyse this file and make a chart of the main trends")),
+            Suggestion(icon: "doc.richtext", text: "Ask questions about a PDF", action: .panel(.files, fill: "What are the key points of this document?")),
+            Suggestion(icon: "text.viewfinder", text: "Read the text in a photo of a page", action: .panel(.scanText, fill: "Translate this into English")),
+            Suggestion(icon: "arrow.triangle.branch", text: "Help me make a decision, step by step", action: .decision),
+            Suggestion(icon: "newspaper", text: "What's new in supercomputing this week?", mentions: tool("web")),
+            Suggestion(icon: "doc.text.magnifyingglass", text: "Read fz-juelich.de and tell me what's new there", mentions: tool("web")),
+            Suggestion(icon: "calendar", text: "What's on my calendar this week?", mentions: tool("device")),
+            Suggestion(icon: "clock", text: "Every weekday at 8, summarise the top AI news for me", mentions: tool("schedule")),
+            Suggestion(icon: "checklist", text: "Plan a weekend trip to Jülich with a budget and a packing list", mentions: tool("plan")),
+            Suggestion(icon: "paintbrush.pointed", text: "Draw a fox reading a book in a cosy library", action: .image("A fox reading a book in a cosy library, warm lamp light")),
+            Suggestion(icon: "film", text: "Make a short video with sound", action: .video("A red panda sipping coffee in a café while rain falls outside")),
+            Suggestion(icon: "function", text: "Solve x³ − 6x² + 11x − 6 = 0 and show the steps", mentions: tool("python")),
+            Suggestion(icon: "brain", text: "What do you remember about me?", mentions: tool("memory")),
+            Suggestion(icon: "text.magnifyingglass", text: "What did we talk about last week?", mentions: tool("chats")),
+            Suggestion(icon: "books.vertical", text: "Answer from your own documents: make a knowledge base", action: .panel(.newKnowledge, fill: nil)),
+            Suggestion(icon: "lightbulb", text: "Explain quantum computing in simple terms")
+        ]
+#if os(macOS)
+        all.append(Suggestion(icon: "terminal", text: "Work on code in a folder: read, edit, run", action: .panel(.workspace, fill: nil)))
+#endif
+        return all
+    }
 }
 
 private struct WelcomeView: View {
     let onPick: (Suggestion) -> Void
 
-    /// Four examples, picked when the empty chat appears.
+    /// Six examples, picked when the empty chat appears; More ideas shows them all.
     @State private var suggestions = Suggestion.pick(6)
+    @State private var showingAll = false
 
     @EnvironmentObject private var store: ChatStore
 
@@ -591,7 +635,7 @@ private struct WelcomeView: View {
 
                 // Two or three columns of compact cards: icon beside the text, no empty space.
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 210), spacing: 10)], spacing: 10) {
-                    ForEach(suggestions, id: \.text) { suggestion in
+                    ForEach(showingAll ? Suggestion.all : suggestions, id: \.text) { suggestion in
                         Button { onPick(suggestion) } label: {
                             HStack(spacing: 12) {
                                 Image(systemName: suggestion.icon)
@@ -613,6 +657,15 @@ private struct WelcomeView: View {
                         .buttonStyle(.plain)
                     }
                 }
+                Button {
+                    withAnimation(.spring(duration: 0.3)) { showingAll.toggle() }
+                } label: {
+                    Label(showingAll ? "Fewer ideas" : "More ideas", systemImage: showingAll ? "chevron.up" : "sparkles")
+                        .scaledFont(.subheadline, weight: .medium)
+                        .foregroundStyle(Theme.gradient)
+                }
+                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity)
             }
             .padding(.horizontal, 24)
             .frame(maxWidth: 800)
@@ -819,6 +872,11 @@ private struct ComposerView: View {
     var body: some View {
         field
         .onReceive(NotificationCenter.default.publisher(for: WhatsNew.openPanel)) { _ in showPanel = true }
+        .onReceive(NotificationCenter.default.publisher(for: WhatsNew.runPanelAction)) { note in
+            guard let action = note.object as? ToolsPanel.Action else { return }
+            pendingAction = action
+            runPendingAction()
+        }
         .sheet(isPresented: $showPanel, onDismiss: runPendingAction) {
             ToolsPanel(imageMode: $imageMode, videoMode: $videoMode, speechMode: $speechMode) { action in
                 pendingAction = action
