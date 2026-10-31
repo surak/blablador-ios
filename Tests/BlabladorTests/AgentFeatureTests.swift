@@ -100,4 +100,8 @@ final class AgentFeatureTests: XCTestCase {
         XCTAssertFalse(marked.messages[2].isError)
         XCTAssertEqual(marked.messages[0].content, "Run")
     }
+
+    func testNotificationTextHasNoMarkdown() {
+        XCTAssertEqual(Notifier.plain("## News\n⏰ Reminder: **Call Maria** about `JUWELS` [1]"), "News\n⏰ Reminder: Call Maria about JUWELS")
+    }
 }

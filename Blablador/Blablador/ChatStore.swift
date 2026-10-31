@@ -772,8 +772,8 @@ final class ChatStore: ObservableObject {
         let folder = conversation.workspace.map { URL(fileURLWithPath: $0, isDirectory: true) }
         if let folder { system += "\n\n" + AgentTools.systemPrompt(workspace: folder) }
         if let hint = Self.mentionPrompt(mentions) { system += "\n\n" + hint }
-        if task != nil {
-            system += "\n\nThis is a scheduled task running while the user isn't watching: do all of it without asking questions, and write the result so it reads well on its own."
+        if let task {
+            system += "\n\nThis message is a scheduled task the user set up earlier (\"\(task.title)\", \(task.scheduleText.lowercased())); it runs now while they aren't watching, and your answer is shown as a notification. Do all of it without asking questions. If it is a reminder, reply with the reminder itself, addressed to the user, e.g. \"Time to call Maria.\" Write the result so it reads well on its own."
         }
         system = system.trimmingCharacters(in: .whitespacesAndNewlines)
         let systemText = system

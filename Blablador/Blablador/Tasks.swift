@@ -136,6 +136,7 @@ final class TaskScheduler: ObservableObject {
 
     /// One reminder notification per task for its next time (repeating ones per weekday).
     private func scheduleNotifications() {
+        guard Notifier.available else { return }
         let center = UNUserNotificationCenter.current()
         let tasks = tasks
         center.getPendingNotificationRequests { requests in
@@ -173,7 +174,7 @@ final class TaskScheduler: ObservableObject {
                 "type": "object",
                 "properties": [
                     "title": ["type": "string", "description": "Short name, e.g. \"Morning HPC news\"."],
-                    "prompt": ["type": "string", "description": "What to do at each run, written as a complete request."],
+                    "prompt": ["type": "string", "description": "What to do at each run, written as a complete request to the assistant, e.g. \"Summarise today's top AI news\". For a plain reminder: \"Remind the user to call Maria.\""],
                     "time": ["type": "string", "description": "Local time HH:MM."],
                     "days": ["type": "array", "items": ["type": "string", "enum": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]],
                              "description": "Weekdays to repeat on; leave out for every day."],
@@ -206,14 +207,19 @@ final class TaskScheduler: ObservableObject {
 final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     static let shared = Notifier()
 
+    /// Notifications need an app bundle (not available in the test runner).
+    static var available: Bool { Bundle.main.bundleURL.pathExtension == "app" }
+
     static func requestPermission() {
+        guard available else { return }
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
     }
 
     static func notify(title: String, body: String, chat: UUID) {
+        guard available else { return }
         let content = UNMutableNotificationContent()
         content.title = title
-        content.body = String(body.prefix(200))
+        content.body = String(plain(body).prefix(200))
         content.sound = .default
         content.userInfo = ["chat": chat.uuidString]
         let request = UNNotificationRequest(identifier: "chat.\(chat).\(UUID())", content: content, trigger: nil)
@@ -226,6 +232,13 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
                 center.add(request)
             }
         }
+    }
+
+    /// Notification text without Markdown marks.
+    static func plain(_ text: String) -> String {
+        text.replacingOccurrences(of: #"\*\*|__|`|^#+\s*|\[(\d+)\]"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"(?m)^#+\s*"#, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     func install() { UNUserNotificationCenter.current().delegate = self }

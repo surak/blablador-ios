@@ -29,4 +29,21 @@ final class AgentLiveTests: XCTestCase {
         print("SKILL AFTER:", store.conversations.first { $0.id == chat }?.messages.last?.suggestedSkills.map(\.name) ?? [])
         store.delete(store.conversations.first { $0.id == chat }!)
     }
+
+    func testReminderTaskAnswersWithTheReminder() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["BLABLADOR_NETWORK_TESTS"] == "1", let token = environment["HELMHOLTZ_BLABLADOR_TOKEN"] else { throw XCTSkip("network") }
+        let store = ChatStore()
+        store.apiKey = token
+        var task = ScheduledTask(title: "Reminder", prompt: "Remind me to call Maria about the JUWELS benchmark")
+        task.webSearch = false
+        let chat = store.runTask(task)
+        let deadline = Date().addingTimeInterval(120)
+        while store.isBusy, Date() < deadline { try await Task.sleep(for: .seconds(1)) }
+        let reply = try XCTUnwrap(store.conversations.first { $0.id == chat }?.messages.last)
+        print("REMINDER:", reply.content)
+        XCTAssertFalse(reply.content.lowercased().contains("sorry"))
+        XCTAssertTrue(reply.content.contains("Maria"))
+        store.delete(store.conversations.first { $0.id == chat }!)
+    }
 }
