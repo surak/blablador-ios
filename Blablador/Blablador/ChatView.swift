@@ -549,6 +549,9 @@ private struct ComposerView: View {
     @State private var showFileImporter = false
     @State private var showKnowledge = false
     @State private var showOCRPicker = false
+    /// Scan text: asks where the pictures come from; the file importer and camera then read text instead of attaching.
+    @State private var showScanChoice = false
+    @State private var scanning = false
     @State private var showDecision = false
     @State private var ocrItems: [PhotosPickerItem] = []
     @State private var readingPDFs = 0
@@ -762,9 +765,20 @@ private struct ComposerView: View {
                 }
             }
         }
-        .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.image, .pdf] + DataFiles.contentTypes, allowsMultipleSelection: true) { result in
+        .fileImporter(isPresented: $showFileImporter, allowedContentTypes: scanning ? [.image, .pdf] : [.image, .pdf] + DataFiles.contentTypes, allowsMultipleSelection: true) { result in
+            let scan = scanning
+            scanning = false
             guard case .success(let urls) = result else { return }
-            addFiles(urls)
+            if scan { scanFiles(urls) } else { addFiles(urls) }
+        }
+        .confirmationDialog("Read text from", isPresented: $showScanChoice) {
+            if CameraPicker.isAvailable {
+                Button("Camera") { scanning = true; showCamera = true }
+            }
+            Button("Photos") { showOCRPicker = true }
+            Button("Files") { scanning = true; showFileImporter = true }
+        } message: {
+            Text("Blablador reads the text in pictures and attaches it to your message.")
         }
 #if os(iOS)
         .onAppear { refreshClipboard() }
@@ -804,12 +818,12 @@ private struct ComposerView: View {
         }
 #if os(iOS)
         .fullScreenCover(isPresented: $showCamera) {
-            CameraPicker { data in attachments.append(data) }
+            CameraPicker { data in cameraPicture(data) }
                 .ignoresSafeArea()
         }
 #else
         .sheet(isPresented: $showCamera) {
-            CameraPicker { data in attachments.append(ImageStore.jpeg(from: data, maxPixelSize: 2048, quality: 0.9) ?? data) }
+            CameraPicker { data in cameraPicture(ImageStore.jpeg(from: data, maxPixelSize: 2048, quality: 0.9) ?? data) }
         }
 #endif
     }
@@ -925,6 +939,43 @@ private struct ComposerView: View {
         }
     }
 
+    /// A camera picture: attached, or read as text when scanning.
+    private func cameraPicture(_ data: Data) {
+        guard scanning else { return attachments.append(data) }
+        scanning = false
+        readingPDFs += 1
+        Task {
+            defer { readingPDFs -= 1 }
+            do {
+                documents.append(try await PDFExtractor.extract(photo: data, name: "Scanned text", api: store.api))
+            } catch {
+                pdfError = "Scanned text: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    /// Reads the text of picture files; PDFs are read as usual (scanned pages included).
+    private func scanFiles(_ urls: [URL]) {
+        let pdfs = urls.filter { UTType(filenameExtension: $0.pathExtension)?.conforms(to: .pdf) == true }
+        addFiles(pdfs)
+        let pictures = urls.filter { !pdfs.contains($0) }
+        guard !pictures.isEmpty else { return }
+        readingPDFs += 1
+        Task {
+            defer { readingPDFs -= 1 }
+            for url in pictures {
+                let accessing = url.startAccessingSecurityScopedResource()
+                defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+                do {
+                    let data = try Data(contentsOf: url)
+                    documents.append(try await PDFExtractor.extract(photo: data, name: url.deletingPathExtension().lastPathComponent, api: store.api))
+                } catch {
+                    pdfError = "\(url.lastPathComponent): \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
     private func runPendingAction() {
         guard let action = pendingAction else { return }
         pendingAction = nil
@@ -933,7 +984,7 @@ private struct ComposerView: View {
         case .photos: showPhotoPicker = true
         case .files: showFileImporter = true
         case .paste: pasteImage()
-        case .scanText: showOCRPicker = true
+        case .scanText: showScanChoice = true
         case .decide: showDecision = true
         case .newKnowledge: showKnowledge = true
         case .workspace:
