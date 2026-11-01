@@ -437,6 +437,7 @@ final class VoiceConversation: ObservableObject {
         if speechStarted == nil { noiseFloor = noiseFloor * 0.95 + level * 0.05 }
         let threshold = max(Self.voiceLevel, noiseFloor * 2.5)
         if level > threshold {
+            if speechStarted != nil { voicedTime += 0.15 }
             lastVoice = Date()
             if speechStarted == nil {
                 speechStarted = Date()
@@ -449,10 +450,17 @@ final class VoiceConversation: ObservableObject {
         }
         let (samples, rate) = recording.take()
         speechStarted = nil
-        guard let api = store?.api, samples.count > Int(rate * 0.4) else { heard = ""; return }
+        // A cough or a click isn't a question; Whisper invents words for those.
+        guard let api = store?.api, voicedTime > 0.6 else {
+            heard = ""
+            voicedTime = 0
+            return
+        }
+        voicedTime = 0
         transcribing = true
         heard = "Transcribing…"
         let wav = Self.wav(samples, sampleRate: rate)
+        Self.log.notice("whisper recording \(samples.count) samples at \(rate) Hz, \(Double(samples.count) / rate) s, spoken for \(Date().timeIntervalSince(started)) s")
         let code = Locale(identifier: language).language.languageCode?.identifier
         Task {
             let text = (try? await api.transcribe(audio: wav, language: code, timeout: 30)) ?? ""
@@ -470,6 +478,8 @@ final class VoiceConversation: ObservableObject {
 
     private static let voiceLevel: Float = 0.12
     private var noiseFloor: Float = 0.05
+    /// Seconds of the current turn that were louder than the room.
+    private var voicedTime = 0.0
 
     nonisolated static func wav(_ samples: [Float], sampleRate: Double) -> Data {
         var data = Data()

@@ -911,6 +911,7 @@ final class ChatStore: ObservableObject {
         if goal != nil { tools.append(GoalTools.tool) }
         tools = ToolPermissions.shared.filter(tools)
         let api = api
+        let spoken = voiceConversation
         start(chatID) { [self] in
             let started = Date()
             var readOutside = false
@@ -950,7 +951,8 @@ final class ChatStore: ObservableObject {
                     wire[0]["content"] = (wire[0]["content"] as? String ?? "") + "\n\nTools named <service>__<tool> belong to services the user connected (MCP). Use them when they fit the request."
                 }
                 readOutside = try await runTurn(model: model, messages: wire, tools: tools, replyID: reply.id, chatID: chatID, workspace: folder, outsideContent: outsideContent, mcp: mcpTools)
-                learn(question: question, replyID: reply.id, model: model, userOnly: readOutside)
+                // Speech recognition mishears names; facts aren't learned from what it thought it heard.
+                if !spoken { learn(question: question, replyID: reply.id, model: model, userOnly: readOutside) }
             } catch is CancellationError {
             } catch let error as URLError where error.code == .cancelled {
             } catch BlabladorAPIError.http(let status, let body) where status == 400 && body.localizedCaseInsensitiveContains("image") {
