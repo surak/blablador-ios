@@ -94,6 +94,10 @@ final class VoiceConversation: ObservableObject {
     private var queuedText = ""
     private var spokenWords: Set<String> = []
     private var queue: [Task<[AVAudioPCMBuffer], Never>] = []
+    /// The text of each queued part, so it can be spoken again with another voice.
+    private var queueTexts: [String] = []
+    /// The part the play loop is waiting for.
+    private var awaitingText: String?
     private var playLoop: Task<Void, Never>?
     /// The last cloned-voice request; the next one waits for it.
     private var clonedChain: Task<Data?, Never>?
@@ -719,6 +723,7 @@ final class VoiceConversation: ObservableObject {
         Self.log.notice("speaking with \(self.speaker.rawValue, privacy: .public): \(text, privacy: .private)")
         if !device { partsQueued += 1 }
         queue.append(job)
+        queueTexts.append(text)
         if playLoop == nil {
             let generation = generation
             playLoop = Task { await play(generation) }
@@ -729,8 +734,10 @@ final class VoiceConversation: ObservableObject {
         do {
             while !queue.isEmpty, self.generation == generation {
                 let job = queue.removeFirst()
+                awaitingText = queueTexts.isEmpty ? nil : queueTexts.removeFirst()
                 let buffers = await job.value
                 guard self.generation == generation else { break }
+                awaitingText = nil
                 Self.log.notice("playing \(buffers.count) buffers, \(buffers.reduce(0) { $0 + Int($1.frameLength) }) frames")
                 guard !buffers.isEmpty else { continue }
                 if !engine.isRunning {
@@ -741,7 +748,6 @@ final class VoiceConversation: ObservableObject {
                 let once = Once()
                 playing = once
                 partPlaying += 1
-                lastProgress = Date()
                 lastProgress = Date()
                 await withCheckedContinuation { continuation in
                     once.set(continuation)
@@ -759,10 +765,34 @@ final class VoiceConversation: ObservableObject {
         }
     }
 
+    /// The voice changed mid-answer: the part playing finishes, the parts not yet spoken are made again
+    /// with the new voice.
+    func revoice() {
+        guard running, phase == .thinking || phase == .speaking else { return }
+        var texts = queueTexts
+        if let awaitingText { texts.insert(awaitingText, at: 0) }
+        guard !texts.isEmpty else { return }
+        Self.log.notice("voice changed, redoing \(texts.count) parts")
+        queue.forEach { $0.cancel() }
+        queue = []
+        queueTexts = []
+        awaitingText = nil
+        clonedChain?.cancel()
+        clonedChain = nil
+        // The old play loop ends after the part it is playing (or at once if it was still waiting);
+        // the new one schedules after it, so nothing is cut off.
+        generation += 1
+        playLoop = nil
+        partsQueued = max(0, partsQueued - texts.count)
+        for text in texts { enqueue(text) }
+    }
+
     /// Stops speaking and drops what was queued.
     private func silence() {
         generation += 1
         queue.forEach { $0.cancel() }
+        queueTexts = []
+        awaitingText = nil
         clonedChain?.cancel()
         clonedChain = nil
         queue = []
@@ -1076,6 +1106,7 @@ struct VoiceConversationView: View {
                             conversation.speaker = .blablador
                             voices.selectedID = id
                         }
+                        conversation.revoice()
                     }
                 )) {
                     ForEach(voices.voices) { voice in
