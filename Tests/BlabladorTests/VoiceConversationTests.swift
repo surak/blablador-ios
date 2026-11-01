@@ -78,4 +78,11 @@ final class VoiceConversationTests: XCTestCase {
         let decoded = try VoiceConversation.decode(data, to: format)
         print("DRAMA after trimming:", Double(decoded.first?.frameLength ?? 0) / 24_000, "s")
     }
+
+    func testQuietRecordingsAreAmplified() {
+        let quiet: [Float] = [0, 0.02, -0.03, 0.01]
+        let loud = VoiceConversation.normalized(quiet)
+        XCTAssertEqual(loud.map { abs($0) }.max() ?? 0, 0.9, accuracy: 0.001)
+        XCTAssertEqual(VoiceConversation.normalized([0, 0.0001]), [0, 0.0001])
+    }
 }

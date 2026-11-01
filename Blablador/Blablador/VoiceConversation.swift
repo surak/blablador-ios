@@ -199,6 +199,8 @@ final class VoiceConversation: ObservableObject {
     private var lastSound = Date()
     /// When the reply last streamed or a sentence started playing.
     private var lastProgress = Date()
+    /// When the last question was sent; the end of it mustn't count as talking over the answer.
+    private var submittedAt = Date.distantPast
 
     private func checkMicrophone() {
 #if os(macOS)
@@ -431,7 +433,8 @@ final class VoiceConversation: ObservableObject {
                     return
                 }
             }
-            else if usesWhisper, phase == .thinking, store.commandApproval == nil, playing == nil, queue.isEmpty, playLoop == nil {
+            else if usesWhisper, phase == .thinking, store.commandApproval == nil, playing == nil, queue.isEmpty, playLoop == nil,
+                    Date().timeIntervalSince(submittedAt) > 1.5 {
                 // Nothing is playing, so a voice now is the user's: stop the reply and take the new question,
                 // keeping what is being recorded.
                 let loud = peak > max(Self.voiceLevel, noiseFloor * 5)
@@ -535,7 +538,7 @@ final class VoiceConversation: ObservableObject {
         voicedTime = 0
         transcribing = true
         heard = "Transcribing…"
-        let wav = Self.wav(samples, sampleRate: rate)
+        let wav = Self.wav(Self.normalized(samples), sampleRate: rate)
         Self.log.notice("whisper recording \(samples.count) samples at \(rate) Hz, \(Double(samples.count) / rate) s, spoken for \(Date().timeIntervalSince(started)) s")
         let code = Locale(identifier: language).language.languageCode?.identifier
         Task {
@@ -576,6 +579,14 @@ final class VoiceConversation: ObservableObject {
     /// Consecutive checks with a loud voice while the reply plays.
     private var bargeTicks = 0
 
+    /// Louder, so quiet headset recordings don't reach Whisper as near-silence (which it answers with nothing).
+    nonisolated static func normalized(_ samples: [Float], target: Float = 0.9) -> [Float] {
+        let peak = samples.reduce(0) { max($0, abs($1)) }
+        guard peak > 0.0005 else { return samples }
+        let gain = min(target / peak, 40)
+        return samples.map { $0 * gain }
+    }
+
     nonisolated static func wav(_ samples: [Float], sampleRate: Double) -> Data {
         var data = Data()
         func append<T>(_ value: T) { withUnsafeBytes(of: value) { data.append(contentsOf: $0) } }
@@ -600,6 +611,7 @@ final class VoiceConversation: ObservableObject {
         carried = ""
         phase = .thinking
         lastProgress = Date()
+        submittedAt = Date()
         generation += 1
         consumed = 0
         partsQueued = 0
