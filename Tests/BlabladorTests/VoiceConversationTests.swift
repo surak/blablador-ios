@@ -30,4 +30,15 @@ final class VoiceConversationTests: XCTestCase {
         print("DRAMA AUDIO SECONDS:", Double(frames) / 24_000)
         XCTAssertGreaterThan(frames, 12_000)
     }
+
+    func testWhisperUnderstandsOurRecordingFormat() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["BLABLADOR_NETWORK_TESTS"] == "1", let token = environment["HELMHOLTZ_BLABLADOR_TOKEN"] else { throw XCTSkip("network") }
+        let speech = await VoiceConversation.deviceSpeech("Hello, what is the weather like in Lisbon today?", to: format)
+        let samples = speech.flatMap { buffer in Array(UnsafeBufferPointer(start: buffer.floatChannelData![0], count: Int(buffer.frameLength))) }
+        let wav = VoiceConversation.wav(samples, sampleRate: 24_000)
+        let text = try await BlabladorAPI(apiKey: token).transcribe(audio: wav)
+        print("WHISPER:", text)
+        XCTAssertTrue(text.lowercased().contains("lisbon"))
+    }
 }

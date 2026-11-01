@@ -74,6 +74,14 @@ final class VoiceConversation: ObservableObject {
     private var player = AVAudioPlayerNode()
     private let format = AVAudioFormat(standardFormatWithSampleRate: 24_000, channels: 1)!
     private let requests = RequestBox()
+    /// What the user says, kept for Whisper when the language can't be recognised on the device.
+    private let recording = RecordingBox()
+    private var speechStarted: Date?
+    private var lastVoice = Date()
+    private var transcribing = false
+
+    /// Languages Apple only recognises on its servers (unreliable for a running conversation) go to Whisper.
+    var usesWhisper: Bool { !language.isEmpty && recognizer?.supportsOnDeviceRecognition != true }
     private var task: SFSpeechRecognitionTask?
     private var requestID = UUID()
     private var transcript = ""
@@ -211,10 +219,12 @@ final class VoiceConversation: ObservableObject {
     /// Feeds microphone audio to the recognizer (as mono) and the level meter; called on an audio thread.
     private var microphoneHandler: @Sendable (AVAudioPCMBuffer) -> Void {
         let requests = requests
+        let recording = recording
         return { [weak self] buffer in
             let mono = AVAudioFormat(standardFormatWithSampleRate: buffer.format.sampleRate, channels: 1)!
             let single = Self.mixed(buffer, as: mono) ?? buffer
             requests.append(single)
+            recording.append(single)
             let level = Self.level(of: single)
             Task { @MainActor in
                 guard let self else { return }
@@ -274,7 +284,12 @@ final class VoiceConversation: ObservableObject {
         switch phase {
         case .thinking, .speaking: interrupt(keeping: "")
         case .paused: listen()
-        case .listening: if !heard.isEmpty { submit(heard) }
+        case .listening:
+            if usesWhisper {
+                lastVoice = .distantPast
+            } else if !heard.isEmpty {
+                submit(heard)
+            }
         case .starting: break
         }
     }
@@ -303,6 +318,15 @@ final class VoiceConversation: ObservableObject {
     /// A fresh recognition request; what was heard before is dropped.
     private func newRequest() {
         task?.cancel()
+        if usesWhisper {
+            task = nil
+            requests.set(nil)
+            transcript = ""
+            heard = carried
+            recording.reset()
+            speechStarted = nil
+            return
+        }
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
         request.addsPunctuation = true
@@ -346,6 +370,8 @@ final class VoiceConversation: ObservableObject {
         let waiting = speaker == .blablador && playing == nil && (!queue.isEmpty || playLoop != nil)
         if waiting != waitingForVoice { waitingForVoice = waiting }
         switch phase {
+        case .listening where usesWhisper:
+            listenForWhisper()
         case .listening:
             if !heard.trimmingCharacters(in: .whitespaces).isEmpty, Date().timeIntervalSince(lastHeard) > Self.pause {
                 submit(heard)
@@ -394,6 +420,55 @@ final class VoiceConversation: ObservableObject {
         case .paused, .starting:
             break
         }
+    }
+
+    /// Speech detected by loudness; after a pause the recording goes to Whisper.
+    private func listenForWhisper() {
+        guard !transcribing else { return }
+        if level > Self.voiceLevel {
+            lastVoice = Date()
+            if speechStarted == nil {
+                speechStarted = Date()
+                heard = "…"
+            }
+        }
+        guard let started = speechStarted, Date().timeIntervalSince(lastVoice) > Self.pause || Date().timeIntervalSince(started) > 60 else {
+            if speechStarted == nil { recording.keepLast(seconds: 1) }
+            return
+        }
+        let (samples, rate) = recording.take()
+        speechStarted = nil
+        guard let api = store?.api, samples.count > Int(rate * 0.4) else { heard = ""; return }
+        transcribing = true
+        heard = "Transcribing…"
+        let wav = Self.wav(samples, sampleRate: rate)
+        Task {
+            let text = (try? await api.transcribe(audio: wav)) ?? ""
+            transcribing = false
+            Self.log.notice("whisper heard \(text.count) characters")
+            guard running, phase == .listening else { return }
+            if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                heard = ""
+                recording.reset()
+            } else {
+                submit(Self.joined(carried, text))
+            }
+        }
+    }
+
+    private static let voiceLevel: Float = 0.1
+
+    nonisolated static func wav(_ samples: [Float], sampleRate: Double) -> Data {
+        var data = Data()
+        func append<T>(_ value: T) { withUnsafeBytes(of: value) { data.append(contentsOf: $0) } }
+        let rate = UInt32(sampleRate)
+        data.append(contentsOf: Array("RIFF".utf8)); append(UInt32(36 + samples.count * 2).littleEndian)
+        data.append(contentsOf: Array("WAVEfmt ".utf8)); append(UInt32(16).littleEndian); append(UInt16(1).littleEndian)
+        append(UInt16(1).littleEndian); append(rate.littleEndian); append((rate * 2).littleEndian)
+        append(UInt16(2).littleEndian); append(UInt16(16).littleEndian)
+        data.append(contentsOf: Array("data".utf8)); append(UInt32(samples.count * 2).littleEndian)
+        for sample in samples { append(Int16(max(-1, min(1, sample)) * 32_767).littleEndian) }
+        return data
     }
 
     private static let yesWords: Set<String> = ["yes", "yeah", "yep", "allow", "ok", "okay", "sure", "ja", "oui", "si", "sí"]
@@ -758,6 +833,43 @@ private final class MicrophoneCapture: NSObject, AVCaptureAudioDataOutputSampleB
     }
 }
 #endif
+
+/// Microphone samples (mono) while the user may be speaking.
+private final class RecordingBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var samples: [Float] = []
+    private var rate: Double = 48_000
+
+    func append(_ buffer: AVAudioPCMBuffer) {
+        guard let channel = buffer.floatChannelData?[0] else { return }
+        lock.lock()
+        rate = buffer.format.sampleRate
+        samples.append(contentsOf: UnsafeBufferPointer(start: channel, count: Int(buffer.frameLength)))
+        // At most two minutes.
+        if samples.count > Int(rate * 120) { samples.removeFirst(samples.count - Int(rate * 120)) }
+        lock.unlock()
+    }
+
+    /// Before speech starts, only the last moment is kept so the first word isn't cut.
+    func keepLast(seconds: Double) {
+        lock.lock()
+        let keep = Int(rate * seconds)
+        if samples.count > keep { samples.removeFirst(samples.count - keep) }
+        lock.unlock()
+    }
+
+    func take() -> ([Float], Double) {
+        lock.lock()
+        defer { samples = []; lock.unlock() }
+        return (samples, rate)
+    }
+
+    func reset() {
+        lock.lock()
+        samples = []
+        lock.unlock()
+    }
+}
 
 /// The recognition request the microphone tap feeds, swapped between turns.
 private final class RequestBox: @unchecked Sendable {
