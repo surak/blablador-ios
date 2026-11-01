@@ -288,7 +288,7 @@ final class VoiceConversation: ObservableObject {
         case .paused: listen()
         case .listening:
             if usesWhisper {
-                lastVoice = .distantPast
+                if speechStarted != nil { sendNow = true }
             } else if !heard.isEmpty {
                 submit(heard)
             }
@@ -433,8 +433,9 @@ final class VoiceConversation: ObservableObject {
     /// Speech detected by loudness; after a pause the recording goes to Whisper.
     private func listenForWhisper() {
         guard !transcribing else { return }
-        // The room's background level, followed slowly while nobody speaks.
-        if speechStarted == nil { noiseFloor = noiseFloor * 0.95 + level * 0.05 }
+        // The room's background level: drops at once to quieter moments, creeps up when it stays loud
+        // (e.g. a headset's hiss), so steady noise never counts as someone speaking.
+        noiseFloor = level < noiseFloor ? level : noiseFloor + 0.003
         let threshold = max(Self.voiceLevel, noiseFloor * 2.5)
         if level > threshold {
             if speechStarted != nil { voicedTime += 0.15 }
@@ -444,14 +445,16 @@ final class VoiceConversation: ObservableObject {
                 heard = "…"
             }
         }
-        guard let started = speechStarted, Date().timeIntervalSince(lastVoice) > Self.pause || Date().timeIntervalSince(started) > 60 else {
+        guard let started = speechStarted, sendNow || Date().timeIntervalSince(lastVoice) > Self.pause || Date().timeIntervalSince(started) > 60 else {
             if speechStarted == nil { recording.keepLast(seconds: 1) }
             return
         }
         let (samples, rate) = recording.take()
         speechStarted = nil
+        let tapped = sendNow
+        sendNow = false
         // A cough or a click isn't a question; Whisper invents words for those.
-        guard let api = store?.api, voicedTime > 0.6 else {
+        guard let api = store?.api, voicedTime > 0.6 || tapped else {
             heard = ""
             voicedTime = 0
             return
@@ -480,6 +483,8 @@ final class VoiceConversation: ObservableObject {
     private var noiseFloor: Float = 0.05
     /// Seconds of the current turn that were louder than the room.
     private var voicedTime = 0.0
+    /// The user tapped to send what they said.
+    private var sendNow = false
 
     nonisolated static func wav(_ samples: [Float], sampleRate: Double) -> Data {
         var data = Data()
