@@ -400,11 +400,29 @@ final class VoiceConversation: ObservableObject {
         switch phase {
         case .listening where usesWhisper:
             listenForWhisper()
+
         case .listening:
             if !heard.trimmingCharacters(in: .whitespaces).isEmpty, Date().timeIntervalSince(lastHeard) > Self.pause {
                 submit(heard)
             }
         case .thinking, .speaking:
+            if usesWhisper, phase == .thinking, store.commandApproval == nil, playing == nil, queue.isEmpty, playLoop == nil {
+                // Nothing is playing, so a voice now is the user's: stop the reply and take the new question,
+                // keeping what is being recorded.
+                let threshold = max(Self.voiceLevel, noiseFloor * 2.5)
+                let loud = peak > threshold
+                peak = 0
+                if loud {
+                    Self.log.notice("user spoke while the reply was being made, taking the new question")
+                    generation += 1
+                    if store.isStreaming { store.stop() }
+                    phase = .listening
+                    speechStarted = Date()
+                    lastVoice = Date()
+                    heard = "…"
+                    return
+                }
+            }
             if let approval = store.commandApproval {
                 if askedApproval != approval.id {
                     askedApproval = approval.id
