@@ -112,17 +112,14 @@ final class VoiceConversation: ObservableObject {
         do {
 #if os(iOS)
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetoothHFP, .duckOthers])
+            try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothHFP, .duckOthers])
             try session.setActive(true)
             UIApplication.shared.isIdleTimerDisabled = true
 #endif
             do {
-#if os(macOS)
-                // On the Mac a failed attempt at voice processing leaves the microphone silent; skip it.
+                // Voice processing (Apple's echo cancellation) silenced the microphone on the Mac and the iPad,
+                // so it stays off; the check for the reply's own words keeps its echo from interrupting.
                 try startEngine(voiceProcessing: false)
-#else
-                try startEngine(voiceProcessing: true)
-#endif
             } catch {
                 // Some microphones and speaker setups can't do echo cancellation; without it the
                 // check for words from the reply keeps the echo from interrupting.
@@ -638,11 +635,16 @@ final class VoiceConversation: ObservableObject {
     }
 
     private nonisolated static func level(of buffer: AVAudioPCMBuffer) -> Float {
-        guard let samples = buffer.floatChannelData?[0] else { return 0 }
         let count = Int(buffer.frameLength)
         guard count > 0 else { return 0 }
         var sum: Float = 0
-        for i in 0..<count { sum += samples[i] * samples[i] }
+        if let samples = buffer.floatChannelData?[0] {
+            for i in 0..<count { sum += samples[i] * samples[i] }
+        } else if let samples = buffer.int16ChannelData?[0] {
+            for i in 0..<count { let value = Float(samples[i]) / 32_768; sum += value * value }
+        } else {
+            return 0.01
+        }
         return min(1, sqrt(sum / Float(count)) * 12)
     }
 
