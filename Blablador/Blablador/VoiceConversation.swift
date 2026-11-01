@@ -135,6 +135,7 @@ final class VoiceConversation: ObservableObject {
             return
         }
         running = true
+        lastSound = Date()
         store.voiceLanguage = Self.englishName(language)
         store.voiceConversation = true
         listen()
@@ -180,6 +181,28 @@ final class VoiceConversation: ObservableObject {
     }
 
     private var configurationObserver: NSObjectProtocol?
+    /// Set when the microphone has delivered only silence for a while, e.g. a MacBook with its lid closed.
+    @Published private(set) var silentMicrophone: String?
+    private var lastSound = Date()
+
+    private func checkMicrophone() {
+#if os(macOS)
+        if microphone.isStale {
+            Self.log.notice("input device changed, switching")
+            try? microphone.start(microphoneHandler)
+            lastSound = Date()
+            silentMicrophone = nil
+            if phase == .listening { newRequest() }
+            return
+        }
+        let name = microphone.deviceName
+#else
+        let name = "the microphone"
+#endif
+        if level > 0 { lastSound = Date() }
+        let silent = phase != .paused && Date().timeIntervalSince(lastSound) > 3
+        if silent != (silentMicrophone != nil) { silentMicrophone = silent ? name : nil }
+    }
 #if os(macOS)
     private let microphone = MicrophoneCapture()
 #endif
@@ -318,6 +341,7 @@ final class VoiceConversation: ObservableObject {
 
     private func tick() {
         guard running, let store else { return }
+        checkMicrophone()
         switch phase {
         case .listening:
             if !heard.trimmingCharacters(in: .whitespaces).isEmpty, Date().timeIntervalSince(lastHeard) > Self.pause {
@@ -613,6 +637,11 @@ private final class MicrophoneCapture: NSObject, AVCaptureAudioDataOutputSampleB
     private var session: AVCaptureSession?
     private var handler: (@Sendable (AVAudioPCMBuffer) -> Void)?
     private let queue = DispatchQueue(label: "de.fz-juelich.blablador.microphone")
+    private(set) var deviceID: String?
+    private(set) var deviceName = ""
+
+    /// The system's input changed (e.g. AirPods connected) since the session started.
+    var isStale: Bool { session != nil && AVCaptureDevice.default(for: .audio)?.uniqueID != deviceID }
 
     func start(_ handler: @escaping @Sendable (AVAudioPCMBuffer) -> Void) throws {
         stop()
@@ -621,6 +650,8 @@ private final class MicrophoneCapture: NSObject, AVCaptureAudioDataOutputSampleB
         }
         let session = AVCaptureSession()
         let input = try AVCaptureDeviceInput(device: device)
+        deviceID = device.uniqueID
+        deviceName = device.localizedName
         let output = AVCaptureAudioDataOutput()
         // Float PCM, which the recognizer and the level meter read directly.
         output.audioSettings = [
@@ -772,6 +803,7 @@ struct VoiceConversationView: View {
             VStack(spacing: 10) {
                 Text(status)
                     .scaledFont(.headline)
+                    .multilineTextAlignment(.center)
                     .foregroundStyle(.white.opacity(0.8))
                 Text(caption)
                     .scaledFont(.title3)
@@ -875,7 +907,16 @@ struct VoiceConversationView: View {
     private var status: String {
         switch conversation.phase {
         case .starting: "Starting…"
-        case .listening: conversation.heard.isEmpty ? "Listening…" : "Listening · tap to send now"
+        case .listening:
+            if let microphone = conversation.silentMicrophone {
+#if os(macOS)
+                "No sound from \(microphone). Is the lid closed? Choose another input in System Settings → Sound, or connect AirPods."
+#else
+                "No sound from \(microphone)."
+#endif
+            } else {
+                conversation.heard.isEmpty ? "Listening…" : "Listening · tap to send now"
+            }
         case .thinking: store.commandApproval != nil ? "Blablador needs your OK" : replyStatus ?? "Thinking…"
         case .speaking: "Speaking · talk or tap to interrupt"
         case .paused: "Paused · tap to talk"
