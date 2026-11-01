@@ -231,25 +231,41 @@ final class VoiceConversation: ObservableObject {
             Task { @MainActor in
                 guard let self else { return }
                 self.level = level
+                self.peak = max(self.peak, level)
                 self.buffersSeen += 1
                 if self.buffersSeen % 200 == 1 { Self.log.notice("audio \(self.buffersSeen) buffers, level \(level), \(buffer.format.description, privacy: .public)") }
             }
         }
     }
 
-    private func restartAudio() {
+    private func restartAudio(attempt: Int = 1) {
         guard running else { return }
-        Self.log.notice("audio configuration changed, restarting")
+        Self.log.notice("audio configuration changed, restarting (attempt \(attempt))")
         silence()
         teardownEngine()
         do {
             try startEngine(voiceProcessing: voiceProcessing)
+            audioProblem = nil
         } catch {
             Self.log.notice("restart failed: \(error.localizedDescription, privacy: .public)")
-            errorMessage = "The microphone stopped: \(error.localizedDescription)"
+            // Devices switching (e.g. AirPods connecting) settle within a few seconds: try again.
+            if attempt < 8 {
+                audioProblem = "Switching audio devices…"
+                Task {
+                    try? await Task.sleep(for: .seconds(0.75))
+                    self.restartAudio(attempt: attempt + 1)
+                }
+                return
+            }
+            audioProblem = "The microphone stopped (\(error.localizedDescription)). Tap the circle to try again."
         }
         if phase == .thinking || phase == .speaking { listen() }
     }
+
+    /// Shown in place of the status while the audio isn't working; cleared once it is.
+    @Published private(set) var audioProblem: String?
+    /// A short note under the status, e.g. when nothing was understood; cleared when the user speaks.
+    @Published private(set) var notice: String?
 
     private func teardownEngine() {
         if let configurationObserver { NotificationCenter.default.removeObserver(configurationObserver) }
@@ -283,6 +299,10 @@ final class VoiceConversation: ObservableObject {
 
     /// The orb: interrupts a reply, resumes after a pause, or ends the turn right away.
     func tap() {
+        if audioProblem != nil {
+            restartAudio()
+            return
+        }
         switch phase {
         case .thinking, .speaking: interrupt(keeping: "")
         case .paused: listen()
@@ -432,6 +452,8 @@ final class VoiceConversation: ObservableObject {
 
     /// Speech detected by loudness; after a pause the recording goes to Whisper.
     private func listenForWhisper() {
+        let level = peak
+        peak = 0
         guard !transcribing else { return }
         // The room's background level: drops at once to quieter moments, creeps up when it stays loud
         // (e.g. a headset's hiss), so steady noise never counts as someone speaking.
@@ -441,6 +463,7 @@ final class VoiceConversation: ObservableObject {
             if speechStarted != nil { voicedTime += 0.15 }
             lastVoice = Date()
             if speechStarted == nil {
+                notice = nil
                 speechStarted = Date()
                 heard = "…"
             }
@@ -454,7 +477,8 @@ final class VoiceConversation: ObservableObject {
         let tapped = sendNow
         sendNow = false
         // A cough or a click isn't a question; Whisper invents words for those.
-        guard let api = store?.api, voicedTime > 0.6 || tapped else {
+        guard let api = store?.api, voicedTime >= 0.3 || tapped else {
+            Self.log.notice("ignored \(self.voicedTime) s of sound (threshold \(threshold), noise \(self.noiseFloor))")
             heard = ""
             voicedTime = 0
             return
@@ -472,6 +496,7 @@ final class VoiceConversation: ObservableObject {
             guard running, phase == .listening else { return }
             if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 heard = ""
+                notice = "Didn't catch that, please say it again."
                 recording.reset()
             } else {
                 submit(Self.joined(carried, text))
@@ -481,6 +506,8 @@ final class VoiceConversation: ObservableObject {
 
     private static let voiceLevel: Float = 0.12
     private var noiseFloor: Float = 0.05
+    /// The loudest moment since the last check; single readings miss speech between syllables.
+    private var peak: Float = 0
     /// Seconds of the current turn that were louder than the room.
     private var voicedTime = 0.0
     /// The user tapped to send what they said.
@@ -663,6 +690,10 @@ final class VoiceConversation: ObservableObject {
                 guard self.generation == generation else { break }
                 Self.log.notice("playing \(buffers.count) buffers, \(buffers.reduce(0) { $0 + Int($1.frameLength) }) frames")
                 guard !buffers.isEmpty else { continue }
+                if !engine.isRunning {
+                    try? engine.start()
+                    player.play()
+                }
                 phase = .speaking
                 let once = Once()
                 playing = once
@@ -1170,6 +1201,12 @@ struct VoiceConversationView: View {
     }
 
     private var status: String {
+        if let problem = conversation.audioProblem { return problem }
+        if conversation.phase == .listening, conversation.heard.isEmpty, let notice = conversation.notice { return notice }
+        return phaseStatus
+    }
+
+    private var phaseStatus: String {
         switch conversation.phase {
         case .starting: "Starting…"
         case .listening:
