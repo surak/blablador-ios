@@ -161,6 +161,8 @@ final class ChatStore: ObservableObject {
 
     /// A voice conversation is open: replies are short and spoken.
     @Published var voiceConversation = false
+    /// The language picked in the voice conversation (English name), or nil to follow the user.
+    var voiceLanguage: String?
     /// Shows the voice conversation screen.
     @Published var talking = false
 
@@ -869,6 +871,7 @@ final class ChatStore: ObservableObject {
         if let hint = Self.mentionPrompt(mentions) { system += "\n\n" + hint }
         if voiceConversation {
             system += "\n\nThe user is talking with you by voice and your answer is read aloud while you write it. Answer like in a conversation: short, natural spoken sentences in the user's language, no Markdown, headings, lists, tables, emoji, code or links unless they ask; write numbers, units and abbreviations the way they are spoken. Ask a short question back when it helps. You can still use tools."
+            if let voiceLanguage { system += " Always answer in \(voiceLanguage), whatever language earlier messages were in." }
         }
         let goal = conversation.goal?.status == .active ? conversation.goal : nil
         if let goal { system += "\n\n" + GoalTools.systemPrompt(goal) }

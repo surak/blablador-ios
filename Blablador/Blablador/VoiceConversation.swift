@@ -39,7 +39,36 @@ final class VoiceConversation: ObservableObject {
     static let pause: TimeInterval = 1.2
 
     private weak var store: ChatStore?
-    private let recognizer = SFSpeechRecognizer(locale: .current) ?? SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
+    private var recognizer = VoiceConversation.recognizer(for: UserDefaults.standard.string(forKey: "conversationLanguage") ?? "")
+    @AppStorage("conversationLanguage") private var languageStored = ""
+
+    /// The language the user speaks and Blablador answers in; "" follows the system.
+    var language: String {
+        get { languageStored }
+        set {
+            objectWillChange.send()
+            languageStored = newValue
+            recognizer = Self.recognizer(for: newValue)
+            store?.voiceLanguage = Self.englishName(newValue)
+            if running, phase == .listening { newRequest() }
+        }
+    }
+
+    static func recognizer(for language: String) -> SFSpeechRecognizer? {
+        (language.isEmpty ? nil : SFSpeechRecognizer(locale: Locale(identifier: language)))
+            ?? SFSpeechRecognizer(locale: .current) ?? SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
+    }
+
+    /// Languages speech recognition knows, named in the user's language.
+    static var languages: [(id: String, name: String)] {
+        SFSpeechRecognizer.supportedLocales()
+            .map { ($0.identifier, Locale.current.localizedString(forIdentifier: $0.identifier) ?? $0.identifier) }
+            .sorted { $0.1.localizedCaseInsensitiveCompare($1.1) == .orderedAscending }
+    }
+
+    static func englishName(_ language: String) -> String? {
+        language.isEmpty ? nil : Locale(identifier: "en").localizedString(forIdentifier: language)
+    }
     /// Listens (on iOS with voice processing, i.e. echo cancellation) and plays the reply.
     private var engine = AVAudioEngine()
     private var player = AVAudioPlayerNode()
@@ -106,6 +135,7 @@ final class VoiceConversation: ObservableObject {
             return
         }
         running = true
+        store.voiceLanguage = Self.englishName(language)
         store.voiceConversation = true
         listen()
         if let question = Self.firstQuestion {
@@ -705,6 +735,19 @@ struct VoiceConversationView: View {
                     Text("This device's voice (fastest)").tag("device")
                 } label: {
                     Label("Voice", systemImage: "person.wave.2")
+                }
+                .pickerStyle(.menu)
+                .tint(.white)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(.white.opacity(0.12), in: Capsule())
+                .fixedSize()
+                Picker(selection: Binding(get: { conversation.language }, set: { conversation.language = $0 })) {
+                    Text("Automatic").tag("")
+                    Divider()
+                    ForEach(VoiceConversation.languages, id: \.id) { Text($0.name).tag($0.id) }
+                } label: {
+                    Label("Language", systemImage: "globe")
                 }
                 .pickerStyle(.menu)
                 .tint(.white)
