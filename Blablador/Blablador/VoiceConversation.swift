@@ -33,7 +33,7 @@ final class VoiceConversation: ObservableObject {
     private static let log = Logger(subsystem: "de.fz-juelich.blablador", category: "talk")
 
     /// Seconds a sentence may take with Drama 3 before the device speaks it.
-    nonisolated static let voiceTimeout: Double = 10
+    nonisolated static let voiceTimeout: Double = 6
 
     /// Seconds of quiet after speech that end the user's turn.
     static let pause: TimeInterval = 1.2
@@ -379,7 +379,8 @@ final class VoiceConversation: ObservableObject {
                 return
             }
             feed()
-            if !store.isStreaming, isCaughtUp, queue.isEmpty, playing == nil { listen() }
+            // The play loop still runs while the next sentence's audio is being made.
+            if !store.isStreaming, isCaughtUp, queue.isEmpty, playing == nil, playLoop == nil { listen() }
         case .paused, .starting:
             break
         }
