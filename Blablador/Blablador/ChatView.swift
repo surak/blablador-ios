@@ -910,6 +910,10 @@ private struct ComposerView: View {
     var body: some View {
         field
         .onReceive(NotificationCenter.default.publisher(for: WhatsNew.openPanel)) { _ in showPanel = true }
+        .onReceive(NotificationCenter.default.publisher(for: VoiceConversation.open)) { note in
+            VoiceConversation.firstQuestion = note.object as? String
+            store.talking = true
+        }
         .onReceive(NotificationCenter.default.publisher(for: WhatsNew.runPanelAction)) { note in
             guard let action = note.object as? ToolsPanel.Action else { return }
             pendingAction = action

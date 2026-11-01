@@ -1090,7 +1090,8 @@ final class ChatStore: ObservableObject {
         var round = 0
         // Self-check: one more round asks the model to verify its answer; until it ends, nothing new is shown.
         var checking = false
-        var checked = !SelfCheck.enabled
+        // A spoken reply is read out while it streams, so a correction would come too late.
+        var checked = !SelfCheck.enabled || voiceConversation
         var checkedAnswer = ""
         var checkedPrefix = ""
         var nudges = 0

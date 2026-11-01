@@ -57,6 +57,7 @@ final class SiriCommandCenter: ObservableObject {
         case "inbox": takeInbox()
         case "chat": pendingChat = UUID(uuidString: value("id"))
         case "ask": if !value("q").isEmpty { handle(command: value("q")) }
+        case "talk": NotificationCenter.default.post(name: VoiceConversation.open, object: value("q").isEmpty ? nil : value("q"))
         case "new": share(text: [value("text"), value("url")].filter { !$0.isEmpty }.joined(separator: "\n"))
         default: break
         }

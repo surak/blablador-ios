@@ -1,5 +1,6 @@
 import AVFoundation
 import NaturalLanguage
+import os
 import Speech
 import SwiftUI
 
@@ -25,13 +26,23 @@ final class VoiceConversation: ObservableObject {
     /// The reply being spoken.
     private(set) var replyID: UUID?
 
+    /// Opens the conversation (blablador://talk).
+    static let open = Notification.Name("BlabladorTalk")
+    /// Asked right away when the conversation opens (blablador://talk?q=…).
+    static var firstQuestion: String?
+    private static let log = Logger(subsystem: "de.fz-juelich.blablador", category: "talk")
+
+    /// Seconds a sentence may take with Drama 3 before the device speaks it.
+    nonisolated static let voiceTimeout: Double = 10
+
     /// Seconds of quiet after speech that end the user's turn.
     static let pause: TimeInterval = 1.2
 
     private weak var store: ChatStore?
     private let recognizer = SFSpeechRecognizer(locale: .current) ?? SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
-    private let engine = AVAudioEngine()
-    private let player = AVAudioPlayerNode()
+    /// Listens (on iOS with voice processing, i.e. echo cancellation) and plays the reply.
+    private var engine = AVAudioEngine()
+    private var player = AVAudioPlayerNode()
     private let format = AVAudioFormat(standardFormatWithSampleRate: 24_000, channels: 1)!
     private let requests = RequestBox()
     private var task: SFSpeechRecognitionTask?
@@ -42,17 +53,24 @@ final class VoiceConversation: ObservableObject {
     private var lastHeard = Date()
     private var timer: Timer?
     private var consumed = 0
+    /// The reply's text up to `consumed`, to notice when it's rewritten.
+    private var queuedText = ""
     private var spokenWords: Set<String> = []
     private var queue: [Task<[AVAudioPCMBuffer], Never>] = []
     private var playLoop: Task<Void, Never>?
     private var playing: Once?
     private var generation = 0
     private var running = false
+    private var buffersSeen = 0
+    private var askedApproval: UUID?
+    private var approvalHeard = false
 
     func start(with store: ChatStore) async {
         guard !running else { return }
         self.store = store
+        Self.log.notice("starting")
         guard await Self.permissions() else {
+            Self.log.notice("no permission")
             errorMessage = "Allow the microphone and speech recognition for Blablador in Settings to talk with it."
             return
         }
@@ -67,30 +85,117 @@ final class VoiceConversation: ObservableObject {
             try session.setActive(true)
             UIApplication.shared.isIdleTimerDisabled = true
 #endif
-            // Echo cancellation: the reply played through this engine isn't heard as the user speaking.
-            try? engine.inputNode.setVoiceProcessingEnabled(true)
-            engine.attach(player)
-            engine.connect(player, to: engine.mainMixerNode, format: format)
-            let input = engine.inputNode
-            let requests = requests
-            input.installTap(onBus: 0, bufferSize: 1024, format: input.outputFormat(forBus: 0)) { [weak self] buffer, _ in
-                requests.append(buffer)
-                let level = Self.level(of: buffer)
-                Task { @MainActor in self?.level = level }
+            do {
+#if os(macOS)
+                // On the Mac a failed attempt at voice processing leaves the microphone silent; skip it.
+                try startEngine(voiceProcessing: false)
+#else
+                try startEngine(voiceProcessing: true)
+#endif
+            } catch {
+                // Some microphones and speaker setups can't do echo cancellation; without it the
+                // check for words from the reply keeps the echo from interrupting.
+                Self.log.notice("voice processing failed: \(error.localizedDescription, privacy: .public)")
+                teardownEngine()
+                try startEngine(voiceProcessing: false)
             }
-            engine.prepare()
-            try engine.start()
-            player.play()
+            Self.log.notice("started, voice processing \(self.voiceProcessing), on-device \(recognizer.supportsOnDeviceRecognition)")
         } catch {
-            errorMessage = error.localizedDescription
+            Self.log.notice("audio failed: \(error.localizedDescription, privacy: .public)")
+            errorMessage = "The microphone couldn't be started: \(error.localizedDescription)"
             return
         }
         running = true
         store.voiceConversation = true
         listen()
+        if let question = Self.firstQuestion {
+            Self.firstQuestion = nil
+            submit(question)
+        }
         timer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tick() }
         }
+    }
+
+    private var voiceProcessing = false
+
+    private func startEngine(voiceProcessing: Bool) throws {
+        self.voiceProcessing = voiceProcessing
+        if voiceProcessing {
+            // Echo cancellation: the reply played through this engine isn't heard as the user speaking.
+            try engine.inputNode.setVoiceProcessingEnabled(true)
+        }
+        engine.attach(player)
+        engine.connect(player, to: engine.mainMixerNode, format: format)
+        let handler = microphoneHandler
+#if os(macOS)
+        // The Mac listens through AVCaptureSession: AVAudioEngine's input stalls when a headset like
+        // AirPods switches to its microphone mode, and the engine here only plays.
+        try microphone.start(handler)
+#else
+        let input = engine.inputNode
+        let inputFormat = input.outputFormat(forBus: 0)
+        guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
+            throw NSError(domain: "Blablador", code: 1, userInfo: [NSLocalizedDescriptionKey: "No microphone was found."])
+        }
+        input.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { buffer, _ in handler(buffer) }
+#endif
+        engine.prepare()
+        try engine.start()
+        player.play()
+        // Headsets such as AirPods switch modes when the microphone opens, which stops the engine.
+        configurationObserver = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.restartAudio() }
+        }
+    }
+
+    private var configurationObserver: NSObjectProtocol?
+#if os(macOS)
+    private let microphone = MicrophoneCapture()
+#endif
+
+    /// Feeds microphone audio to the recognizer (as mono) and the level meter; called on an audio thread.
+    private var microphoneHandler: @Sendable (AVAudioPCMBuffer) -> Void {
+        let requests = requests
+        return { [weak self] buffer in
+            let mono = AVAudioFormat(standardFormatWithSampleRate: buffer.format.sampleRate, channels: 1)!
+            let single = Self.mixed(buffer, as: mono) ?? buffer
+            requests.append(single)
+            let level = Self.level(of: single)
+            Task { @MainActor in
+                guard let self else { return }
+                self.level = level
+                self.buffersSeen += 1
+                if self.buffersSeen % 200 == 1 { Self.log.notice("audio \(self.buffersSeen) buffers, level \(level), \(buffer.format.description, privacy: .public)") }
+            }
+        }
+    }
+
+    private func restartAudio() {
+        guard running else { return }
+        Self.log.notice("audio configuration changed, restarting")
+        silence()
+        teardownEngine()
+        do {
+            try startEngine(voiceProcessing: voiceProcessing)
+        } catch {
+            Self.log.notice("restart failed: \(error.localizedDescription, privacy: .public)")
+            errorMessage = "The microphone stopped: \(error.localizedDescription)"
+        }
+        if phase == .thinking || phase == .speaking { listen() }
+    }
+
+    private func teardownEngine() {
+        if let configurationObserver { NotificationCenter.default.removeObserver(configurationObserver) }
+        configurationObserver = nil
+#if os(macOS)
+        microphone.stop()
+#else
+        engine.inputNode.removeTap(onBus: 0)
+#endif
+        engine.stop()
+        engine = AVAudioEngine()
+        player = AVAudioPlayerNode()
     }
 
     func stop() {
@@ -102,8 +207,7 @@ final class VoiceConversation: ObservableObject {
         task?.cancel()
         task = nil
         requests.set(nil)
-        engine.inputNode.removeTap(onBus: 0)
-        engine.stop()
+        teardownEngine()
         store?.voiceConversation = false
 #if os(iOS)
         UIApplication.shared.isIdleTimerDisabled = false
@@ -136,6 +240,7 @@ final class VoiceConversation: ObservableObject {
     // MARK: - Listening
 
     private func listen() {
+        Self.log.notice("listening")
         carried = ""
         phase = .listening
         newRequest()
@@ -150,6 +255,7 @@ final class VoiceConversation: ObservableObject {
         request.taskHint = .dictation
         if recognizer?.supportsOnDeviceRecognition == true { request.requiresOnDeviceRecognition = true }
         requests.set(request)
+        Self.log.notice("new request, recognizer available \(self.recognizer?.isAvailable ?? false)")
         transcript = ""
         heard = carried
         lastHeard = Date()
@@ -158,6 +264,8 @@ final class VoiceConversation: ObservableObject {
         task = recognizer?.recognitionTask(with: request) { [weak self] result, error in
             let text = result?.bestTranscription.formattedString
             let ended = error != nil || result?.isFinal == true
+            if let error { Self.log.notice("recognition ended: \(error.localizedDescription, privacy: .public)") }
+            if let text { Self.log.notice("heard: \(text, privacy: .private)") }
             Task { @MainActor in
                 guard let self, self.running, self.requestID == id else { return }
                 if let text, text != self.transcript {
@@ -186,6 +294,29 @@ final class VoiceConversation: ObservableObject {
                 submit(heard)
             }
         case .thinking, .speaking:
+            if let approval = store.commandApproval {
+                if askedApproval != approval.id {
+                    askedApproval = approval.id
+                    approvalHeard = false
+                    enqueue(approval.title + " Say yes or no.", device: true)
+                }
+                // Listen for the answer only once the question was spoken, so its echo doesn't count.
+                guard queue.isEmpty, playing == nil else { return }
+                if !approvalHeard {
+                    approvalHeard = true
+                    newRequest()
+                    return
+                }
+                // A tool waits for the user's OK: "yes" allows it once, "no" denies it.
+                let words = Self.words(transcript)
+                if words.contains(where: Self.yesWords.contains) || words.contains(where: Self.noWords.contains) {
+                    let allow = words.contains(where: Self.yesWords.contains) && !words.contains(where: Self.noWords.contains)
+                    Self.log.notice("approval \(approval.title, privacy: .public): \(allow ? "allowed" : "denied")")
+                    store.answerApproval(allow ? .once : .deny)
+                    newRequest()
+                }
+                return
+            }
             let words = Self.words(transcript)
             let fresh = words.filter { !spokenWords.contains($0) }
             let stopWord = words.last.map { Self.stopWords.contains($0) && !spokenWords.contains($0) } ?? false
@@ -200,6 +331,8 @@ final class VoiceConversation: ObservableObject {
         }
     }
 
+    private static let yesWords: Set<String> = ["yes", "yeah", "yep", "allow", "ok", "okay", "sure", "ja", "oui", "si", "sí"]
+    private static let noWords: Set<String> = ["no", "nope", "deny", "don't", "nein", "non"]
     private static let stopWords: Set<String> = ["stop", "wait", "stopp", "warte", "halt", "arrête"]
 
     private func submit(_ text: String) {
@@ -210,9 +343,11 @@ final class VoiceConversation: ObservableObject {
         phase = .thinking
         generation += 1
         consumed = 0
+        queuedText = ""
         spokenWords = []
         newRequest()
         heard = ""
+        Self.log.notice("sending: \(text, privacy: .private)")
         store.send(text)
         replyID = store.current?.messages.last { $0.role == .assistant }?.id
     }
@@ -244,6 +379,13 @@ final class VoiceConversation: ObservableObject {
         let text = replyText
         guard text.count > consumed else { return }
         let finished = !store.isStreaming
+        // The reply was rewritten (e.g. a tool's notes replaced): don't read fragments of it.
+        guard text.hasPrefix(queuedText) else {
+            Self.log.notice("reply changed, skipping")
+            queuedText = text
+            consumed = text.count
+            return
+        }
         let rest = String(text.dropFirst(consumed))
         var end = rest.endIndex
         if !finished {
@@ -255,21 +397,35 @@ final class VoiceConversation: ObservableObject {
         let minimum = speaker == .device ? 1 : (queue.isEmpty && playing == nil ? 30 : 90)
         guard finished || chunk.count >= minimum else { return }
         consumed += chunk.count
+        queuedText += chunk
         let spoken = chunk.trimmingCharacters(in: .whitespacesAndNewlines)
         guard spoken.contains(where: \.isLetter) || spoken.contains(where: \.isNumber) else { return }
         spokenWords.formUnion(Self.words(spoken))
         enqueue(spoken)
     }
 
-    private func enqueue(_ text: String) {
+    private func enqueue(_ text: String, device: Bool = false) {
         let format = format
         let job: Task<[AVAudioPCMBuffer], Never>
-        if speaker == .blablador, let api = store?.api {
+        if speaker == .blablador, !device, let api = store?.api {
             let library = VoiceLibrary.shared
             let voice = library.selected
             let styled = library.styled(text)
             job = Task {
-                if let data = try? await api.speech(text: styled, voice: voice), let buffers = try? Self.decode(data, to: format) {
+                let started = Date()
+                // A voice that is too slow for a conversation gives way to the device's voice for this sentence.
+                let data = await withTaskGroup(of: Data?.self) { group in
+                    group.addTask { try? await api.speech(text: styled, voice: voice) }
+                    group.addTask {
+                        try? await Task.sleep(for: .seconds(Self.voiceTimeout))
+                        return nil
+                    }
+                    let first = await group.next() ?? nil
+                    group.cancelAll()
+                    return first
+                }
+                Self.log.notice("Drama 3 \(data == nil ? "gave up" : "answered", privacy: .public) after \(Date().timeIntervalSince(started)) s")
+                if let data, let buffers = try? Self.decode(data, to: format), !buffers.isEmpty {
                     return buffers
                 }
                 return await Self.deviceSpeech(text, to: format)
@@ -277,6 +433,7 @@ final class VoiceConversation: ObservableObject {
         } else {
             job = Task { await Self.deviceSpeech(text, to: format) }
         }
+        Self.log.notice("speaking with \(self.speaker.rawValue, privacy: .public): \(text, privacy: .private)")
         queue.append(job)
         if playLoop == nil {
             let generation = generation
@@ -290,6 +447,7 @@ final class VoiceConversation: ObservableObject {
                 let job = queue.removeFirst()
                 let buffers = await job.value
                 guard self.generation == generation else { break }
+                Self.log.notice("playing \(buffers.count) buffers, \(buffers.reduce(0) { $0 + Int($1.frameLength) }) frames")
                 guard !buffers.isEmpty else { continue }
                 phase = .speaking
                 let once = Once()
@@ -373,6 +531,22 @@ final class VoiceConversation: ObservableObject {
         return output.frameLength > 0 ? [output] : []
     }
 
+    /// All channels mixed into one.
+    private nonisolated static func mixed(_ buffer: AVAudioPCMBuffer, as mono: AVAudioFormat) -> AVAudioPCMBuffer? {
+        let channels = Int(buffer.format.channelCount)
+        guard channels > 1, let source = buffer.floatChannelData,
+              let copy = AVAudioPCMBuffer(pcmFormat: mono, frameCapacity: buffer.frameLength),
+              let target = copy.floatChannelData?[0] else { return nil }
+        let frames = Int(buffer.frameLength)
+        copy.frameLength = buffer.frameLength
+        for frame in 0..<frames {
+            var sum: Float = 0
+            for channel in 0..<channels { sum += source[channel][frame] }
+            target[frame] = sum / Float(channels)
+        }
+        return copy
+    }
+
     private nonisolated static func level(of buffer: AVAudioPCMBuffer) -> Float {
         guard let samples = buffer.floatChannelData?[0] else { return 0 }
         let count = Int(buffer.frameLength)
@@ -402,6 +576,57 @@ final class VoiceConversation: ObservableObject {
 #endif
     }
 }
+
+#if os(macOS)
+/// The Mac's default microphone through AVCaptureSession, delivered as PCM buffers.
+private final class MicrophoneCapture: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate, @unchecked Sendable {
+    private var session: AVCaptureSession?
+    private var handler: (@Sendable (AVAudioPCMBuffer) -> Void)?
+    private let queue = DispatchQueue(label: "de.fz-juelich.blablador.microphone")
+
+    func start(_ handler: @escaping @Sendable (AVAudioPCMBuffer) -> Void) throws {
+        stop()
+        guard let device = AVCaptureDevice.default(for: .audio) else {
+            throw NSError(domain: "Blablador", code: 1, userInfo: [NSLocalizedDescriptionKey: "No microphone was found."])
+        }
+        let session = AVCaptureSession()
+        let input = try AVCaptureDeviceInput(device: device)
+        let output = AVCaptureAudioDataOutput()
+        // Float PCM, which the recognizer and the level meter read directly.
+        output.audioSettings = [
+            AVFormatIDKey: kAudioFormatLinearPCM,
+            AVLinearPCMIsFloatKey: true,
+            AVLinearPCMBitDepthKey: 32,
+            AVLinearPCMIsNonInterleaved: true
+        ]
+        guard session.canAddInput(input), session.canAddOutput(output) else {
+            throw NSError(domain: "Blablador", code: 2, userInfo: [NSLocalizedDescriptionKey: "The microphone can't be used right now."])
+        }
+        session.addInput(input)
+        session.addOutput(output)
+        output.setSampleBufferDelegate(self, queue: queue)
+        self.handler = handler
+        self.session = session
+        session.startRunning()
+    }
+
+    func stop() {
+        session?.stopRunning()
+        session = nil
+        handler = nil
+    }
+
+    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        guard let handler, let description = sampleBuffer.formatDescription else { return }
+        let format = AVAudioFormat(cmAudioFormatDescription: description)
+        let frames = AVAudioFrameCount(sampleBuffer.numSamples)
+        guard frames > 0, let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames) else { return }
+        buffer.frameLength = frames
+        guard CMSampleBufferCopyPCMDataIntoAudioBufferList(sampleBuffer, at: 0, frameCount: Int32(frames), into: buffer.mutableAudioBufferList) == noErr else { return }
+        handler(buffer)
+    }
+}
+#endif
 
 /// The recognition request the microphone tap feeds, swapped between turns.
 private final class RequestBox: @unchecked Sendable {
@@ -462,30 +687,30 @@ struct VoiceConversationView: View {
     var body: some View {
         VStack(spacing: 24) {
             HStack {
-                Menu {
-                    Picker("Voice", selection: Binding(
-                        get: { conversation.speaker == .device ? "device" : voices.selectedID },
-                        set: { id in
-                            if id == "device" {
-                                conversation.speaker = .device
-                            } else {
-                                conversation.speaker = .blablador
-                                voices.selectedID = id
-                            }
+                Picker(selection: Binding(
+                    get: { conversation.speaker == .device ? "device" : voices.selectedID },
+                    set: { id in
+                        if id == "device" {
+                            conversation.speaker = .device
+                        } else {
+                            conversation.speaker = .blablador
+                            voices.selectedID = id
                         }
-                    )) {
-                        ForEach(voices.voices) { Text($0.name).tag($0.id) }
-                        Text("This device's voice (faster)").tag("device")
                     }
+                )) {
+                    ForEach(voices.voices) { voice in
+                        Text(voice.isCloned ? "\(voice.name) (cloned, slow)" : voice.name).tag(voice.id)
+                    }
+                    Divider()
+                    Text("This device's voice (fastest)").tag("device")
                 } label: {
-                    Label(conversation.speaker == .device ? "Device voice" : voices.selected.name, systemImage: "person.wave.2")
-                        .scaledFont(.subheadline, weight: .medium)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .background(.white.opacity(0.12), in: Capsule())
+                    Label("Voice", systemImage: "person.wave.2")
                 }
-                .menuStyle(.button)
-                .buttonStyle(.plain)
+                .pickerStyle(.menu)
+                .tint(.white)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(.white.opacity(0.12), in: Capsule())
                 .fixedSize()
                 Spacer()
                 Button { close() } label: {
@@ -499,7 +724,7 @@ struct VoiceConversationView: View {
                 .keyboardShortcut(.cancelAction)
             }
 
-            Spacer()
+            Spacer(minLength: 0)
             orb
             VStack(spacing: 10) {
                 Text(status)
@@ -509,10 +734,22 @@ struct VoiceConversationView: View {
                     .scaledFont(.title3)
                     .multilineTextAlignment(.center)
                     .lineLimit(6)
-                    .frame(maxWidth: 520, minHeight: 120, alignment: .top)
+                    .frame(maxWidth: 520, minHeight: 60, alignment: .top)
                     .animation(.default, value: caption)
             }
-            Spacer()
+            Spacer(minLength: 0)
+
+            if let approval = store.commandApproval {
+                VStack(spacing: 8) {
+                    CommandApprovalCard(approval: approval) { store.answerApproval($0) }
+                        .foregroundStyle(.primary)
+                        .environment(\.colorScheme, .dark)
+                    Text("Or say “yes” or “no”.")
+                        .scaledFont(.caption)
+                        .foregroundStyle(.white.opacity(0.7))
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
 
             HStack(spacing: 40) {
                 Button { conversation.togglePause() } label: {
@@ -549,7 +786,7 @@ struct VoiceConversationView: View {
             Text(conversation.errorMessage ?? "")
         }
 #if os(macOS)
-        .frame(width: 440, height: 640)
+        .frame(width: 460, height: 620)
 #endif
     }
 
@@ -583,6 +820,9 @@ struct VoiceConversationView: View {
             .animation(.easeOut(duration: 0.12), value: conversation.level)
         }
         .frame(width: 260, height: 260)
+        .scaleEffect(store.commandApproval == nil ? 1 : 0.6)
+        .frame(height: store.commandApproval == nil ? 260 : 160)
+        .animation(.spring(duration: 0.4), value: store.commandApproval == nil)
         .contentShape(Circle())
         .onTapGesture { conversation.tap() }
         .accessibilityAddTraits(.isButton)
@@ -593,7 +833,7 @@ struct VoiceConversationView: View {
         switch conversation.phase {
         case .starting: "Starting…"
         case .listening: conversation.heard.isEmpty ? "Listening…" : "Listening · tap to send now"
-        case .thinking: replyStatus ?? "Thinking…"
+        case .thinking: store.commandApproval != nil ? "Blablador needs your OK" : replyStatus ?? "Thinking…"
         case .speaking: "Speaking · talk or tap to interrupt"
         case .paused: "Paused · tap to talk"
         }
