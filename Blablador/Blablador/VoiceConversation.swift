@@ -434,15 +434,19 @@ final class VoiceConversation: ObservableObject {
             else if usesWhisper, phase == .thinking, store.commandApproval == nil, playing == nil, queue.isEmpty, playLoop == nil {
                 // Nothing is playing, so a voice now is the user's: stop the reply and take the new question,
                 // keeping what is being recorded.
-                let threshold = max(Self.voiceLevel, noiseFloor * 4)
-                let loud = peak > threshold
+                let loud = peak > max(Self.voiceLevel, noiseFloor * 5)
+                updateNoiseFloor(peak)
                 peak = 0
-                if loud {
+                // Half a second of voice, not a single noise.
+                bargeTicks = loud ? bargeTicks + 1 : 0
+                if bargeTicks >= 3 {
                     Self.log.notice("user spoke while the reply was being made, taking the new question")
+                    bargeTicks = 0
                     generation += 1
                     if store.isStreaming { store.stop() }
                     phase = .listening
-                    speechStarted = Date()
+                    speechStarted = Date().addingTimeInterval(-0.45)
+                    voicedTime = 0.45
                     lastVoice = Date()
                     heard = "…"
                     return
@@ -498,16 +502,18 @@ final class VoiceConversation: ObservableObject {
         let level = peak
         peak = 0
         guard !transcribing else { return }
-        // The room's background level: drops at once to quieter moments, creeps up when it stays loud
-        // (e.g. a headset's hiss), so steady noise never counts as someone speaking.
-        noiseFloor = level < noiseFloor ? level : noiseFloor + 0.003
-        let threshold = max(Self.voiceLevel, noiseFloor * 4)
+        updateNoiseFloor(level)
+        let threshold = max(Self.voiceLevel, noiseFloor * 5)
         if level > threshold {
-            if speechStarted != nil { voicedTime += 0.15 }
-            lastVoice = Date()
             if speechStarted == nil {
-                notice = nil
                 speechStarted = Date()
+                voicedTime = 0
+            }
+            voicedTime += 0.15
+            lastVoice = Date()
+            // Only show that it's hearing someone once it's more than a noise.
+            if voicedTime >= 0.45, heard.isEmpty {
+                notice = nil
                 heard = "…"
             }
         }
@@ -520,7 +526,7 @@ final class VoiceConversation: ObservableObject {
         let tapped = sendNow
         sendNow = false
         // A cough or a click isn't a question; Whisper invents words for those.
-        guard let api = store?.api, voicedTime >= 0.3 || tapped else {
+        guard let api = store?.api, voicedTime >= 0.45 || tapped else {
             Self.log.notice("ignored \(self.voicedTime) s of sound (threshold \(threshold), noise \(self.noiseFloor))")
             heard = ""
             voicedTime = 0
@@ -549,8 +555,18 @@ final class VoiceConversation: ObservableObject {
 
     /// The lowest level that counts as a voice; the room's noise sets the real threshold above it.
     /// Headsets like AirPods suppress noise, so a voice there can be as quiet as 0.03.
-    private static let voiceLevel: Float = 0.02
+    private static let voiceLevel: Float = 0.03
+
+    /// The room's background level: the quieter fifth of the last six seconds, so a voice or a bang
+    /// doesn't raise it and a single silent moment doesn't drop it.
+    private func updateNoiseFloor(_ level: Float) {
+        recentLevels.append(level)
+        if recentLevels.count > 40 { recentLevels.removeFirst(recentLevels.count - 40) }
+        let sorted = recentLevels.sorted()
+        noiseFloor = sorted[sorted.count / 5]
+    }
     private var noiseFloor: Float = 0.01
+    private var recentLevels: [Float] = []
     /// The loudest moment since the last check; single readings miss speech between syllables.
     private var peak: Float = 0
     /// Seconds of the current turn that were louder than the room.
