@@ -512,6 +512,8 @@ final class VoiceConversation: ObservableObject {
         lastProgress = Date()
         generation += 1
         consumed = 0
+        partsQueued = 0
+        partPlaying = 0
         queuedText = ""
         spokenWords = []
         newRequest()
@@ -542,6 +544,17 @@ final class VoiceConversation: ObservableObject {
 
     /// Sentences are queued but no audio has come back yet.
     @Published private(set) var waitingForVoice = false
+    /// The reply is spoken in parts (each a separate request for server voices); shown so the pauses make sense.
+    @Published private(set) var partsQueued = 0
+    @Published private(set) var partPlaying = 0
+    /// The reply has finished streaming, so the number of parts is final.
+    var partsKnown: Bool { store?.isStreaming == false && isCaughtUp }
+
+    /// "part 2 of 4", or "part 2" while the reply is still coming in; nil for a single part.
+    func partText(_ part: Int) -> String? {
+        guard partsQueued > 1 || !partsKnown else { return nil }
+        return partsKnown ? "part \(part) of \(partsQueued)" : "part \(part)"
+    }
 
     private var isCaughtUp: Bool { replyText.count <= consumed }
 
@@ -634,6 +647,7 @@ final class VoiceConversation: ObservableObject {
             job = Task { await Self.deviceSpeech(text, to: format, language: chosen) }
         }
         Self.log.notice("speaking with \(self.speaker.rawValue, privacy: .public): \(text, privacy: .private)")
+        if !device { partsQueued += 1 }
         queue.append(job)
         if playLoop == nil {
             let generation = generation
@@ -652,6 +666,7 @@ final class VoiceConversation: ObservableObject {
                 phase = .speaking
                 let once = Once()
                 playing = once
+                partPlaying += 1
                 lastProgress = Date()
                 lastProgress = Date()
                 await withCheckedContinuation { continuation in
@@ -1144,11 +1159,18 @@ struct VoiceConversationView: View {
             if store.commandApproval != nil {
                 "Blablador needs your OK"
             } else if conversation.waitingForVoice {
-                "Preparing \(voices.selected.name)'s voice…"
+                "Preparing " + (conversation.partText(conversation.partPlaying + 1).map { $0 + " in " } ?? "") + "\(voices.selected.name)'s voice…"
             } else {
                 replyStatus ?? "Thinking…"
             }
-        case .speaking: "Speaking · talk or tap to interrupt"
+        case .speaking:
+            if conversation.waitingForVoice, let next = conversation.partText(conversation.partPlaying + 1) {
+                "Preparing \(next)…"
+            } else if let part = conversation.partText(conversation.partPlaying) {
+                "Speaking \(part) · talk or tap to interrupt"
+            } else {
+                "Speaking · talk or tap to interrupt"
+            }
         case .paused: "Paused · tap to talk"
         }
     }
