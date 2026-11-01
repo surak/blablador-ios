@@ -1036,30 +1036,33 @@ struct VoiceConversationView: View {
                     }
                 )) {
                     ForEach(voices.voices) { voice in
-                        Text(voice.isCloned ? "\(voice.name) (cloned, slow)" : voice.name).tag(voice.id)
+                        Text(voice.isCloned ? "\(voice.name) (cloned)" : voice.name).tag(voice.id)
                     }
                     Divider()
-                    Text("This device's voice (fastest)").tag("device")
+                    Text("Device voice (fast)").tag("device")
                 } label: {
                     Label("Voice", systemImage: "person.wave.2")
                 }
                 .pickerStyle(.menu)
+                .labelsHidden()
                 .tint(.white)
-                .padding(.horizontal, 8)
+                .frame(maxWidth: 190)
+                .padding(.horizontal, 6)
                 .padding(.vertical, 4)
                 .background(.white.opacity(0.12), in: Capsule())
-                .fixedSize()
+                .help("The voice that speaks the answers. Cloned voices are slower and are spoken in parts.")
                 Button { choosingLanguage = true } label: {
                     Label(conversation.language.isEmpty ? "Automatic" : Locale.current.localizedString(forIdentifier: conversation.language) ?? conversation.language,
                           systemImage: "globe")
                         .scaledFont(.subheadline, weight: .medium)
                         .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: 150)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 7)
                         .background(.white.opacity(0.12), in: Capsule())
                 }
                 .buttonStyle(.plain)
-                .fixedSize()
                 .sheet(isPresented: $choosingLanguage) {
                     NavigationStack {
                         LanguageList(selection: Binding(get: { conversation.language }, set: { conversation.language = $0 }))
@@ -1157,7 +1160,7 @@ struct VoiceConversationView: View {
             Text(conversation.errorMessage ?? "")
         }
 #if os(macOS)
-        .frame(minWidth: 420, idealWidth: 460, minHeight: 440, idealHeight: 620)
+        .frame(minWidth: 440, idealWidth: 480, minHeight: 400, idealHeight: 600)
 #endif
     }
 
