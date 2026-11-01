@@ -157,10 +157,12 @@ final class SpeechSynthesizer: NSObject, ObservableObject, AVSpeechSynthesizerDe
 
     /// Best natural voice for the reply's language: premium, then enhanced, then default quality,
     /// preferring the device's region and skipping novelty and Eloquence voices.
-    static func voice(for text: String) -> AVSpeechSynthesisVoice? {
+    /// `preferred` is a locale such as "pt-BR" the user chose; it wins over guessing from the text.
+    static func voice(for text: String, preferred: String? = nil) -> AVSpeechSynthesisVoice? {
         let recognizer = NLLanguageRecognizer()
         recognizer.processString(text)
-        let language = recognizer.dominantLanguage?.rawValue
+        let preferred = preferred?.replacingOccurrences(of: "_", with: "-")
+        let language = preferred.map { String($0.prefix(2)) } ?? recognizer.dominantLanguage?.rawValue
             ?? String(AVSpeechSynthesisVoice.currentLanguageCode().prefix(2))
         let region = Locale.current.region?.identifier
 
@@ -172,6 +174,9 @@ final class SpeechSynthesizer: NSObject, ObservableObject, AVSpeechSynthesizerDe
         }
         func score(_ voice: AVSpeechSynthesisVoice) -> Int {
             var score = voice.quality.rawValue * 10
+            // Super-compact voices sound robotic.
+            if voice.identifier.contains("super-compact") { score -= 20 }
+            if let preferred, voice.language == preferred { score += 8 }
             if let region, voice.language.hasSuffix(region) { score += 5 }
             if voice.language == AVSpeechSynthesisVoice.currentLanguageCode() { score += 3 }
             return score

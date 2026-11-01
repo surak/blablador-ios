@@ -580,6 +580,7 @@ final class VoiceConversation: ObservableObject {
 
     private func enqueue(_ text: String, device: Bool = false) {
         let format = format
+        let chosen = language.isEmpty ? nil : language
         let job: Task<[AVAudioPCMBuffer], Never>
         if speaker == .blablador, !device, let api = store?.api {
             let library = VoiceLibrary.shared
@@ -626,11 +627,11 @@ final class VoiceConversation: ObservableObject {
                     if let data, let buffers = try? Self.decode(data, to: format), !buffers.isEmpty {
                         return buffers
                     }
-                    return await Self.deviceSpeech(text, to: format)
+                    return await Self.deviceSpeech(text, to: format, language: chosen)
                 }
             }
         } else {
-            job = Task { await Self.deviceSpeech(text, to: format) }
+            job = Task { await Self.deviceSpeech(text, to: format, language: chosen) }
         }
         Self.log.notice("speaking with \(self.speaker.rawValue, privacy: .public): \(text, privacy: .private)")
         queue.append(job)
@@ -696,9 +697,9 @@ final class VoiceConversation: ObservableObject {
     }
 
     /// The device's voice for the text's language, rendered to buffers so it plays through the engine.
-    static func deviceSpeech(_ text: String, to format: AVAudioFormat) async -> [AVAudioPCMBuffer] {
+    static func deviceSpeech(_ text: String, to format: AVAudioFormat, language: String? = nil) async -> [AVAudioPCMBuffer] {
         // Without a voice for the language, the synthesizer may never finish.
-        await withinTime(20) { await renderDeviceSpeech(text, to: format) } ?? []
+        await withinTime(20) { await renderDeviceSpeech(text, to: format, language: language) } ?? []
     }
 
     /// The result of `work`, or nil when it takes longer than `seconds`.
@@ -715,10 +716,10 @@ final class VoiceConversation: ObservableObject {
         }
     }
 
-    private static func renderDeviceSpeech(_ text: String, to format: AVAudioFormat) async -> [AVAudioPCMBuffer] {
+    private static func renderDeviceSpeech(_ text: String, to format: AVAudioFormat, language: String?) async -> [AVAudioPCMBuffer] {
         let synthesizer = AVSpeechSynthesizer()
         let utterance = AVSpeechUtterance(string: text)
-        utterance.voice = SpeechSynthesizer.voice(for: text)
+        utterance.voice = SpeechSynthesizer.voice(for: text, preferred: language)
         let collected = BufferBox()
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             let once = Once()
