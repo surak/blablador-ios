@@ -179,7 +179,7 @@ fun ToolsPanel(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Outlined.AlternateEmail, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.width(6.dp))
-            Text("Type @ in a message to use a tool, skill, knowledge base or connected service just for that message.",
+            Text("Type @ in a message to use a tool, skill or connected service just for that message, # for a knowledge base.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }

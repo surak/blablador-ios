@@ -253,6 +253,10 @@ class Settings(context: Context) {
         set(value) = prefs.edit().putBoolean("deviceToolsEnabled", value).apply()
 
     /** After a task of several steps, draft a skill from it for the user to save. */
+    var selfCheck: Boolean
+        get() = prefs.getBoolean("selfCheck", true)
+        set(value) = prefs.edit().putBoolean("selfCheck", value).apply()
+
     var skillsDraftAutomatically: Boolean
         get() = prefs.getBoolean("skillsDraftAutomatically", true)
         set(value) = prefs.edit().putBoolean("skillsDraftAutomatically", value).apply()

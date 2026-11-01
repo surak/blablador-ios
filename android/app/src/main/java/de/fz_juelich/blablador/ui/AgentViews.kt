@@ -32,6 +32,10 @@ import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.Event
 import androidx.compose.material.icons.outlined.Extension
+import androidx.compose.material.icons.outlined.Flag
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.HelpOutline
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.GraphicEq
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.ManageSearch
@@ -63,6 +67,7 @@ import androidx.compose.ui.unit.dp
 import de.fz_juelich.blablador.data.Mention
 import de.fz_juelich.blablador.data.Mentions
 import de.fz_juelich.blablador.data.PlanItem
+import de.fz_juelich.blablador.data.SelfCheck
 import de.fz_juelich.blablador.data.RemoteModel
 import de.fz_juelich.blablador.data.StepState
 import de.fz_juelich.blablador.data.Trace
@@ -110,6 +115,7 @@ fun mentionIcon(mention: Mention): ImageVector = when (mention.kind) {
         "image" -> Icons.Outlined.Brush
         "speech" -> Icons.Outlined.GraphicEq
         "schedule" -> Icons.Outlined.Schedule
+        "goal" -> Icons.Outlined.Flag
         else -> Icons.Outlined.Checklist
     }
 }
@@ -155,6 +161,7 @@ fun traceSummary(trace: Trace): String = buildList {
     add(traceDuration(trace.seconds))
     val tokens = trace.promptTokens + trace.completionTokens
     if (tokens > 0) add("%,d tokens".format(tokens))
+    trace.check?.let { add(if (it == SelfCheck.Result.passed) "checked" else "corrected after a check") }
 }.joinToString(" · ")
 
 /** "4 tools · 12 s · 3,210 tokens" under a reply; opens the full trace. */
@@ -231,7 +238,7 @@ fun MentionSuggestions(query: String, all: List<Mention>, onPick: (Mention) -> U
     val matches = Mentions.matches(query, all)
     Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp).clip(RoundedCornerShape(14.dp))
         .background(MaterialTheme.colorScheme.background.copy(alpha = 0.6f)).heightIn(max = 240.dp).verticalScroll(rememberScrollState())) {
-        if (matches.isEmpty()) Text("Nothing called “$query”. Type @ for tools, skills, knowledge bases and connected services.",
+        if (matches.isEmpty()) Text("Nothing called “$query”. Type @ for tools, skills and connected services, # for knowledge bases.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(10.dp))
         matches.take(30).forEach { mention ->
             Row(Modifier.fillMaxWidth().clickable { onPick(mention) }.padding(horizontal = 12.dp, vertical = 9.dp),
@@ -239,6 +246,76 @@ fun MentionSuggestions(query: String, all: List<Mention>, onPick: (Mention) -> U
                 MentionIcon(mention, 18.dp, Brand.violet)
                 Text(mention.name, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(Mentions.kindName(mention.kind), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+/** The open chat's goal above the composer: what it is, how it's going, and Continue or End. */
+@Composable
+fun GoalBanner(goal: de.fz_juelich.blablador.data.Goal, running: Boolean, onContinue: () -> Unit, onEnd: () -> Unit) {
+    val status = when (goal.status) {
+        de.fz_juelich.blablador.data.Goal.Status.active -> if (running) "Working on the goal…" else "Goal · paused"
+        de.fz_juelich.blablador.data.Goal.Status.done -> "Goal reached"
+        de.fz_juelich.blablador.data.Goal.Status.blocked -> "Goal · needs you"
+    }
+    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp).clip(RoundedCornerShape(14.dp))
+        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)).padding(10.dp),
+        verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Icon(when (goal.status) {
+            de.fz_juelich.blablador.data.Goal.Status.active -> Icons.Outlined.Flag
+            de.fz_juelich.blablador.data.Goal.Status.done -> Icons.Outlined.CheckCircle
+            de.fz_juelich.blablador.data.Goal.Status.blocked -> Icons.Outlined.HelpOutline
+        }, null, tint = Brand.violet)
+        Column(Modifier.weight(1f)) {
+            Text(status, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(goal.text, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (goal.status != de.fz_juelich.blablador.data.Goal.Status.active) goal.summary?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        if (goal.status != de.fz_juelich.blablador.data.Goal.Status.done && !running) {
+            androidx.compose.material3.TextButton(onClick = onContinue) { Text("Continue") }
+        }
+        androidx.compose.material3.IconButton(onClick = onEnd, modifier = Modifier.size(28.dp)) {
+            Icon(Icons.Outlined.Close, if (goal.status == de.fz_juelich.blablador.data.Goal.Status.done) "Dismiss goal" else "End goal",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** Commands offered while "/" is typed as the whole draft. */
+@Composable
+fun SlashSuggestions(query: String, onPick: (String) -> Unit) {
+    val commands = listOf(Triple("goal", Icons.Outlined.Flag, "Keep working until it's done")).filter { query.isEmpty() || it.first.startsWith(query.lowercase()) }
+    if (commands.isEmpty()) return
+    Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
+        commands.forEach { (name, icon, text) ->
+            Row(Modifier.fillMaxWidth().clickable { onPick(name) }.padding(horizontal = 12.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Icon(icon, null, Modifier.size(18.dp), tint = Brand.violet)
+                Text("/$name", fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                Text(text, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+}
+
+/** Knowledge bases offered while "#name" is typed. */
+@Composable
+fun KnowledgeSuggestions(query: String, bases: List<de.fz_juelich.blablador.data.KnowledgeBase>, onPick: (de.fz_juelich.blablador.data.KnowledgeBase) -> Unit) {
+    val q = query.lowercase()
+    val matches = bases.filter { q.isEmpty() || it.name.lowercase().contains(q) }.sortedBy { !it.name.lowercase().startsWith(q) }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp).clip(RoundedCornerShape(14.dp))
+        .background(MaterialTheme.colorScheme.background.copy(alpha = 0.6f)).heightIn(max = 240.dp).verticalScroll(rememberScrollState())) {
+        if (matches.isEmpty()) Text(if (bases.isEmpty()) "No knowledge bases yet. Make one with + → New knowledge base." else "No knowledge base called “$query”.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(10.dp))
+        matches.take(30).forEach { base ->
+            Row(Modifier.fillMaxWidth().clickable { onPick(base) }.padding(horizontal = 12.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Icon(Icons.AutoMirrored.Outlined.LibraryBooks, null, Modifier.size(18.dp), tint = Brand.violet)
+                Text(base.name, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("Knowledge", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }

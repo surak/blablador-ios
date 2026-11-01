@@ -134,6 +134,10 @@ fun SettingsScreen(vm: ChatViewModel, onOpenKnowledge: () -> Unit, onOpenVoices:
                 Toggle("Run Python code", vm.pythonEnabled, vm::setPython)
             }
 
+            Section("Tasks", footer = "After a task with a plan, a goal or several tools, Blablador looks over its answer once more and fixes what's wrong before showing it. Type /goal and what you want to have it keep working until it's done.") {
+                Toggle("Check results before finishing", vm.checksResults, vm::checkResults)
+            }
+
             Section("Custom instructions", footer = "Sent as a system prompt with every chat.") {
                 OutlinedTextField(vm.systemPrompt, vm::updateSystemPrompt, Modifier.fillMaxWidth(),
                     placeholder = { Text("e.g. Answer concisely.") }, minLines = 2, maxLines = 6)

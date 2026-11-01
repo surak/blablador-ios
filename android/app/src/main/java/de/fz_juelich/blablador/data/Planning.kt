@@ -47,6 +47,8 @@ data class Trace(
     val completionTokens: Int = 0,
     val rounds: Int = 0,
     val calls: List<TraceCall> = emptyList(),
+    /** The second look at the answer before it was shown. */
+    val check: SelfCheck.Result? = null,
 )
 
 /** A mention in the composer (@web, @skill, @knowledge base…), sent with the message and kept on it. */
@@ -177,11 +179,12 @@ object Mentions {
         "speech" to "speaking the answer aloud with generate_speech in the user's selected voice",
         "schedule" to "a scheduled task (schedule_task)",
         "plan" to "a plan (update_plan), working through it step by step",
+        "goal" to "goal mode: keep working until the goal is reached",
     )
 
-    fun all(skills: List<Skill>, bases: List<Pair<String, String>>, servers: List<McpServer>): List<Mention> =
+    fun all(skills: List<Skill>, servers: List<McpServer>): List<Mention> =
+        // Knowledge bases are picked with # instead.
         tools + skills.map { Mention(Mention.Kind.skill, it.name, it.name) } +
-            bases.map { Mention(Mention.Kind.knowledge, it.first, it.second) } +
             servers.filter { it.enabled }.map { Mention(Mention.Kind.server, it.id, it.name) }
 
     fun matches(query: String, all: List<Mention>): List<Mention> {

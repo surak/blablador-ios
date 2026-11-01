@@ -72,6 +72,7 @@ import androidx.compose.material.icons.outlined.Newspaper
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Checklist
+import androidx.compose.material.icons.outlined.Flag
 import androidx.compose.material.icons.outlined.Functions
 import androidx.compose.material.icons.outlined.FindInPage
 import androidx.compose.material.icons.outlined.Menu
@@ -387,6 +388,7 @@ fun ChatScreen(vm: ChatViewModel) {
                     }
                 }
                 ActiveKnowledge(vm, onOpen = { open(Page.Knowledge(it)) })
+                vm.current?.goal?.let { goal -> GoalBanner(goal, vm.isStreaming, vm::continueGoal, vm::endGoal) }
                 Composer(
                     vm, draft, { draft = it }, attachments, documents, mentions,
                     imageMode, { imageMode = it; if (it) { speechMode = false; videoMode = false } },
@@ -497,6 +499,7 @@ private fun tool(value: String) = de.fz_juelich.blablador.data.Mentions.tools.fi
 private val allSuggestions = listOf(
     Suggestion(Icons.Outlined.Description, "Summarise a Google Doc: paste its link", action = SuggestionAction.Fill("Summarise this Google Doc and list what needs doing: ")),
     Suggestion(Icons.Outlined.RecordVoiceOver, "Speak in my own voice: clone it in a few seconds", action = SuggestionAction.CloneVoice),
+    Suggestion(Icons.Outlined.Flag, "/goal Compare three electric cars under €40,000 and make a table", tool("web")),
     Suggestion(Icons.Outlined.ShowChart, "Plot the world population since 1950 and fit a trend line", tool("python")),
     Suggestion(Icons.Outlined.TableChart, "Analyse a spreadsheet and chart the trends", action = SuggestionAction.Panel(PanelAction.Files, "Analyse this file and make a chart of the main trends")),
     Suggestion(Icons.Outlined.PictureAsPdf, "Ask questions about a PDF", action = SuggestionAction.Panel(PanelAction.Files, "What are the key points of this document?")),
@@ -740,8 +743,17 @@ private fun Composer(
             }
         }
         if (mentions.isNotEmpty()) MentionChips(mentions.toList()) { mention -> mentions.removeAll { it.id == mention.id } }
+        if (draft.startsWith("/") && draft.none { it.isWhitespace() }) {
+            SlashSuggestions(draft.drop(1)) { onDraft("/$it ") }
+        }
+        knowledgePattern.find(draft)?.value?.substringAfter('#')?.let { query ->
+            KnowledgeSuggestions(query, vm.knowledge.bases.toList()) { base ->
+                onDraft(draft.replace(knowledgePattern, { if (it.value.startsWith("#")) "" else " " }))
+                if (base.id !in vm.activeKnowledge) vm.toggleKnowledge(base.id)
+            }
+        }
         mentionQuery(draft)?.let { query ->
-            val all = de.fz_juelich.blablador.data.Mentions.all(vm.skills.skills.toList(), vm.knowledge.bases.map { it.id to it.name }, vm.mcp.servers.toList())
+            val all = de.fz_juelich.blablador.data.Mentions.all(vm.skills.skills.toList(), vm.mcp.servers.toList())
             MentionSuggestions(query, all) { mention ->
                 onDraft(draft.replace(mentionPattern, { if (it.value.startsWith("@")) "" else " " }))
                 if (mentions.none { it.id == mention.id }) mentions.add(mention)
@@ -878,6 +890,9 @@ private fun Composer(
 
 /** An "@name" being typed at the end of the draft. */
 private val mentionPattern = Regex("""(^|\s)@[^\s@]*$""")
+
+/** A "#name" being typed at the end of the draft: a knowledge base. */
+private val knowledgePattern = Regex("""(^|\s)#[^\s#]*$""")
 
 private fun mentionQuery(draft: String): String? = mentionPattern.find(draft)?.value?.substringAfter('@')
 

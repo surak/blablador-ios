@@ -156,4 +156,33 @@ class AgentFeatureTest {
         assertEquals("Remind me to call Maria about the JUWELS…", markingInterrupted(chat).title)
         assertEquals("Fine", markingInterrupted(chat.copy(title = "Fine")).title)
     }
+
+    @Test
+    fun goalCommandAndSelfCheck() {
+        val goals = de.fz_juelich.blablador.data.GoalTools
+        val check = de.fz_juelich.blablador.data.SelfCheck
+        assertEquals("Write a report", goals.command("/goal  Write a report "))
+        assertEquals("", goals.command("/GOAL"))
+        assertNull(goals.command("/goals are nice"))
+        assertNull(goals.command("my /goal"))
+        assertTrue(check.passed("CHECKED"))
+        assertTrue(check.passed(" checked. "))
+        assertFalse(check.passed("The sum is 12, not 13."))
+        var trace = de.fz_juelich.blablador.data.Trace(model = "m")
+        assertFalse(check.worthChecking(trace, hasPlan = false, goal = false))
+        trace = trace.copy(calls = listOf(de.fz_juelich.blablador.data.TraceCall(tool = "update_plan", arguments = "{}"),
+            de.fz_juelich.blablador.data.TraceCall(tool = "web_search", arguments = "{}")))
+        assertFalse(check.worthChecking(trace, hasPlan = false, goal = false))
+        trace = trace.copy(calls = trace.calls + de.fz_juelich.blablador.data.TraceCall(tool = "read_page", arguments = "{}"))
+        assertTrue(check.worthChecking(trace, hasPlan = false, goal = false))
+        assertTrue(check.worthChecking(null, hasPlan = false, goal = true))
+        assertEquals("2.0 s · corrected after a check",
+            de.fz_juelich.blablador.ui.traceSummary(de.fz_juelich.blablador.data.Trace(model = "m", seconds = 2.0, check = de.fz_juelich.blablador.data.SelfCheck.Result.corrected)))
+    }
+
+    @Test
+    fun knowledgeBasesAreNotAtMentions() {
+        val all = de.fz_juelich.blablador.data.Mentions.all(emptyList(), emptyList())
+        assertTrue(all.none { it.kind == de.fz_juelich.blablador.data.Mention.Kind.knowledge })
+    }
 }

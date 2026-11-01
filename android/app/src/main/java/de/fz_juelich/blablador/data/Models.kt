@@ -92,6 +92,8 @@ data class Conversation(
     /** Summary of the first [summaryCount] messages, sent instead of them once the chat got long. */
     val summary: String? = null,
     val summaryCount: Int? = null,
+    /** Set with /goal: Blablador keeps working until it's reached. */
+    val goal: Goal? = null,
 ) {
     /** Messages of every version, for deleting their files. */
     val allMessages: List<ChatMessage>

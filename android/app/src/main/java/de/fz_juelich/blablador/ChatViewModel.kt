@@ -45,7 +45,10 @@ import de.fz_juelich.blablador.data.WebSearch
 import de.fz_juelich.blablador.data.jsonString
 import de.fz_juelich.blablador.data.speech
 import de.fz_juelich.blablador.data.DeviceTools
+import de.fz_juelich.blablador.data.Goal
+import de.fz_juelich.blablador.data.GoalTools
 import de.fz_juelich.blablador.data.Mention
+import de.fz_juelich.blablador.data.SelfCheck
 import de.fz_juelich.blablador.data.Mentions
 import de.fz_juelich.blablador.data.Notifier
 import de.fz_juelich.blablador.data.PlanTools
@@ -226,6 +229,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         private set
     fun suggestSkillsAfterTasks(on: Boolean) { draftsSkills = on; settings.skillsDraftAutomatically = on }
 
+    var checksResults by mutableStateOf(settings.selfCheck)
+        private set
+    fun checkResults(on: Boolean) { checksResults = on; settings.selfCheck = on }
+
     var pythonEnabled by mutableStateOf(settings.pythonEnabled)
         private set
     fun setPython(on: Boolean) { pythonEnabled = on; settings.pythonEnabled = on }
@@ -377,7 +384,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun send(text: String, attachments: List<ByteArray> = emptyList(), documents: List<DocumentAttachment> = emptyList(),
              mentions: List<Mention> = emptyList(), createImage: Boolean = false, createVideo: Boolean = false, speak: Boolean = false) {
-        val trimmed = text.trim()
+        var trimmed = text.trim()
+        var mentions = mentions
+        val goal = GoalTools.command(trimmed)
+        if (goal != null) {
+            if (goal.isEmpty()) return
+            trimmed = goal
+            if (GoalTools.mention !in mentions) mentions = listOf(GoalTools.mention) + mentions
+        }
         if ((trimmed.isEmpty() && attachments.isEmpty() && documents.isEmpty()) || isStreaming) return
 
         if (currentId == null) {
@@ -393,7 +407,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             if (trimmed.isNotEmpty()) nameChat(conversation.id, trimmed, selectedModel)
         }
         val names = attachments.map(images::save)
-        update { it.copy(messages = it.messages + ChatMessage(role = ChatRole.user, content = trimmed, images = names, documents = documents, mentions = mentions)) }
+        update {
+            it.copy(messages = it.messages + ChatMessage(role = ChatRole.user, content = trimmed, images = names, documents = documents, mentions = mentions),
+                goal = if (goal != null) Goal(goal) else it.goal)
+        }
         // A mentioned knowledge base stays on for the chat.
         mentions.filter { it.kind == Mention.Kind.knowledge && it.value !in activeKnowledge && knowledge.base(it.value) != null }.forEach { toggleKnowledge(it.value) }
 
@@ -446,6 +463,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     /** A summary of messages that changed no longer fits; long chats are summarised again when needed. */
     private fun dropSummary(conversation: Conversation, index: Int): Conversation =
         if ((conversation.summaryCount ?: 0) > index) conversation.copy(summary = null, summaryCount = null) else conversation
+
+    /** Works on the open chat's goal again (after a pause, a limit or the user's answer). */
+    fun continueGoal() {
+        if (current?.goal == null || isStreaming) return
+        update { it.copy(goal = it.goal?.copy(status = Goal.Status.active, summary = null)) }
+        send("Continue working on the goal.", mentions = listOf(GoalTools.mention))
+    }
+
+    fun endGoal() = update { it.copy(goal = null) }
 
     /** Stops the open chat's reply. */
     fun stop() {
@@ -578,6 +604,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         skills.systemPrompt?.let { system += "\n\n" + it }
         system += "\n\n" + SkillLibrary.SYSTEM_PROMPT + " Use search_chats when the user refers to an earlier conversation."
         Mentions.prompt(mentions, skills::skill, mcp::server)?.let { system += "\n\n" + it }
+        val goal = conversation.goal?.takeIf { it.status == Goal.Status.active }
+        if (goal != null) system += "\n\n" + GoalTools.systemPrompt(goal)
         if (task != null) {
             system += "\n\nThis message is a scheduled task the user set up earlier (\"${task.title}\", ${task.scheduleText.lowercase()}); it runs now while they aren't watching, " +
                 "and your answer is shown as a notification. Do all of it without asking questions. If it is a reminder, reply with the reminder itself, " +
@@ -603,6 +631,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             add(Tools.searchChats); add(Tools.suggestSkill); add(PlanTools.tool); add(ScheduledTask.tool)
             if (useDevice) addAll(DeviceTools.definitions)
             if (skills.skills.isNotEmpty()) add(Tools.useSkill)
+            if (goal != null) add(GoalTools.tool)
         })
         start(id) {
             val started = System.currentTimeMillis()
@@ -671,7 +700,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 reply.content.isEmpty() -> "The reply is ready."
                 else -> splitThinking(reply.content).second
             }
-            Notifier.notify(app, task?.title ?: conversations.firstOrNull { it.id == chatId }?.title ?: "Blablador", body, chatId)
+            val goal = conversations.firstOrNull { it.id == chatId }?.goal
+            val title = when (goal?.status) { Goal.Status.done -> "Goal reached"; Goal.Status.blocked -> "Your goal needs you"; else -> null }
+            val summary = goal?.takeIf { it.status != Goal.Status.active }?.summary
+            Notifier.notify(app, task?.title ?: title ?: conversations.firstOrNull { it.id == chatId }?.title ?: "Blablador", summary ?: body, chatId)
         }
         val trace = reply.trace
         if (task != null || !draftsSkills || reply.isError || reply.skillsUsed.isNotEmpty() || reply.suggestedSkills.isNotEmpty() ||
@@ -723,10 +755,19 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val messages = initial.toMutableList()
         var tools = initialTools
         var round = 0
+        // Self-check: one more round asks the model to verify its answer; until it ends, nothing new is shown.
+        var checking = false
+        var checked = !checksResults
+        var checkedAnswer = ""
+        var checkedPrefix = ""
+        var nudges = 0
+        fun goalStatus() = conversations.firstOrNull { it.id == chatId }?.goal?.status
 
         while (true) {
             val hasPlan = message(replyId)?.plan?.isNotEmpty() == true
-            val maxRounds = if (hasPlan) maxOf(maxToolRounds, maxPlanRounds) else maxToolRounds
+            val goalActive = tools.any { (it["function"] as? JsonObject)?.get("name")?.let(::jsonString) == "goal_status" }
+            val goalOpen = goalActive && goalStatus() == Goal.Status.active
+            val maxRounds = maxOf(maxToolRounds, if (hasPlan) maxPlanRounds else 0, if (goalActive) GoalTools.MAX_ROUNDS else 0)
             val isFinalRound = round >= maxRounds
             round++
             if (isFinalRound) {
@@ -742,6 +783,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     when (event) {
                         is BlabladorApi.StreamEvent.Content -> {
                             text += event.text
+                            if (checking) return@collect
                             val (thinking, answer) = splitThinking(text)
                             val visible = stripToolMarkup(answer)
                             updateMessage(replyId) {
@@ -751,6 +793,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         }
                         is BlabladorApi.StreamEvent.Reasoning -> {
                             reasoning += event.text
+                            if (checking) return@collect
                             updateMessage(replyId) { it.copy(status = null, reasoning = joined(reasoningPrefix, reasoning)) }
                         }
                         is BlabladorApi.StreamEvent.ToolCalls -> calls = event.calls
@@ -769,11 +812,40 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 throw e
             }
 
+            val answer = stripToolMarkup(splitThinking(text).second).trim()
+            if (checking && (isFinalRound || calls.isEmpty())) {
+                // The check's verdict: keep the answer, or show the corrected one in its place.
+                val passed = SelfCheck.passed(answer) || (calls.isEmpty() && containsToolMarkup(text))
+                updateMessage(replyId) { m ->
+                    m.copy(status = null, content = if (passed) checkedAnswer else checkedPrefix + answer,
+                        trace = m.trace?.copy(check = if (passed) SelfCheck.Result.passed else SelfCheck.Result.corrected))
+                }
+                return outsideContent[0]
+            }
             if (isFinalRound || (calls.isEmpty() && containsToolMarkup(text))) {
                 if (stripToolMarkup(text).isEmpty()) updateMessage(replyId) { it.copy(content = prefix) }
                 return outsideContent[0]
             }
-            if (calls.isEmpty()) return outsideContent[0]
+            if (calls.isEmpty()) {
+                messages += buildJsonObject { put("role", "assistant"); put("content", answer) }
+                if (goalOpen && goalStatus() == Goal.Status.active && nudges < GoalTools.MAX_NUDGES) {
+                    // Stopped before the goal is settled: keep going.
+                    nudges++
+                    messages += buildJsonObject { put("role", "user"); put("content", GoalTools.NUDGE) }
+                    updateMessage(replyId) { it.copy(content = if (it.content.isEmpty()) "" else it.content + "\n\n", status = "Working on the goal…") }
+                    continue
+                }
+                if (checked || answer.isEmpty() || goalStatus() == Goal.Status.blocked ||
+                    !SelfCheck.worthChecking(message(replyId)?.trace, hasPlan, goalActive)) return outsideContent[0]
+                checked = true
+                checking = true
+                checkedAnswer = message(replyId)?.content.orEmpty()
+                // A correction replaces this round's answer, keeping notes from earlier rounds.
+                checkedPrefix = prefix
+                updateMessage(replyId) { it.copy(status = "Checking the result…") }
+                messages += buildJsonObject { put("role", "user"); put("content", SelfCheck.PROMPT) }
+                continue
+            }
 
             messages += buildJsonObject {
                 put("role", "assistant")
@@ -783,7 +855,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             // Preambles like "Let me look that up" are status, not part of the answer; notes between plan steps are kept.
             val note = stripToolMarkup(text)
             val keepsNotes = message(replyId)?.plan?.isNotEmpty() == true
-            updateMessage(replyId) { it.copy(content = if (keepsNotes && note.isNotEmpty()) "$prefix$note\n\n" else prefix) }
+            if (!checking) updateMessage(replyId) { it.copy(content = if (keepsNotes && note.isNotEmpty()) "$prefix$note\n\n" else prefix) }
 
             for (call in calls) {
                 val arguments = runCatching { BlabladorApi.json.parseToJsonElement(call.arguments).jsonObject }.getOrNull()
@@ -795,7 +867,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 updateMessage(replyId) { m -> m.copy(trace = m.trace?.let { t -> t.copy(calls = t.calls.map { if (it.id == traced.id) traced else it }) }) }
                 messages += buildJsonObject { put("role", "tool"); put("tool_call_id", call.id); put("content", output) }
             }
-            updateMessage(replyId) { it.copy(status = "Thinking…") }
+            updateMessage(replyId) { it.copy(status = if (checking) "Checking the result…" else "Thinking…") }
         }
     }
 
@@ -840,6 +912,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         return when {
+            name == "goal_status" -> {
+                val done = jsonString(arguments?.get("status")) == "done"
+                val summary = jsonString(arguments?.get("summary"))?.trim()?.takeIf { it.isNotEmpty() }
+                updateChat(chatId) { c -> c.copy(goal = c.goal?.copy(status = if (done) Goal.Status.done else Goal.Status.blocked, summary = summary)) }
+                (if (done) "The goal is marked as reached. Now write a short final answer for the user." else "The user will see your question. Ask it in your answer.") to StepState.done
+            }
             name == "update_plan" -> {
                 val items = PlanTools.items(arguments)
                 updateMessage(replyId) { it.copy(plan = items) }
