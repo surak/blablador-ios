@@ -870,7 +870,7 @@ final class ChatStore: ObservableObject {
         if let folder { system += "\n\n" + AgentTools.systemPrompt(workspace: folder) }
         if let hint = Self.mentionPrompt(mentions) { system += "\n\n" + hint }
         if voiceConversation {
-            system += "\n\nThe user is talking with you by voice and your answer is read aloud while you write it. Answer like in a conversation: short, natural spoken sentences in the user's language, no Markdown, headings, lists, tables, emoji, code or links unless they ask; write numbers, units and abbreviations the way they are spoken. Ask a short question back when it helps. You can still use tools."
+            system += "\n\nThe user is talking with you by voice and your answer is read aloud while you write it. Answer like in a conversation: short, natural spoken sentences in the user's language, no Markdown, headings, lists, tables, emoji, code or links unless they ask; write numbers, units and abbreviations the way they are spoken. Ask a short question back when it helps. The user is waiting to hear you, so answer within seconds: reply to what they said last, use a tool only when the answer really needs it (one or two calls at most, no long research), and if something needs digging, say so briefly and offer to look it up."
             if let voiceLanguage {
                 system += " Always answer in \(voiceLanguage), whatever language earlier messages were in."
                 if voiceLanguage.contains("(") {
@@ -1177,7 +1177,8 @@ final class ChatStore: ObservableObject {
             let goalActive = tools.contains { ($0["function"] as? [String: Any])?["name"] as? String == "goal_status" }
             let goalOpen = goalActive && chat(chatID)?.goal?.status == .active
             let maxRounds = max(workspace == nil ? Self.maxToolRounds : AgentTools.maxRounds, hasPlan ? Self.maxPlanRounds : 0, goalActive ? GoalTools.maxRounds : 0)
-            let isFinalRound = round >= maxRounds
+            // A spoken conversation can't wait for long research.
+            let isFinalRound = round >= (voiceConversation ? min(maxRounds, 3) : maxRounds)
             round += 1
             if isFinalRound {
                 // Keep the tools declared (removing them makes DeepSeek print raw tool markup),
