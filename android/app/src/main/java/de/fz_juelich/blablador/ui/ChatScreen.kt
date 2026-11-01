@@ -207,6 +207,7 @@ fun ChatScreen(vm: ChatViewModel) {
         kotlinx.coroutines.delay(600)
         whatsNew = de.fz_juelich.blablador.data.WhatsNew.unseen(appContext, vm.conversations.isNotEmpty())
     }
+    if (vm.talking) VoiceConversationScreen(vm) { vm.talking = false }
     whatsNew?.let { (version, items) ->
         fun done() { de.fz_juelich.blablador.data.WhatsNew.markSeen(appContext); whatsNew = null }
         WhatsNewDialog(version, items, onClose = ::done, onTry = { tryIt ->
@@ -363,6 +364,7 @@ fun ChatScreen(vm: ChatViewModel) {
                                     speechMode = true; imageMode = false; videoMode = false
                                     fill("Hello! This is my own voice, made by Blablador.")
                                 }
+                                SuggestionAction.Talk -> vm.talking = true
                                 is SuggestionAction.Video -> { videoMode = true; imageMode = false; speechMode = false; fill(action.prompt) }
                                 is SuggestionAction.Image -> { imageMode = true; videoMode = false; speechMode = false; fill(action.prompt) }
                             }
@@ -483,6 +485,7 @@ private sealed interface SuggestionAction {
     data class Panel(val action: PanelAction, val fill: String?) : SuggestionAction
     data object Decision : SuggestionAction
     data object CloneVoice : SuggestionAction
+    data object Talk : SuggestionAction
     data class Video(val prompt: String) : SuggestionAction
     data class Image(val prompt: String) : SuggestionAction
 }
@@ -491,13 +494,14 @@ private sealed interface SuggestionAction {
 private class Suggestion(val icon: ImageVector, val text: String, val mentions: List<de.fz_juelich.blablador.data.Mention> = emptyList(),
                          val action: SuggestionAction = SuggestionAction.Send) {
     /** Always among the examples: features people otherwise don't find. */
-    val isFeatured get() = action == SuggestionAction.CloneVoice || "Google Doc" in text
+    val isFeatured get() = action == SuggestionAction.CloneVoice || action == SuggestionAction.Talk || "Google Doc" in text
 }
 
 private fun tool(value: String) = de.fz_juelich.blablador.data.Mentions.tools.filter { it.value == value }
 
 private val allSuggestions = listOf(
     Suggestion(Icons.Outlined.Description, "Summarise a Google Doc: paste its link", action = SuggestionAction.Fill("Summarise this Google Doc and list what needs doing: ")),
+    Suggestion(Icons.Outlined.GraphicEq, "Talk with Blablador: just speak and listen", action = SuggestionAction.Talk),
     Suggestion(Icons.Outlined.RecordVoiceOver, "Speak in my own voice: clone it in a few seconds", action = SuggestionAction.CloneVoice),
     Suggestion(Icons.Outlined.Flag, "/goal Compare three electric cars under €40,000 and make a table", tool("web")),
     Suggestion(Icons.Outlined.ShowChart, "Plot the world population since 1950 and fit a trend line", tool("python")),
@@ -801,6 +805,10 @@ private fun Composer(
                         when { imageMode -> "Create image"; videoMode -> "Create video"; speechMode -> "Speak"; else -> "Send" },
                         Modifier.clip(CircleShape).background(Brand.gradient).padding(8.dp), tint = Color.White)
                 }
+                else -> IconButton(onClick = { vm.talking = true }) {
+                    Icon(Icons.Filled.GraphicEq, "Talk with Blablador",
+                        Modifier.clip(CircleShape).background(Brand.gradient).padding(8.dp), tint = Color.White)
+                }
             }
         }
     }
@@ -825,6 +833,7 @@ private fun Composer(
                 PanelAction.Files -> pdfs.launch(arrayOf("application/pdf", "image/*") + DataFiles.MIME_TYPES)
                 PanelAction.ScanText -> scanChoice = true
                 PanelAction.CloneVoice -> onNavigate(Page.AddVoice)
+                PanelAction.Talk -> vm.talking = true
                 PanelAction.Voices -> onNavigate(Page.Voices)
                 PanelAction.Decide -> onNavigate(Page.Decision)
                 PanelAction.Knowledge -> onNavigate(Page.Knowledge())

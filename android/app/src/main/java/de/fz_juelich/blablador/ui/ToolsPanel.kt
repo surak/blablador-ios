@@ -63,7 +63,7 @@ import androidx.compose.ui.unit.dp
 import de.fz_juelich.blablador.ChatViewModel
 
 /** Things picked in the panel that open a picker or a page. */
-enum class PanelAction { CloneVoice, Voices, Camera, Photos, Files, Paste, ScanText, Decide, Knowledge, NewKnowledge, Mcp, Skills, Tasks, Permissions }
+enum class PanelAction { CloneVoice, Talk, Voices, Camera, Photos, Files, Paste, ScanText, Decide, Knowledge, NewKnowledge, Mcp, Skills, Tasks, Permissions }
 
 /**
  * What the + button opens: attach, the kind of reply, tools, knowledge, connected services and more, each with its
@@ -106,6 +106,8 @@ fun ToolsPanel(
                     }
                 }
                 Card {
+                    LinkRow("Talk with Blablador", "Speak and hear the answer, hands-free", Icons.Outlined.GraphicEq) { onAction(PanelAction.Talk) }
+                    Divider()
                     var picking by remember { mutableStateOf(false) }
                     PanelRow("Speaks with", if (vm.voices.selected.isCloned) "Your cloned voice" else "Drama 3 voice", Icons.Outlined.GraphicEq,
                         onClick = { picking = true }) {

@@ -112,6 +112,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         private set
     /** Replies being written, per chat; they keep going when the user switches chats. */
     private val running = mutableStateMapOf<String, Job>()
+    /** A voice conversation is open: replies are short and spoken. */
+    var voiceConversation by mutableStateOf(false)
+    /** Shows the voice conversation screen. */
+    var talking by mutableStateOf(false)
+
     /** The open chat is writing a reply. */
     val isStreaming: Boolean get() = currentId?.let { it in running } ?: false
     /** Some chat is writing a reply. */
@@ -584,7 +589,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val usePython = pythonEnabled || "python" in mentioned
         val useDevice = deviceToolsEnabled || "device" in mentioned
         val useImages = imageToolsEnabled || "image" in mentioned
-        val useSpeech = voices.toolsEnabled || "speech" in mentioned
+        val useSpeech = (voices.toolsEnabled || "speech" in mentioned) && !voiceConversation
 
         val now = Date()
         var system = systemPrompt
@@ -604,6 +609,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         skills.systemPrompt?.let { system += "\n\n" + it }
         system += "\n\n" + SkillLibrary.SYSTEM_PROMPT + " Use search_chats when the user refers to an earlier conversation."
         Mentions.prompt(mentions, skills::skill, mcp::server)?.let { system += "\n\n" + it }
+        if (voiceConversation) system += "\n\n" + de.fz_juelich.blablador.data.Talk.SYSTEM_PROMPT
         val goal = conversation.goal?.takeIf { it.status == Goal.Status.active }
         if (goal != null) system += "\n\n" + GoalTools.systemPrompt(goal)
         if (task != null) {
@@ -1082,6 +1088,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private fun joined(earlier: String, new: String) = if (earlier.isEmpty()) new else "$earlier\n\n$new"
 
     private fun stripToolMarkup(text: String) = text.replace(toolMarkup, "").trim()
+
+    fun messageById(id: String) = message(id)
 
     private fun message(id: String) = conversations.firstNotNullOfOrNull { c -> c.messages.firstOrNull { it.id == id } }
 

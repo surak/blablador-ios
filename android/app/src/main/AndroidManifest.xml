@@ -102,6 +102,10 @@
     </application>
 
     <queries>
+        <!-- Talking with Blablador uses the system speech recognizer. -->
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
         <!-- "Open in an app" for answers saved as Word, Excel or PowerPoint. -->
         <intent>
             <action android:name="android.intent.action.VIEW" />
