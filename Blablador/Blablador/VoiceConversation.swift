@@ -766,7 +766,25 @@ final class VoiceConversation: ObservableObject {
             status.pointee = .haveData
             return remaining.removeFirst()
         }
-        return output.frameLength > 0 ? [output] : []
+        return output.frameLength > 0 ? [trimmed(output)] : []
+    }
+
+    /// Without the silence voices put before and after speech, so nothing seems to hang when a part starts.
+    nonisolated static func trimmed(_ buffer: AVAudioPCMBuffer, threshold: Float = 0.01) -> AVAudioPCMBuffer {
+        guard let samples = buffer.floatChannelData?[0], buffer.format.channelCount == 1 else { return buffer }
+        let count = Int(buffer.frameLength)
+        guard let first = (0..<count).first(where: { abs(samples[$0]) > threshold }),
+              let last = (0..<count).last(where: { abs(samples[$0]) > threshold }) else { return buffer }
+        // Keep a short margin so words don't start or end abruptly.
+        let margin = Int(buffer.format.sampleRate * 0.08)
+        let start = max(0, first - margin)
+        let end = min(count, last + margin)
+        guard start > 0 || end < count,
+              let copy = AVAudioPCMBuffer(pcmFormat: buffer.format, frameCapacity: AVAudioFrameCount(end - start)),
+              let target = copy.floatChannelData?[0] else { return buffer }
+        copy.frameLength = AVAudioFrameCount(end - start)
+        target.update(from: samples + start, count: end - start)
+        return copy
     }
 
     /// All channels mixed into one.

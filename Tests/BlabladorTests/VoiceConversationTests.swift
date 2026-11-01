@@ -52,4 +52,30 @@ final class VoiceConversationTests: XCTestCase {
         print("WHISPER pt:", try await api.transcribe(audio: wav, language: "pt"))
         print("WHISPER auto:", try await api.transcribe(audio: wav))
     }
+
+    func testSilenceIsTrimmed() throws {
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 48_000))
+        buffer.frameLength = 48_000
+        let samples = try XCTUnwrap(buffer.floatChannelData?[0])
+        for i in 0..<48_000 { samples[i] = (24_000..<30_000).contains(i) ? 0.5 : 0 }
+        let trimmed = VoiceConversation.trimmed(buffer)
+        // 6,000 frames of sound plus 80 ms on each side.
+        XCTAssertEqual(Int(trimmed.frameLength), 6_000 + 2 * 1_920 - 1)
+    }
+
+    func testDramaStartsWithoutLongSilence() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["BLABLADOR_NETWORK_TESTS"] == "1", let token = environment["HELMHOLTZ_BLABLADOR_TOKEN"] else { throw XCTSkip("network") }
+        let data = try await BlabladorAPI(apiKey: token).speech(text: "Olá, tudo bem?", voice: VoiceLibrary.builtIn[0])
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("drama.mp3")
+        try data.write(to: file)
+        let audio = try AVAudioFile(forReading: file)
+        let raw = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: audio.processingFormat, frameCapacity: AVAudioFrameCount(audio.length)))
+        try audio.read(into: raw)
+        let samples = raw.floatChannelData![0]
+        let first = (0..<Int(raw.frameLength)).first { abs(samples[$0]) > 0.01 } ?? 0
+        print("DRAMA leading silence:", Double(first) / raw.format.sampleRate, "s of", Double(raw.frameLength) / raw.format.sampleRate)
+        let decoded = try VoiceConversation.decode(data, to: format)
+        print("DRAMA after trimming:", Double(decoded.first?.frameLength ?? 0) / 24_000, "s")
+    }
 }
