@@ -320,7 +320,14 @@ final class ChatStore: ObservableObject {
     /// Sends a chat message. With `createImage`, the text is used directly as an image prompt;
     /// with `speak`, it is read aloud with Drama 3.
     func send(_ text: String, attachments: [Data] = [], documents: [DocumentAttachment] = [], mentions: [Mention] = [], createImage: Bool = false, createVideo: Bool = false, speak: Bool = false) {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        var trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        var mentions = mentions
+        let goal = GoalTools.command(trimmed)
+        if let goal {
+            guard !goal.isEmpty else { return }
+            trimmed = goal
+            if !mentions.contains(GoalTools.mention) { mentions.insert(GoalTools.mention, at: 0) }
+        }
         guard !trimmed.isEmpty || !attachments.isEmpty || !documents.isEmpty, !isStreaming else { return }
 
         if currentID == nil {
@@ -337,7 +344,10 @@ final class ChatStore: ObservableObject {
         let images = attachments.map(ImageStore.save)
         var message = ChatMessage(role: .user, content: trimmed, images: images, documents: documents)
         message.mentions = mentions
-        update { $0.messages.append(message) }
+        update {
+            $0.messages.append(message)
+            if let goal { $0.goal = Goal(text: goal) }
+        }
         // A mentioned knowledge base stays on for the chat, like one picked with #.
         for mention in mentions where mention.kind == .knowledge {
             if let id = UUID(uuidString: mention.value), !activeKnowledge.contains(id) { toggleKnowledge(id) }
@@ -538,6 +548,17 @@ final class ChatStore: ObservableObject {
     }
 
     /// Stops the open chat's reply.
+    /// Works on the open chat's goal again (after a pause, a limit or the user's answer).
+    func continueGoal() {
+        guard let current, current.goal != nil, !isStreaming else { return }
+        update { $0.goal?.status = .active; $0.goal?.summary = nil }
+        send("Continue working on the goal.", mentions: [GoalTools.mention])
+    }
+
+    func endGoal() {
+        update { $0.goal = nil }
+    }
+
     func stop() {
         guard let currentID else { return }
         running[currentID]?.cancel()
@@ -783,6 +804,8 @@ final class ChatStore: ObservableObject {
         let folder = conversation.workspace.map { URL(fileURLWithPath: $0, isDirectory: true) }
         if let folder { system += "\n\n" + AgentTools.systemPrompt(workspace: folder) }
         if let hint = Self.mentionPrompt(mentions) { system += "\n\n" + hint }
+        let goal = conversation.goal?.status == .active ? conversation.goal : nil
+        if let goal { system += "\n\n" + GoalTools.systemPrompt(goal) }
         if let task {
             system += "\n\nThis message is a scheduled task the user set up earlier (\"\(task.title)\", \(task.scheduleText.lowercased())); it runs now while they aren't watching, and your answer is shown as a notification. Do all of it without asking questions. If it is a reminder, reply with the reminder itself, addressed to the user, e.g. \"Time to call Maria.\" Write the result so it reads well on its own."
         }
@@ -816,6 +839,7 @@ final class ChatStore: ObservableObject {
 #endif
         if !skills.skills.isEmpty { tools.append(SkillTools.use) }
         if folder != nil { tools += AgentTools.definitions }
+        if goal != nil { tools.append(GoalTools.tool) }
         tools = ToolPermissions.shared.filter(tools)
         let api = api
         start(chatID) { [self] in
@@ -888,7 +912,9 @@ final class ChatStore: ObservableObject {
         guard let reply = message(replyID) else { return }
         if task != nil || ((!Self.appIsActive || currentID != chatID) && Date().timeIntervalSince(started) > 5) {
             let body = reply.isError ? "Failed: \(reply.content)" : reply.content.isEmpty ? "The reply is ready." : Self.splitThinking(reply.content).answer
-            Notifier.notify(title: task?.title ?? chat(chatID)?.title ?? "Blablador", body: body, chat: chatID)
+            let goal = chat(chatID)?.goal
+            let title = goal?.status == .done ? "Goal reached" : goal?.status == .blocked ? "Your goal needs you" : nil
+            Notifier.notify(title: task?.title ?? title ?? chat(chatID)?.title ?? "Blablador", body: goal.flatMap { $0.status == .active ? nil : $0.summary } ?? body, chat: chatID)
         }
         let skills = SkillLibrary.shared
         guard task == nil, skills.draftsAutomatically, !reply.isError, reply.skillsUsed.isEmpty, reply.suggestedSkills.isEmpty,
@@ -925,7 +951,8 @@ final class ChatStore: ObservableObject {
         "image": "image creation (generate_image, edit_image)",
         "speech": "speaking the answer aloud with generate_speech in the user's selected voice",
         "schedule": "a scheduled task (schedule_task)",
-        "plan": "a plan (update_plan), working through it step by step"
+        "plan": "a plan (update_plan), working through it step by step",
+        "goal": "goal mode: keep working until the goal is reached"
     ]
 
     static func mentionPrompt(_ mentions: [Mention]) -> String? {
@@ -1053,10 +1080,18 @@ final class ChatStore: ObservableObject {
         var messages = messages
         var tools = tools
         var round = 0
+        // Self-check: one more round asks the model to verify its answer; until it ends, nothing new is shown.
+        var checking = false
+        var checked = !SelfCheck.enabled
+        var checkedAnswer = ""
+        var checkedPrefix = ""
+        var nudges = 0
 
         while true {
             let hasPlan = message(replyID)?.plan.isEmpty == false
-            let maxRounds = max(workspace == nil ? Self.maxToolRounds : AgentTools.maxRounds, hasPlan ? Self.maxPlanRounds : 0)
+            let goalActive = tools.contains { ($0["function"] as? [String: Any])?["name"] as? String == "goal_status" }
+            let goalOpen = goalActive && chat(chatID)?.goal?.status == .active
+            let maxRounds = max(workspace == nil ? Self.maxToolRounds : AgentTools.maxRounds, hasPlan ? Self.maxPlanRounds : 0, goalActive ? GoalTools.maxRounds : 0)
             let isFinalRound = round >= maxRounds
             round += 1
             if isFinalRound {
@@ -1074,6 +1109,7 @@ final class ChatStore: ObservableObject {
                     switch event {
                     case let .content(delta):
                         text += delta
+                        if checking { continue }
                         let (thinking, answer) = Self.splitThinking(text)
                         let visible = Self.stripToolMarkup(answer)
                         updateMessage(replyID) {
@@ -1083,6 +1119,7 @@ final class ChatStore: ObservableObject {
                         }
                     case let .reasoning(delta):
                         reasoning += delta
+                        if checking { continue }
                         updateMessage(replyID) {
                             $0.status = nil
                             $0.reasoning = Self.joined(reasoningPrefix, reasoning)
@@ -1103,6 +1140,17 @@ final class ChatStore: ObservableObject {
                 continue
             }
 
+            let answer = Self.stripToolMarkup(Self.splitThinking(text).answer).trimmingCharacters(in: .whitespacesAndNewlines)
+            if checking, isFinalRound || calls.isEmpty {
+                // The check's verdict: keep the answer, or show the corrected one in its place.
+                let passed = SelfCheck.passed(answer) || (calls.isEmpty && Self.containsToolMarkup(text))
+                updateMessage(replyID) {
+                    $0.status = nil
+                    $0.content = passed ? checkedAnswer : checkedPrefix + answer
+                    $0.trace?.check = passed ? .passed : .corrected
+                }
+                return outsideContent
+            }
             if isFinalRound || (calls.isEmpty && Self.containsToolMarkup(text)) {
                 // Model still wants to use tools; nothing more to run.
                 if Self.stripToolMarkup(text).isEmpty {
@@ -1110,7 +1158,29 @@ final class ChatStore: ObservableObject {
                 }
                 return outsideContent
             }
-            guard !calls.isEmpty else { return outsideContent }
+            if calls.isEmpty {
+                messages.append(["role": "assistant", "content": answer])
+                if goalOpen, chat(chatID)?.goal?.status == .active, nudges < GoalTools.maxNudges {
+                    // Stopped before the goal is settled: keep going.
+                    nudges += 1
+                    messages.append(["role": "user", "content": GoalTools.nudge])
+                    updateMessage(replyID) {
+                        if !$0.content.isEmpty { $0.content += "\n\n" }
+                        $0.status = "Working on the goal…"
+                    }
+                    continue
+                }
+                guard !checked, !answer.isEmpty, chat(chatID)?.goal?.status != .blocked,
+                      SelfCheck.worthChecking(message(replyID)?.trace, hasPlan: hasPlan, goal: goalActive) else { return outsideContent }
+                checked = true
+                checking = true
+                checkedAnswer = message(replyID)?.content ?? ""
+                // A correction replaces this round's answer, keeping notes from earlier rounds.
+                checkedPrefix = prefix
+                updateMessage(replyID) { $0.status = "Checking the result…" }
+                messages.append(["role": "user", "content": SelfCheck.prompt])
+                continue
+            }
 
             var assistant: [String: Any] = ["role": "assistant", "tool_calls": calls.map(\.wire)]
             assistant["content"] = text.isEmpty ? NSNull() : text
@@ -1119,7 +1189,7 @@ final class ChatStore: ObservableObject {
             // notes between steps of an agent or a plan are kept.
             let note = Self.stripToolMarkup(text)
             let keepsNotes = workspace != nil || message(replyID)?.plan.isEmpty == false
-            updateMessage(replyID) { $0.content = keepsNotes && !note.isEmpty ? prefix + note + "\n\n" : prefix }
+            if !checking { updateMessage(replyID) { $0.content = keepsNotes && !note.isEmpty ? prefix + note + "\n\n" : prefix } }
 
             for call in calls {
                 let arguments = (try? JSONSerialization.jsonObject(with: Data(call.arguments.utf8))) as? [String: Any] ?? [:]
@@ -1135,7 +1205,7 @@ final class ChatStore: ObservableObject {
                 }
                 messages.append(["role": "tool", "tool_call_id": call.id, "content": output])
             }
-            updateMessage(replyID) { $0.status = "Thinking…" }
+            updateMessage(replyID) { $0.status = checking ? "Checking the result…" : "Thinking…" }
         }
     }
 
@@ -1203,7 +1273,16 @@ final class ChatStore: ObservableObject {
             }
         }
 
-        if name == "update_plan" {
+        if name == "goal_status" {
+            let done = (arguments["status"] as? String) == "done"
+            let summary = (arguments["summary"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            updateChat(chatID) {
+                guard $0.goal != nil else { return }
+                $0.goal?.status = done ? .done : .blocked
+                $0.goal?.summary = summary?.isEmpty == false ? summary : nil
+            }
+            return (done ? "The goal is marked as reached. Now write a short final answer for the user." : "The user will see your question. Ask it in your answer.", .done)
+        } else if name == "update_plan" {
             let items = PlanTools.items(from: arguments)
             updateMessage(replyID) { $0.plan = items }
             return (PlanTools.summary(items), .done)

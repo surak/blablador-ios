@@ -46,4 +46,30 @@ final class AgentLiveTests: XCTestCase {
         XCTAssertTrue(reply.content.contains("Maria"))
         store.delete(store.conversations.first { $0.id == chat }!)
     }
+
+    func testGoalIsWorkedOnAndChecked() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["BLABLADOR_NETWORK_TESTS"] == "1", let token = environment["HELMHOLTZ_BLABLADOR_TOKEN"] else { throw XCTSkip("network") }
+        let store = ChatStore()
+        store.apiKey = token
+        store.newChat()
+        store.send("/goal Find the three largest prime numbers below 10,000 with Python, check each one is prime with a second Python run, and give me their sum.",
+                   mentions: [Mention(kind: .tool, value: "python", name: "Python", icon: "x")])
+        let chat = try XCTUnwrap(store.currentID)
+        let deadline = Date().addingTimeInterval(400)
+        while store.isBusy, Date() < deadline { try await Task.sleep(for: .seconds(1)) }
+        let conversation = try XCTUnwrap(store.conversations.first { $0.id == chat })
+        let reply = try XCTUnwrap(conversation.messages.last)
+        print("GOAL:", conversation.goal as Any)
+        print("REPLY:", reply.content.prefix(600))
+        print("TRACE:", reply.trace.map { TraceLine.summary($0) } ?? "none", reply.trace?.calls.map(\.tool) ?? [])
+        XCTAssertEqual(conversation.messages.first?.content.hasPrefix("Find the three"), true)
+        XCTAssertFalse(reply.isError)
+        XCTAssertEqual(conversation.goal?.status, .done)
+        XCTAssertNotNil(reply.trace?.check)
+        // 9973 + 9967 + 9949
+        XCTAssertTrue(reply.content.contains("29889") || reply.content.contains("29,889"))
+        XCTAssertFalse(reply.content.contains("CHECKED"))
+        store.delete(conversation)
+    }
 }

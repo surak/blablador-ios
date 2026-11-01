@@ -222,6 +222,9 @@ struct ChatView: View {
                 CommandApprovalCard(approval: approval) { store.answerApproval($0) }
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
+            if let goal = store.current?.goal {
+                GoalBanner(goal: goal)
+            }
             ComposerView(draft: $draft, attachments: $attachments, documents: $documents, mentions: $mentions, imageMode: $imageMode, videoMode: $videoMode, speechMode: $speechMode, droppedFiles: $droppedFiles, speech: speech, focused: $inputFocused, onSend: send)
         }
         // Drop images and PDFs from Finder or Files onto the chat to attach them.
@@ -575,6 +578,7 @@ struct Suggestion: Hashable {
         var all: [Suggestion] = [
             Suggestion(icon: "doc.text", text: "Summarise a Google Doc: paste its link", action: .fill("Summarise this Google Doc and list what needs doing: ")),
             Suggestion(icon: "person.wave.2", text: "Speak in my own voice: clone it in a few seconds", action: .cloneVoice),
+            Suggestion(icon: "flag", text: "/goal Compare three electric cars under €40,000 and make a table", mentions: tool("web")),
             Suggestion(icon: "chart.xyaxis.line", text: "Plot the world population since 1950 and fit a trend line", mentions: tool("python")),
             Suggestion(icon: "tablecells", text: "Analyse a spreadsheet and chart the trends", action: .panel(.files, fill: "Analyse this file and make a chart of the main trends")),
             Suggestion(icon: "doc.richtext", text: "Ask questions about a PDF", action: .panel(.files, fill: "What are the key points of this document?")),
@@ -728,6 +732,12 @@ private struct ComposerView: View {
         return String(draft[range].drop { $0 != "#" }.dropFirst())
     }
 
+    /// A "/command" being typed as the whole draft.
+    private var slashQuery: String? {
+        guard draft.hasPrefix("/"), !draft.contains(" "), !draft.contains("\n") else { return nil }
+        return String(draft.dropFirst())
+    }
+
     private var canSend: Bool {
         readingPDFs == 0 && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty || !documents.isEmpty)
     }
@@ -768,6 +778,9 @@ private struct ComposerView: View {
                     }
                     if !mentions.contains(mention) { mentions.append(mention) }
                 }
+            }
+            if let query = slashQuery {
+                SlashSuggestions(query: query) { command in draft = "/\(command) " }
             }
             if let query = knowledgeQuery {
                 KnowledgeSuggestions(query: query) { base in

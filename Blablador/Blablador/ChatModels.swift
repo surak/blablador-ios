@@ -100,6 +100,8 @@ struct Conversation: Identifiable, Codable, Equatable {
     /// Summary of the first `summaryCount` messages, sent instead of them once the chat got long.
     var summary: String?
     var summaryCount: Int?
+    /// Set with /goal: Blablador keeps working until it's reached.
+    var goal: Goal?
 
     /// Messages of every version, for deleting their files.
     var allMessages: [ChatMessage] {

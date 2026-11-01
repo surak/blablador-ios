@@ -28,6 +28,8 @@ struct Trace: Codable, Hashable {
     var completionTokens = 0
     var rounds = 0
     var calls: [TraceCall] = []
+    /// The second look at the answer before it was shown.
+    var check: SelfCheck.Result?
 }
 
 /// A mention in the composer (@web, @skill, @knowledge base…), sent with the message and kept on it.
@@ -189,6 +191,7 @@ struct TraceLine: View {
         parts.append(Self.duration(trace.seconds))
         let tokens = trace.promptTokens + trace.completionTokens
         if tokens > 0 { parts.append("\(tokens.formatted()) tokens") }
+        if let check = trace.check { parts.append(check == .passed ? "checked" : "corrected after a check") }
         return parts.joined(separator: " · ")
     }
 

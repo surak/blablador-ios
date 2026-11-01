@@ -109,4 +109,26 @@ final class AgentFeatureTests: XCTestCase {
         XCTAssertTrue(ChatStore.isRefusal("I'm sorry, but I can't help with that"))
         XCTAssertFalse(ChatStore.isRefusal("News from Forschungszentrum Jülich"))
     }
+
+    func testGoalCommandAndSelfCheck() {
+        XCTAssertEqual(GoalTools.command("/goal  Write a report "), "Write a report")
+        XCTAssertEqual(GoalTools.command("/GOAL"), "")
+        XCTAssertNil(GoalTools.command("/goals are nice"))
+        XCTAssertNil(GoalTools.command("my /goal"))
+        XCTAssertTrue(SelfCheck.passed("CHECKED"))
+        XCTAssertTrue(SelfCheck.passed(" checked. "))
+        XCTAssertFalse(SelfCheck.passed("The sum is 12, not 13."))
+        var trace = Trace(model: "m")
+        XCTAssertFalse(SelfCheck.worthChecking(trace, hasPlan: false, goal: false))
+        trace.calls = [TraceCall(tool: "update_plan", arguments: "{}"), TraceCall(tool: "web_search", arguments: "{}")]
+        XCTAssertFalse(SelfCheck.worthChecking(trace, hasPlan: false, goal: false))
+        trace.calls.append(TraceCall(tool: "read_page", arguments: "{}"))
+        XCTAssertTrue(SelfCheck.worthChecking(trace, hasPlan: false, goal: false))
+        XCTAssertTrue(SelfCheck.worthChecking(nil, hasPlan: false, goal: true))
+        XCTAssertEqual(TraceLine.summary(Trace(model: "m", seconds: 2, check: .corrected)), "2.0 s · corrected after a check")
+    }
+
+    func testKnowledgeBasesAreNotAtMentions() {
+        XCTAssertFalse(MentionCatalog.all().contains { $0.kind == .knowledge })
+    }
 }

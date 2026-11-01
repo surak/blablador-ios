@@ -151,6 +151,14 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Toggle("Check results before finishing", isOn: Binding(
+                        get: { SelfCheck.enabled },
+                        set: { SelfCheck.enabled = $0; store.objectWillChange.send() }
+                    ))
+                } footer: {
+                    Text("After a task with a plan, a goal or several tools, Blablador looks over its answer once more and fixes what's wrong before showing it. Type /goal and what you want to have it keep working until it's done.")
+                }
+                Section {
                     TextField("e.g. Answer concisely.", text: Binding(
                         get: { store.systemPrompt },
                         set: { store.systemPrompt = $0 }

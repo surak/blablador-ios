@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Everything that can be mentioned with @ in the composer: tools, skills, knowledge bases and connected services.
+/// Everything that can be mentioned with @ in the composer: tools, skills and connected services (knowledge bases use #).
 @MainActor
 enum MentionCatalog {
     static let tools: [Mention] = [
@@ -18,7 +18,6 @@ enum MentionCatalog {
     static func all() -> [Mention] {
         tools
             + SkillLibrary.shared.skills.map { Mention(kind: .skill, value: $0.name, name: $0.name, icon: "wand.and.stars") }
-            + KnowledgeLibrary.shared.bases.map { Mention(kind: .knowledge, value: $0.id.uuidString, name: $0.name, icon: "books.vertical") }
             + MCPLibrary.shared.servers.filter(\.enabled).map { Mention(kind: .server, value: $0.id.uuidString, name: $0.name, icon: "puzzlepiece.extension") }
     }
 
@@ -49,7 +48,7 @@ struct MentionSuggestions: View {
         let matches = MentionCatalog.matches(query)
         VStack(alignment: .leading, spacing: 2) {
             if matches.isEmpty {
-                Text("Nothing called “\(query)”. Type @ for tools, skills, knowledge bases and connected services.")
+                Text("Nothing called “\(query)”. Type @ for tools, skills and connected services, # for knowledge bases.")
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                     .padding(8)
