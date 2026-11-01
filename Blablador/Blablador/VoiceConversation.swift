@@ -782,6 +782,7 @@ struct VoiceConversationView: View {
     @StateObject private var conversation = VoiceConversation()
     @ObservedObject private var voices = VoiceLibrary.shared
     @Environment(\.dismiss) private var dismiss
+    @State private var choosingLanguage = false
 
     var body: some View {
         VStack(spacing: 24) {
@@ -811,19 +812,25 @@ struct VoiceConversationView: View {
                 .padding(.vertical, 4)
                 .background(.white.opacity(0.12), in: Capsule())
                 .fixedSize()
-                Picker(selection: Binding(get: { conversation.language }, set: { conversation.language = $0 })) {
-                    Text("Automatic").tag("")
-                    Divider()
-                    ForEach(VoiceConversation.languages, id: \.id) { Text($0.name).tag($0.id) }
-                } label: {
-                    Label("Language", systemImage: "globe")
+                Button { choosingLanguage = true } label: {
+                    Label(conversation.language.isEmpty ? "Automatic" : Locale.current.localizedString(forIdentifier: conversation.language) ?? conversation.language,
+                          systemImage: "globe")
+                        .scaledFont(.subheadline, weight: .medium)
+                        .lineLimit(1)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(.white.opacity(0.12), in: Capsule())
                 }
-                .pickerStyle(.menu)
-                .tint(.white)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(.white.opacity(0.12), in: Capsule())
+                .buttonStyle(.plain)
                 .fixedSize()
+                .sheet(isPresented: $choosingLanguage) {
+                    NavigationStack {
+                        LanguageList(selection: Binding(get: { conversation.language }, set: { conversation.language = $0 }))
+                    }
+#if os(macOS)
+                    .frame(minWidth: 360, minHeight: 480)
+#endif
+                }
                 Spacer()
                 Button { close() } label: {
                     Image(systemName: "xmark")
@@ -985,5 +992,40 @@ struct VoiceConversationView: View {
     private func close() {
         conversation.stop()
         dismiss()
+    }
+}
+
+/// The languages speech recognition knows, searchable.
+private struct LanguageList: View {
+    @Binding var selection: String
+    @Environment(\.dismiss) private var dismiss
+    @State private var search = ""
+
+    var body: some View {
+        let languages = VoiceConversation.languages.filter { search.isEmpty || $0.name.localizedCaseInsensitiveContains(search) }
+        List {
+            if search.isEmpty {
+                row("", "Automatic (the system's language)")
+            }
+            ForEach(languages, id: \.id) { row($0.id, $0.name) }
+        }
+        .searchable(text: $search, prompt: "Search languages")
+        .navigationTitle("Language")
+        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+    }
+
+    private func row(_ id: String, _ name: String) -> some View {
+        Button {
+            selection = id
+            dismiss()
+        } label: {
+            HStack {
+                Text(name).foregroundStyle(.primary)
+                Spacer()
+                if selection == id { Image(systemName: "checkmark").foregroundStyle(Theme.gradient) }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
