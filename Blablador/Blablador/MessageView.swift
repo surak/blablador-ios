@@ -57,6 +57,7 @@ struct MessageView: View {
     var onEdit: (String) -> Void = { _ in }
     var onShowVersion: (Int) -> Void = { _ in }
 
+    @EnvironmentObject private var store: ChatStore
     @State private var copied = false
     @State private var selectingText = false
     @State private var editing = false
@@ -167,7 +168,8 @@ struct MessageView: View {
                         VideoClip(name: name)
                     }
                     if !message.steps.isEmpty {
-                        AgentStepsView(steps: message.steps)
+                        AgentStepsView(steps: message.steps) { store.toggleChange($0, in: message.id) }
+                        ChangesSummary(message: message)
                     }
                     if message.content.isEmpty {
                         // Only while this reply is being written; a finished empty reply shows nothing moving.

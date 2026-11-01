@@ -6,6 +6,8 @@ import AppKit
 /// Tool calls of an agent reply; tap one to see its output or diff.
 struct AgentStepsView: View {
     let steps: [AgentStep]
+    /// Undo or redo a step's file change.
+    var onToggleChange: ((UUID) -> Void)?
     @State private var expanded: Set<UUID> = []
 
     var body: some View {
@@ -33,7 +35,10 @@ struct AgentStepsView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    if expanded.contains(step.id), !step.detail.isEmpty {
+                    if expanded.contains(step.id), let change = step.change {
+                        FileChangeView(change: change, onUndo: onToggleChange.map { toggle in { toggle(step.id) } })
+                            .frame(maxHeight: 360)
+                    } else if expanded.contains(step.id), !step.detail.isEmpty {
                         ScrollView([.horizontal, .vertical]) {
                             Text(highlighted(step.detail))
                                 .scaledFont(.caption2, design: .monospaced)
@@ -91,6 +96,7 @@ struct AgentStepsView: View {
 /// Composer chip for the agent's folder.
 struct WorkspaceChip: View {
     @EnvironmentObject private var store: ChatStore
+    @State private var showOverview = false
 
     var body: some View {
         if let folder = store.workspace {
@@ -104,6 +110,7 @@ struct WorkspaceChip: View {
                 Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([folder]) }
                 Button("Change folder…") { if let url = chooseWorkspace() { store.workspace = url } }
 #endif
+                Button("What the agent knows about it…") { showOverview = true }
                 Divider()
                 Button("Stop working in this folder", role: .destructive) { store.workspace = nil }
             } label: {
@@ -122,6 +129,12 @@ struct WorkspaceChip: View {
             .buttonStyle(.plain)
             .fixedSize()
             .help(folder.path)
+            .sheet(isPresented: $showOverview) {
+                NavigationStack { ProjectOverviewView(folder: folder) }
+#if os(macOS)
+                    .frame(minWidth: 640, minHeight: 520)
+#endif
+            }
             .padding(.leading, 8)
             .padding(.top, 4)
         }

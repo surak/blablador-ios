@@ -11,6 +11,8 @@ struct AgentStep: Identifiable, Codable, Hashable {
     /// Output, diff or error, trimmed for display.
     var detail = ""
     var state = State.running
+    /// For write_file and edit_file: the file before and after, for the diff and Undo.
+    var change: FileChange?
 }
 
 /// Coding-agent tools confined to a workspace folder: list, read, search, write, edit and run commands.
@@ -263,6 +265,29 @@ enum AgentTools {
 #else
         throw ToolError(message: "Not available on this device.")
 #endif
+    }
+
+    /// Output of a git command in the workspace ("" when it fails).
+    static func git(_ arguments: [String], in root: URL) -> String {
+        guard let result = try? execute("/usr/bin/git", arguments, in: root, timeout: 15), result.status == 0 else { return "" }
+        return result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Files of a folder that isn't a git repository, without build and dependency folders.
+    static func files(in root: URL, limit: Int) -> [String] {
+        guard let enumerator = FileManager.default.enumerator(at: root, includingPropertiesForKeys: [.isRegularFileKey]) else { return [] }
+        var files: [String] = []
+        for case let item as URL in enumerator {
+            if skipped.contains(item.lastPathComponent) || item.lastPathComponent.hasPrefix(".") {
+                enumerator.skipDescendants()
+                continue
+            }
+            if (try? item.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true {
+                files.append(relative(item, to: root))
+                if files.count >= limit { break }
+            }
+        }
+        return files
     }
 
     private static func truncated(_ text: String, limit: Int = maxOutput) -> String {

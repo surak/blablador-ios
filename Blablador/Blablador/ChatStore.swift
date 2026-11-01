@@ -564,6 +564,50 @@ final class ChatStore: ObservableObject {
         update { $0.goal = nil }
     }
 
+    // MARK: - Undo agent changes
+
+    @Published var changeError: String?
+
+    /// Undoes or redoes one file change of an agent reply.
+    func toggleChange(_ stepID: UUID, in messageID: UUID) {
+        guard let chat = chat(containing: messageID), let folder = chat.workspace.map({ URL(fileURLWithPath: $0, isDirectory: true) }),
+              let step = message(messageID)?.steps.first(where: { $0.id == stepID }), let change = step.change else { return }
+        do {
+            try Self.apply(change, undo: !change.undone, in: folder)
+            updateMessage(messageID) { message in
+                if let index = message.steps.firstIndex(where: { $0.id == stepID }) { message.steps[index].change?.undone.toggle() }
+            }
+            persist()
+        } catch {
+            changeError = error.localizedDescription
+        }
+    }
+
+    /// Undoes every change of a reply, newest first.
+    func undoAllChanges(in messageID: UUID) {
+        guard let steps = message(messageID)?.steps else { return }
+        for step in steps.reversed() where step.change?.undone == false {
+            toggleChange(step.id, in: messageID)
+            if changeError != nil { return }
+        }
+    }
+
+    /// Puts a file back to its state before (undo) or after (redo) a change, if nobody changed it since.
+    static func apply(_ change: FileChange, undo: Bool, in folder: URL) throws {
+        let url = try AgentTools.writable(AgentTools.resolve(change.path, in: folder), in: folder)
+        let exists = FileManager.default.fileExists(atPath: url.path)
+        let current = exists ? try? String(contentsOf: url, encoding: .utf8) : nil
+        let expected = undo ? change.after : change.before
+        guard current == expected else {
+            throw AgentTools.ToolError(message: "\(change.path) was changed since, so it can't be \(undo ? "undone" : "redone") safely. Undo later changes to it first.")
+        }
+        if let target = undo ? change.before : change.after {
+            try target.write(to: url, atomically: true, encoding: .utf8)
+        } else {
+            try FileManager.default.removeItem(at: url)
+        }
+    }
+
     func stop() {
         guard let currentID else { return }
         running[currentID]?.cancel()
@@ -761,7 +805,21 @@ final class ChatStore: ObservableObject {
                     return ("The user declined this change. Ask what to do instead or continue without it.", .denied)
                 }
             }
+            // Keep the file before and after a change, for the diff and Undo.
+            var target: URL?
+            var existed = false
+            var before: String?
+            if name == "write_file" || name == "edit_file", let url = try? AgentTools.resolve(arguments["path"] as? String ?? "", in: folder) {
+                target = url
+                existed = FileManager.default.fileExists(atPath: url.path)
+                before = existed ? try? String(contentsOf: url, encoding: .utf8) : nil
+            }
             let output = try AgentTools.run(name, arguments, in: folder)
+            // A file that couldn't be read as text before, or a very big one, gets no diff or Undo.
+            if let target, let after = try? String(contentsOf: target, encoding: .utf8), !existed || before != nil,
+               after.count + (before?.count ?? 0) <= FileChange.maxSize {
+                step.change = FileChange(path: arguments["path"] as? String ?? target.lastPathComponent, before: before, after: after)
+            }
             finish(.done, output)
             return (output, .done)
         } catch {
@@ -857,6 +915,11 @@ final class ChatStore: ObservableObject {
                 // Memories go last in the system prompt; with many, picking the relevant ones may need an embedding.
                 var systemText = systemText
                 if memory.enabled { systemText += "\n\n" + (await memory.systemPrompt(for: question, api: api)) }
+                if let folder {
+                    // A fresh look at the project: git state, files, instructions, how to build and test.
+                    let overview = await Task.detached { ProjectOverview.make(for: folder) }.value
+                    if !overview.isEmpty { systemText += "\n\nProject overview (made just now; read files for details):\n" + overview }
+                }
                 var wire = Self.history(system: systemText, conversation)
                 if let compacted = await compact(conversation, model: model, wire: wire, replyID: reply.id) {
                     wire = Self.history(system: systemText, compacted)
@@ -875,7 +938,7 @@ final class ChatStore: ObservableObject {
                     }
                 }
                 // PDFs and knowledge excerpts come from outside the chat; see runTurn's memory lock.
-                let outsideContent = conversation.messages.contains { !$0.documents.isEmpty }
+                let outsideContent = folder != nil || conversation.messages.contains { !$0.documents.isEmpty }
                     || message(reply.id)?.citations.isEmpty == false
                 var tools = tools
                 let mcpTools = await MCPLibrary.shared.availableTools().filter { ToolPermissions.shared.rule("mcp:\($0.server)") != .never }
@@ -1444,6 +1507,10 @@ final class ChatStore: ObservableObject {
             if message.role == .assistant, !message.steps.isEmpty {
                 // Earlier tool calls, so follow-ups know what was already done.
                 content = "[Actions taken: " + message.steps.map(\.title).joined(separator: "; ") + "]\n" + content
+                let undone = message.steps.compactMap(\.change).filter(\.undone).map(\.path)
+                if !undone.isEmpty {
+                    content += "\n[The user undid your changes to: " + Array(Set(undone)).sorted().joined(separator: ", ") + ". Those files are back as they were before.]"
+                }
             }
             return ["role": message.role.rawValue, "content": content]
         }
