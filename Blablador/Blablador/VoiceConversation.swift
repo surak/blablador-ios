@@ -183,6 +183,8 @@ final class VoiceConversation: ObservableObject {
     /// Set when the microphone has delivered only silence for a while, e.g. a MacBook with its lid closed.
     @Published private(set) var silentMicrophone: String?
     private var lastSound = Date()
+    /// When the reply last streamed or a sentence started playing.
+    private var lastProgress = Date()
 
     private func checkMicrophone() {
 #if os(macOS)
@@ -380,6 +382,13 @@ final class VoiceConversation: ObservableObject {
                 return
             }
             feed()
+            // Safety net: the reply is done but nothing has played for a long while.
+            if !store.isStreaming, playing == nil, Date().timeIntervalSince(lastProgress) > 60 {
+                Self.log.notice("nothing played for a minute, listening again")
+                silence()
+                listen()
+                return
+            }
             // The play loop still runs while the next sentence's audio is being made.
             if !store.isStreaming, isCaughtUp, queue.isEmpty, playing == nil, playLoop == nil { listen() }
         case .paused, .starting:
@@ -397,6 +406,7 @@ final class VoiceConversation: ObservableObject {
         if store.isStreaming { store.stop() }
         carried = ""
         phase = .thinking
+        lastProgress = Date()
         generation += 1
         consumed = 0
         queuedText = ""
@@ -436,6 +446,7 @@ final class VoiceConversation: ObservableObject {
     private func feed() {
         guard let store else { return }
         let text = replyText
+        if store.isStreaming { lastProgress = Date() }
         guard text.count > consumed else { return }
         let finished = !store.isStreaming
         // The reply was rewritten (e.g. a tool's notes replaced): don't read fragments of it.
@@ -480,7 +491,7 @@ final class VoiceConversation: ObservableObject {
                     _ = await previous?.value
                     for attempt in 1...2 {
                         let started = Date()
-                        if let data = try? await api.speech(text: styled, voice: voice) {
+                        if let data = await Self.withinTime(45, { try? await api.speech(text: styled, voice: voice) }) ?? nil {
                             Self.log.notice("cloned voice answered after \(Date().timeIntervalSince(started)) s")
                             return data
                         }
@@ -537,6 +548,8 @@ final class VoiceConversation: ObservableObject {
                 phase = .speaking
                 let once = Once()
                 playing = once
+                lastProgress = Date()
+                lastProgress = Date()
                 await withCheckedContinuation { continuation in
                     once.set(continuation)
                     for (index, buffer) in buffers.enumerated() {
@@ -581,6 +594,25 @@ final class VoiceConversation: ObservableObject {
 
     /// The device's voice for the text's language, rendered to buffers so it plays through the engine.
     static func deviceSpeech(_ text: String, to format: AVAudioFormat) async -> [AVAudioPCMBuffer] {
+        // Without a voice for the language, the synthesizer may never finish.
+        await withinTime(20) { await renderDeviceSpeech(text, to: format) } ?? []
+    }
+
+    /// The result of `work`, or nil when it takes longer than `seconds`.
+    nonisolated static func withinTime<T: Sendable>(_ seconds: Double, _ work: @escaping @Sendable () async -> T) async -> T? {
+        await withTaskGroup(of: T?.self) { group in
+            group.addTask { await work() }
+            group.addTask {
+                try? await Task.sleep(for: .seconds(seconds))
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
+        }
+    }
+
+    private static func renderDeviceSpeech(_ text: String, to format: AVAudioFormat) async -> [AVAudioPCMBuffer] {
         let synthesizer = AVSpeechSynthesizer()
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = SpeechSynthesizer.voice(for: text)
