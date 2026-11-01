@@ -406,10 +406,31 @@ final class VoiceConversation: ObservableObject {
                 submit(heard)
             }
         case .thinking, .speaking:
-            if usesWhisper, phase == .thinking, store.commandApproval == nil, playing == nil, queue.isEmpty, playLoop == nil {
+            if usesWhisper, phase == .speaking || playing != nil, store.commandApproval == nil {
+                // Talking over the reply: a voice clearly louder than the room (and than the reply's echo)
+                // for about half a second stops it and starts the next question.
+                let loud = peak > max(0.15, noiseFloor * 6)
+                peak = 0
+                bargeTicks = loud ? bargeTicks + 1 : 0
+                if bargeTicks >= 3 {
+                    Self.log.notice("user talked over the reply")
+                    bargeTicks = 0
+                    peak = 0
+                    silence()
+                    if store.isStreaming { store.stop() }
+                    phase = .listening
+                    speechStarted = Date().addingTimeInterval(-0.45)
+                    lastVoice = Date()
+                    voicedTime = 0.45
+                    heard = "…"
+                    recording.keepLast(seconds: 1.5)
+                    return
+                }
+            }
+            else if usesWhisper, phase == .thinking, store.commandApproval == nil, playing == nil, queue.isEmpty, playLoop == nil {
                 // Nothing is playing, so a voice now is the user's: stop the reply and take the new question,
                 // keeping what is being recorded.
-                let threshold = max(Self.voiceLevel, noiseFloor * 2.5)
+                let threshold = max(Self.voiceLevel, noiseFloor * 4)
                 let loud = peak > threshold
                 peak = 0
                 if loud {
@@ -476,7 +497,7 @@ final class VoiceConversation: ObservableObject {
         // The room's background level: drops at once to quieter moments, creeps up when it stays loud
         // (e.g. a headset's hiss), so steady noise never counts as someone speaking.
         noiseFloor = level < noiseFloor ? level : noiseFloor + 0.003
-        let threshold = max(Self.voiceLevel, noiseFloor * 2.5)
+        let threshold = max(Self.voiceLevel, noiseFloor * 4)
         if level > threshold {
             if speechStarted != nil { voicedTime += 0.15 }
             lastVoice = Date()
@@ -522,14 +543,18 @@ final class VoiceConversation: ObservableObject {
         }
     }
 
-    private static let voiceLevel: Float = 0.12
-    private var noiseFloor: Float = 0.05
+    /// The lowest level that counts as a voice; the room's noise sets the real threshold above it.
+    /// Headsets like AirPods suppress noise, so a voice there can be as quiet as 0.03.
+    private static let voiceLevel: Float = 0.02
+    private var noiseFloor: Float = 0.01
     /// The loudest moment since the last check; single readings miss speech between syllables.
     private var peak: Float = 0
     /// Seconds of the current turn that were louder than the room.
     private var voicedTime = 0.0
     /// The user tapped to send what they said.
     private var sendNow = false
+    /// Consecutive checks with a loud voice while the reply plays.
+    private var bargeTicks = 0
 
     nonisolated static func wav(_ samples: [Float], sampleRate: Double) -> Data {
         var data = Data()
