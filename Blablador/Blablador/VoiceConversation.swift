@@ -34,6 +34,7 @@ final class VoiceConversation: ObservableObject {
 
     /// Seconds a sentence may take with Drama 3 before the device speaks it.
     nonisolated static let voiceTimeout: Double = 6
+    nonisolated static let clonedVoiceTimeout: Double = 30
 
     /// Seconds of quiet after speech that end the user's turn.
     static let pause: TimeInterval = 1.2
@@ -342,6 +343,8 @@ final class VoiceConversation: ObservableObject {
     private func tick() {
         guard running, let store else { return }
         checkMicrophone()
+        let waiting = speaker == .blablador && playing == nil && (!queue.isEmpty || playLoop != nil)
+        if waiting != waitingForVoice { waitingForVoice = waiting }
         switch phase {
         case .listening:
             if !heard.trimmingCharacters(in: .whitespaces).isEmpty, Date().timeIntervalSince(lastHeard) > Self.pause {
@@ -426,6 +429,9 @@ final class VoiceConversation: ObservableObject {
         return SpeechSynthesizer.speakableText(ChatStore.splitThinking(message.content).answer)
     }
 
+    /// Sentences are queued but no audio has come back yet.
+    @Published private(set) var waitingForVoice = false
+
     private var isCaughtUp: Bool { replyText.count <= consumed }
 
     /// Queues the next finished sentences of the streaming reply.
@@ -466,13 +472,15 @@ final class VoiceConversation: ObservableObject {
             let library = VoiceLibrary.shared
             let voice = library.selected
             let styled = library.styled(text)
+            // A cloned voice is the point of choosing it: wait for it rather than switch voices.
+            let timeout = voice.isCloned ? Self.clonedVoiceTimeout : Self.voiceTimeout
             job = Task {
                 let started = Date()
                 // A voice that is too slow for a conversation gives way to the device's voice for this sentence.
                 let data = await withTaskGroup(of: Data?.self) { group in
                     group.addTask { try? await api.speech(text: styled, voice: voice) }
                     group.addTask {
-                        try? await Task.sleep(for: .seconds(Self.voiceTimeout))
+                        try? await Task.sleep(for: .seconds(timeout))
                         return nil
                     }
                     let first = await group.next() ?? nil
@@ -918,7 +926,14 @@ struct VoiceConversationView: View {
             } else {
                 conversation.heard.isEmpty ? "Listening…" : "Listening · tap to send now"
             }
-        case .thinking: store.commandApproval != nil ? "Blablador needs your OK" : replyStatus ?? "Thinking…"
+        case .thinking:
+            if store.commandApproval != nil {
+                "Blablador needs your OK"
+            } else if conversation.waitingForVoice {
+                "Preparing \(voices.selected.name)'s voice…"
+            } else {
+                replyStatus ?? "Thinking…"
+            }
         case .speaking: "Speaking · talk or tap to interrupt"
         case .paused: "Paused · tap to talk"
         }
