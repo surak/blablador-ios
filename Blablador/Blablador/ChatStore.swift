@@ -871,7 +871,15 @@ final class ChatStore: ObservableObject {
         if let hint = Self.mentionPrompt(mentions) { system += "\n\n" + hint }
         if voiceConversation {
             system += "\n\nThe user is talking with you by voice and your answer is read aloud while you write it. Answer like in a conversation: short, natural spoken sentences in the user's language, no Markdown, headings, lists, tables, emoji, code or links unless they ask; write numbers, units and abbreviations the way they are spoken. Ask a short question back when it helps. You can still use tools."
-            if let voiceLanguage { system += " Always answer in \(voiceLanguage), whatever language earlier messages were in." }
+            if let voiceLanguage {
+                system += " Always answer in \(voiceLanguage), whatever language earlier messages were in."
+                if voiceLanguage.contains("(") {
+                    system += " Use that country's variety: its vocabulary, spelling, grammar and everyday expressions, never another country's."
+                }
+                if voiceLanguage.contains("Portuguese (Brazil)") {
+                    system += " Write natural Brazilian Portuguese as people speak it in Brazil today: \"você\" (not \"tu\"), \"estou fazendo\" (not \"estou a fazer\"), \"ônibus\", \"celular\", \"trem\", \"café da manhã\"; no European Portuguese forms."
+                }
+            }
         }
         let goal = conversation.goal?.status == .active ? conversation.goal : nil
         if let goal { system += "\n\n" + GoalTools.systemPrompt(goal) }
