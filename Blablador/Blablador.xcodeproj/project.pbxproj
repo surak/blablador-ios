@@ -45,6 +45,7 @@
 		9B2A76A6E3E0A1B20000020B /* Recall.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B20000020A /* Recall.swift */; };
 		9B2A76A6E3E0A1B20000047B /* DocumentExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B20000047A /* DocumentExport.swift */; };
 		9B2A76A6E3E0A1B20000048B /* Goals.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B20000048A /* Goals.swift */; };
+		9B2A76A6E3E0A1B20000049B /* VoiceConversation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B20000049A /* VoiceConversation.swift */; };
 		9B2A76A6E3E0A1B20000046B /* GoogleDocs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B20000046A /* GoogleDocs.swift */; };
 		9B2A76A6E3E0A1B20000045B /* WhatsNew.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B20000045A /* WhatsNew.swift */; };
 		9B2A76A6E3E0A1B20000040B /* Permissions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B20000040A /* Permissions.swift */; };
@@ -124,6 +125,7 @@
 		9B2A76A6E3E0A1B20000020A /* Recall.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Recall.swift; sourceTree = "<group>"; };
 		9B2A76A6E3E0A1B20000047A /* DocumentExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentExport.swift; sourceTree = "<group>"; };
 		9B2A76A6E3E0A1B20000048A /* Goals.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Goals.swift; sourceTree = "<group>"; };
+		9B2A76A6E3E0A1B20000049A /* VoiceConversation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceConversation.swift; sourceTree = "<group>"; };
 		9B2A76A6E3E0A1B20000046A /* GoogleDocs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleDocs.swift; sourceTree = "<group>"; };
 		9B2A76A6E3E0A1B20000045A /* WhatsNew.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhatsNew.swift; sourceTree = "<group>"; };
 		9B2A76A6E3E0A1B20000040A /* Permissions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Permissions.swift; sourceTree = "<group>"; };
@@ -205,6 +207,7 @@
 				9B2A76A6E3E0A1B20000020A /* Recall.swift */,
 				9B2A76A6E3E0A1B20000047A /* DocumentExport.swift */,
 				9B2A76A6E3E0A1B20000048A /* Goals.swift */,
+				9B2A76A6E3E0A1B20000049A /* VoiceConversation.swift */,
 				9B2A76A6E3E0A1B20000046A /* GoogleDocs.swift */,
 				9B2A76A6E3E0A1B20000045A /* WhatsNew.swift */,
 				9B2A76A6E3E0A1B20000040A /* Permissions.swift */,
@@ -355,6 +358,7 @@
 				9B2A76A6E3E0A1B20000020B /* Recall.swift in Sources */,
 				9B2A76A6E3E0A1B20000047B /* DocumentExport.swift in Sources */,
 				9B2A76A6E3E0A1B20000048B /* Goals.swift in Sources */,
+				9B2A76A6E3E0A1B20000049B /* VoiceConversation.swift in Sources */,
 				9B2A76A6E3E0A1B20000046B /* GoogleDocs.swift in Sources */,
 				9B2A76A6E3E0A1B20000045B /* WhatsNew.swift in Sources */,
 				9B2A76A6E3E0A1B20000040B /* Permissions.swift in Sources */,

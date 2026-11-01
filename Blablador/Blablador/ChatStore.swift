@@ -159,6 +159,11 @@ final class ChatStore: ObservableObject {
         BlabladorAPI.imageModels.first { $0.id == imageModel }?.name ?? imageModel
     }
 
+    /// A voice conversation is open: replies are short and spoken.
+    @Published var voiceConversation = false
+    /// Shows the voice conversation screen.
+    @Published var talking = false
+
     /// Tool rounds per reply; a reply with a plan may take more.
     private static let maxToolRounds = 8
     private static let maxPlanRounds = 25
@@ -775,7 +780,7 @@ final class ChatStore: ObservableObject {
         let usePython = pythonEnabled || mentioned.contains("python")
         let useDevice = DeviceTools.enabled || mentioned.contains("device")
         let useImages = imageToolsEnabled || mentioned.contains("image")
-        let useSpeech = VoiceLibrary.shared.toolsEnabled || mentioned.contains("speech")
+        let useSpeech = (VoiceLibrary.shared.toolsEnabled || mentioned.contains("speech")) && !voiceConversation
 
         var system = systemPrompt
         system += "\n\nToday is \(Date().formatted(date: .complete, time: .omitted)), local time \(Date().formatted(date: .omitted, time: .shortened))."
@@ -804,6 +809,9 @@ final class ChatStore: ObservableObject {
         let folder = conversation.workspace.map { URL(fileURLWithPath: $0, isDirectory: true) }
         if let folder { system += "\n\n" + AgentTools.systemPrompt(workspace: folder) }
         if let hint = Self.mentionPrompt(mentions) { system += "\n\n" + hint }
+        if voiceConversation {
+            system += "\n\nThe user is talking with you by voice and your answer is read aloud while you write it. Answer like in a conversation: short, natural spoken sentences in the user's language, no Markdown, headings, lists, tables, emoji, code or links unless they ask; write numbers, units and abbreviations the way they are spoken. Ask a short question back when it helps. You can still use tools."
+        }
         let goal = conversation.goal?.status == .active ? conversation.goal : nil
         if let goal { system += "\n\n" + GoalTools.systemPrompt(goal) }
         if let task {

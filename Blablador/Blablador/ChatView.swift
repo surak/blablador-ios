@@ -152,6 +152,11 @@ struct ChatView: View {
         chatContent
             .sheet(isPresented: $showDecision) { DecisionView().environmentObject(store) }
             .sheet(isPresented: $showCloneVoice) { AddVoiceView().environmentObject(store) }
+#if os(iOS)
+            .fullScreenCover(isPresented: $store.talking) { VoiceConversationView().environmentObject(store) }
+#else
+            .sheet(isPresented: $store.talking) { VoiceConversationView().environmentObject(store) }
+#endif
             .sheet(isPresented: $showWhatsNew, onDismiss: WhatsNew.markSeen) {
                 if let whatsNew {
                     WhatsNewView(version: whatsNew.version, items: whatsNew.items, onTry: tryWhatsNew) { showWhatsNew = false }
@@ -200,6 +205,8 @@ struct ChatView: View {
                         NotificationCenter.default.post(name: WhatsNew.runPanelAction, object: action)
                     case .decision:
                         showDecision = true
+                    case .talk:
+                        store.talking = true
                     case .cloneVoice:
                         if VoiceLibrary.shared.cloned.isEmpty {
                             showCloneVoice = true
@@ -552,7 +559,7 @@ struct Suggestion: Hashable {
         case fill(String)
         /// Open something from the + panel (files, scan text…), with optional text in the composer.
         case panel(ToolsPanel.Action, fill: String?)
-        case decision, cloneVoice
+        case decision, cloneVoice, talk
         case video(String), image(String)
     }
 
@@ -562,7 +569,12 @@ struct Suggestion: Hashable {
     var action = Action.send
 
     /// Always among the examples: features people otherwise don't find.
-    var isFeatured: Bool { if case .cloneVoice = action { true } else { text.contains("Google Doc") } }
+    var isFeatured: Bool {
+        switch action {
+        case .cloneVoice, .talk: true
+        default: text.contains("Google Doc")
+        }
+    }
 
     /// `count` examples at random, with the featured ones.
     @MainActor
@@ -577,6 +589,7 @@ struct Suggestion: Hashable {
     static var all: [Suggestion] {
         var all: [Suggestion] = [
             Suggestion(icon: "doc.text", text: "Summarise a Google Doc: paste its link", action: .fill("Summarise this Google Doc and list what needs doing: ")),
+            Suggestion(icon: "waveform", text: "Talk with Blablador: just speak and listen", action: .talk),
             Suggestion(icon: "person.wave.2", text: "Speak in my own voice: clone it in a few seconds", action: .cloneVoice),
             Suggestion(icon: "flag", text: "/goal Compare three electric cars under €40,000 and make a table", mentions: tool("web")),
             Suggestion(icon: "chart.xyaxis.line", text: "Plot the world population since 1950 and fit a trend line", mentions: tool("python")),
@@ -857,6 +870,18 @@ private struct ComposerView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(speechMode ? "Speak" : imageMode ? "Create image" : videoMode ? "Create video" : "Send")
+                    .transition(.scale.combined(with: .opacity))
+                } else if !speech.isRecording {
+                    Button { store.talking = true } label: {
+                        Image(systemName: "waveform")
+                            .scaledFont(.body, weight: .semibold)
+                            .frame(width: 40, height: 40)
+                            .foregroundStyle(.white)
+                            .background(Theme.gradient, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Talk with Blablador")
+                    .help("Talk with Blablador: speak and hear the answers")
                     .transition(.scale.combined(with: .opacity))
                 }
             }
@@ -1161,6 +1186,7 @@ private struct ComposerView: View {
         case .decide: showDecision = true
         case .newKnowledge: showKnowledge = true
         case .cloneVoice: showCloneVoice = true
+        case .talk: store.talking = true
         case .workspace:
 #if os(macOS)
             if let url = chooseWorkspace() { store.workspace = url }

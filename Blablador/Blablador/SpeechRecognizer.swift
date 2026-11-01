@@ -157,7 +157,7 @@ final class SpeechSynthesizer: NSObject, ObservableObject, AVSpeechSynthesizerDe
 
     /// Best natural voice for the reply's language: premium, then enhanced, then default quality,
     /// preferring the device's region and skipping novelty and Eloquence voices.
-    private static func voice(for text: String) -> AVSpeechSynthesisVoice? {
+    static func voice(for text: String) -> AVSpeechSynthesisVoice? {
         let recognizer = NLLanguageRecognizer()
         recognizer.processString(text)
         let language = recognizer.dominantLanguage?.rawValue
@@ -181,7 +181,7 @@ final class SpeechSynthesizer: NSObject, ObservableObject, AVSpeechSynthesizerDe
     }
 
     /// Strips markdown symbols and citation markers so they aren't read out.
-    private static func speakableText(_ markdown: String) -> String {
+    static func speakableText(_ markdown: String) -> String {
         var text = markdown
         text = text.replacingOccurrences(of: #"```[\s\S]*?```"#, with: " ", options: .regularExpression)
         text = text.replacingOccurrences(of: #"\[(\d+)\]"#, with: "", options: .regularExpression)

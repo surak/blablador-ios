@@ -1,0 +1,33 @@
+import AVFoundation
+import XCTest
+@testable import BlabladorCore
+
+@MainActor
+final class VoiceConversationTests: XCTestCase {
+    private let format = AVAudioFormat(standardFormatWithSampleRate: 24_000, channels: 1)!
+
+    func testDeviceVoiceRendersToEngineFormat() async throws {
+        let buffers = await VoiceConversation.deviceSpeech("Hello, this is Blablador.", to: format)
+        let frames = buffers.reduce(0) { $0 + Int($1.frameLength) }
+        XCTAssertEqual(buffers.first?.format.sampleRate, 24_000)
+        // About a second or more of speech.
+        XCTAssertGreaterThan(frames, 12_000)
+    }
+
+    func testEchoWordsAreRecognised() {
+        XCTAssertEqual(VoiceConversation.words("It's 25 °C, sunny!"), ["it", "s", "25", "c", "sunny"])
+        XCTAssertEqual(VoiceConversation.joined("", "hi"), "hi")
+    }
+
+    func testDramaVoiceDecodes() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["BLABLADOR_NETWORK_TESTS"] == "1", let token = environment["HELMHOLTZ_BLABLADOR_TOKEN"] else { throw XCTSkip("network") }
+        let started = Date()
+        let data = try await BlabladorAPI(apiKey: token).speech(text: "Hello, nice to talk with you.", voice: VoiceLibrary.builtIn[0])
+        print("DRAMA SECONDS:", Date().timeIntervalSince(started))
+        let buffers = try VoiceConversation.decode(data, to: format)
+        let frames = buffers.reduce(0) { $0 + Int($1.frameLength) }
+        print("DRAMA AUDIO SECONDS:", Double(frames) / 24_000)
+        XCTAssertGreaterThan(frames, 12_000)
+    }
+}

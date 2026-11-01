@@ -120,7 +120,7 @@ struct MentionChips: View {
 /// What the + button opens: attach, the kind of reply, tools, knowledge, connected services and more, each with
 /// its state visible instead of hidden in a menu.
 struct ToolsPanel: View {
-    enum Action { case camera, photos, files, paste, scanText, decide, workspace, newKnowledge, cloneVoice }
+    enum Action { case camera, photos, files, paste, scanText, decide, workspace, newKnowledge, cloneVoice, talk }
 
     @Binding var imageMode: Bool
     @Binding var videoMode: Bool
@@ -209,6 +209,22 @@ struct ToolsPanelContent: View {
                             }
                             .buttonStyle(.plain)
                             .padding(6)
+                            Button { onAction(.talk) } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "waveform").scaledFont(.title3).frame(width: 36).foregroundStyle(Theme.gradient)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Talk with Blablador").scaledFont(.headline)
+                                        Text("Speak and hear the answer, hands-free").scaledFont(.caption).foregroundStyle(.secondary)
+                                    }
+                                    Spacer(minLength: 8)
+                                    Image(systemName: "chevron.right").foregroundStyle(.secondary)
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 10)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            Divider().padding(.leading, 44)
                             row("Speaks with", "waveform", voices.selected.isCloned ? "Your cloned voice" : "Drama 3 voice") {
                                 Picker("Voice", selection: $voices.selectedID) {
                                     ForEach(voices.voices) { Text($0.name).tag($0.id) }
