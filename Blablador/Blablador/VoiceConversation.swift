@@ -34,7 +34,6 @@ final class VoiceConversation: ObservableObject {
 
     /// Seconds a sentence may take with Drama 3 before the device speaks it.
     nonisolated static let voiceTimeout: Double = 6
-    nonisolated static let clonedVoiceTimeout: Double = 30
 
     /// Seconds of quiet after speech that end the user's turn.
     static let pause: TimeInterval = 1.2
@@ -88,6 +87,8 @@ final class VoiceConversation: ObservableObject {
     private var spokenWords: Set<String> = []
     private var queue: [Task<[AVAudioPCMBuffer], Never>] = []
     private var playLoop: Task<Void, Never>?
+    /// The last cloned-voice request; the next one waits for it.
+    private var clonedChain: Task<Data?, Never>?
     private var playing: Once?
     private var generation = 0
     private var running = false
@@ -455,7 +456,8 @@ final class VoiceConversation: ObservableObject {
         }
         let chunk = String(rest[..<end])
         // Drama 3 takes a few seconds per request: speak the first sentence soon, then bigger pieces.
-        let minimum = speaker == .device ? 1 : (queue.isEmpty && playing == nil ? 30 : 90)
+        let cloned = speaker == .blablador && VoiceLibrary.shared.selected.isCloned
+        let minimum = speaker == .device ? 1 : (queue.isEmpty && playing == nil ? 30 : cloned ? 220 : 90)
         guard finished || chunk.count >= minimum else { return }
         consumed += chunk.count
         queuedText += chunk
@@ -472,26 +474,49 @@ final class VoiceConversation: ObservableObject {
             let library = VoiceLibrary.shared
             let voice = library.selected
             let styled = library.styled(text)
-            // A cloned voice is the point of choosing it: wait for it rather than switch voices.
-            let timeout = voice.isCloned ? Self.clonedVoiceTimeout : Self.voiceTimeout
-            job = Task {
-                let started = Date()
-                // A voice that is too slow for a conversation gives way to the device's voice for this sentence.
-                let data = await withTaskGroup(of: Data?.self) { group in
-                    group.addTask { try? await api.speech(text: styled, voice: voice) }
-                    group.addTask {
-                        try? await Task.sleep(for: .seconds(timeout))
-                        return nil
+            let timeout = Self.voiceTimeout
+            if voice.isCloned {
+                // Cloned voices: one request at a time (the server can't make several at once), a retry,
+                // and never another voice instead.
+                let previous = clonedChain
+                let chain = Task<Data?, Never> {
+                    _ = await previous?.value
+                    for attempt in 1...2 {
+                        let started = Date()
+                        if let data = try? await api.speech(text: styled, voice: voice) {
+                            Self.log.notice("cloned voice answered after \(Date().timeIntervalSince(started)) s")
+                            return data
+                        }
+                        Self.log.notice("cloned voice failed (attempt \(attempt))")
+                        if Task.isCancelled { return nil }
                     }
-                    let first = await group.next() ?? nil
-                    group.cancelAll()
-                    return first
+                    return nil
                 }
-                Self.log.notice("Drama 3 \(data == nil ? "gave up" : "answered", privacy: .public) after \(Date().timeIntervalSince(started)) s")
-                if let data, let buffers = try? Self.decode(data, to: format), !buffers.isEmpty {
+                clonedChain = chain
+                job = Task {
+                    guard let data = await chain.value, let buffers = try? Self.decode(data, to: format) else { return [] }
                     return buffers
                 }
-                return await Self.deviceSpeech(text, to: format)
+            } else {
+                job = Task {
+                    let started = Date()
+                    // A built-in voice that is too slow for a conversation gives way to the device's voice for this sentence.
+                    let data = await withTaskGroup(of: Data?.self) { group in
+                        group.addTask { try? await api.speech(text: styled, voice: voice) }
+                        group.addTask {
+                            try? await Task.sleep(for: .seconds(timeout))
+                            return nil
+                        }
+                        let first = await group.next() ?? nil
+                        group.cancelAll()
+                        return first
+                    }
+                    Self.log.notice("Drama 3 \(data == nil ? "gave up" : "answered", privacy: .public) after \(Date().timeIntervalSince(started)) s")
+                    if let data, let buffers = try? Self.decode(data, to: format), !buffers.isEmpty {
+                        return buffers
+                    }
+                    return await Self.deviceSpeech(text, to: format)
+                }
             }
         } else {
             job = Task { await Self.deviceSpeech(text, to: format) }
@@ -535,6 +560,8 @@ final class VoiceConversation: ObservableObject {
     private func silence() {
         generation += 1
         queue.forEach { $0.cancel() }
+        clonedChain?.cancel()
+        clonedChain = nil
         queue = []
         playLoop = nil
         player.stop()
