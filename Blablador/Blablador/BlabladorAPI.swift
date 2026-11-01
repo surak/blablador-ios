@@ -223,14 +223,18 @@ struct BlabladorAPI {
     }
 
     /// Transcribes an audio file with Whisper; used for the transcript voice cloning needs.
-    func transcribe(audio: Data, fileName: String = "sample.wav") async throws -> String {
+    /// `language` is an ISO 639-1 code such as "pt"; without it Whisper guesses.
+    func transcribe(audio: Data, fileName: String = "sample.wav", language: String? = nil, timeout: TimeInterval = 300) async throws -> String {
         struct Response: Decodable { let text: String }
         let boundary = "Boundary-\(UUID().uuidString)"
         var request = try request(path: "audio/transcriptions")
         request.httpMethod = "POST"
-        request.timeoutInterval = 300
+        request.timeoutInterval = timeout
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         var body = Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\n\(Self.transcriptionModel)\r\n".utf8)
+        if let language, !language.isEmpty {
+            body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"language\"\r\n\r\n\(language)\r\n".utf8))
+        }
         body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"\(fileName)\"\r\nContent-Type: audio/wav\r\n\r\n".utf8))
         body.append(audio)
         body.append(Data("\r\n--\(boundary)--\r\n".utf8))

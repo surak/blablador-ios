@@ -41,4 +41,15 @@ final class VoiceConversationTests: XCTestCase {
         print("WHISPER:", text)
         XCTAssertTrue(text.lowercased().contains("lisbon"))
     }
+
+    func testWhisperKeepsTheChosenLanguage() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["BLABLADOR_NETWORK_TESTS"] == "1", let token = environment["HELMHOLTZ_BLABLADOR_TOKEN"] else { throw XCTSkip("network") }
+        let speech = await VoiceConversation.deviceSpeech("Olá, como está o tempo em Lisboa hoje? Vai chover à tarde?", to: format)
+        let samples = speech.flatMap { buffer in Array(UnsafeBufferPointer(start: buffer.floatChannelData![0], count: Int(buffer.frameLength))) }
+        let wav = VoiceConversation.wav(samples, sampleRate: 24_000)
+        let api = BlabladorAPI(apiKey: token)
+        print("WHISPER pt:", try await api.transcribe(audio: wav, language: "pt"))
+        print("WHISPER auto:", try await api.transcribe(audio: wav))
+    }
 }

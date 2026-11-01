@@ -101,6 +101,8 @@ final class VoiceConversation: ObservableObject {
     private var generation = 0
     private var running = false
     private var buffersSeen = 0
+    /// Temporary: what the microphone and recognition are doing, shown under the buttons.
+    @Published private(set) var diagnostics = ""
     private var askedApproval: UUID?
     private var approvalHeard = false
 
@@ -367,6 +369,12 @@ final class VoiceConversation: ObservableObject {
     private func tick() {
         guard running, let store else { return }
         checkMicrophone()
+#if os(iOS)
+        let route = AVAudioSession.sharedInstance().currentRoute.inputs.first?.portName ?? "no input"
+#else
+        let route = ""
+#endif
+        diagnostics = "\(phase) · mic \(String(format: "%.2f", level)) (noise \(String(format: "%.2f", noiseFloor))) · \(buffersSeen) blocks · engine \(engine.isRunning ? "on" : "OFF") · \(usesWhisper ? "whisper" : "apple") · \(route)"
         let waiting = speaker == .blablador && playing == nil && (!queue.isEmpty || playLoop != nil)
         if waiting != waitingForVoice { waitingForVoice = waiting }
         switch phase {
@@ -425,7 +433,10 @@ final class VoiceConversation: ObservableObject {
     /// Speech detected by loudness; after a pause the recording goes to Whisper.
     private func listenForWhisper() {
         guard !transcribing else { return }
-        if level > Self.voiceLevel {
+        // The room's background level, followed slowly while nobody speaks.
+        if speechStarted == nil { noiseFloor = noiseFloor * 0.95 + level * 0.05 }
+        let threshold = max(Self.voiceLevel, noiseFloor * 2.5)
+        if level > threshold {
             lastVoice = Date()
             if speechStarted == nil {
                 speechStarted = Date()
@@ -442,8 +453,9 @@ final class VoiceConversation: ObservableObject {
         transcribing = true
         heard = "Transcribing…"
         let wav = Self.wav(samples, sampleRate: rate)
+        let code = Locale(identifier: language).language.languageCode?.identifier
         Task {
-            let text = (try? await api.transcribe(audio: wav)) ?? ""
+            let text = (try? await api.transcribe(audio: wav, language: code, timeout: 30)) ?? ""
             transcribing = false
             Self.log.notice("whisper heard \(text.count) characters")
             guard running, phase == .listening else { return }
@@ -456,7 +468,8 @@ final class VoiceConversation: ObservableObject {
         }
     }
 
-    private static let voiceLevel: Float = 0.1
+    private static let voiceLevel: Float = 0.12
+    private var noiseFloor: Float = 0.05
 
     nonisolated static func wav(_ samples: [Float], sampleRate: Double) -> Data {
         var data = Data()
@@ -1015,6 +1028,11 @@ struct VoiceConversationView: View {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
+            Text(conversation.diagnostics)
+                .scaledFont(.caption2, design: .monospaced)
+                .foregroundStyle(.white.opacity(0.5))
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
             HStack(spacing: 40) {
                 Button { conversation.togglePause() } label: {
                     Image(systemName: conversation.phase == .paused ? "mic.slash.fill" : "mic.fill")
