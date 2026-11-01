@@ -15,6 +15,8 @@ final class RenderPreview: XCTestCase {
                 try? png.write(to: URL(fileURLWithPath: dir).appendingPathComponent(name + ".png"))
             }
         }
+        save(VoiceConversationView().environmentObject(ChatStore()), "talk-short", size: CGSize(width: 460, height: 460))
+        save(VoiceConversationView().environmentObject(ChatStore()), "talk-tall", size: CGSize(width: 460, height: 640))
         let release = WhatsNew.releases[0]
         save(VStack(alignment: .leading, spacing: 22) {
             Text("What's new in Blablador \(release.version)").font(.system(size: 28, weight: .semibold)).foregroundStyle(Theme.gradient)

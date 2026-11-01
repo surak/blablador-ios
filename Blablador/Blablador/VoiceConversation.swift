@@ -1050,7 +1050,14 @@ struct VoiceConversationView: View {
             }
 
             Spacer(minLength: 0)
-            orb
+            // The circle gives way when the window is short, so the buttons stay inside it.
+            GeometryReader { space in
+                let scale = min(1, max(0.35, space.size.height / 260))
+                orb(scale: store.commandApproval == nil ? scale : min(scale, 0.6))
+                    .frame(width: space.size.width, height: space.size.height)
+            }
+            .frame(minHeight: 90, maxHeight: 260)
+            .layoutPriority(-1)
             VStack(spacing: 10) {
                 Text(status)
                     .scaledFont(.headline)
@@ -1060,7 +1067,7 @@ struct VoiceConversationView: View {
                     .scaledFont(.title3)
                     .multilineTextAlignment(.center)
                     .lineLimit(6)
-                    .frame(maxWidth: 520, minHeight: 60, alignment: .top)
+                    .frame(maxWidth: 520, alignment: .top)
                     .animation(.default, value: caption)
             }
             Spacer(minLength: 0)
@@ -1077,11 +1084,13 @@ struct VoiceConversationView: View {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
+#if os(iOS)
             Text(conversation.diagnostics)
                 .scaledFont(.caption2, design: .monospaced)
                 .foregroundStyle(.white.opacity(0.5))
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
+#endif
             HStack(spacing: 40) {
                 Button { conversation.togglePause() } label: {
                     Image(systemName: conversation.phase == .paused ? "mic.slash.fill" : "mic.fill")
@@ -1117,11 +1126,11 @@ struct VoiceConversationView: View {
             Text(conversation.errorMessage ?? "")
         }
 #if os(macOS)
-        .frame(width: 460, height: 620)
+        .frame(minWidth: 420, idealWidth: 460, minHeight: 440, idealHeight: 620)
 #endif
     }
 
-    private var orb: some View {
+    private func orb(scale: CGFloat) -> some View {
         TimelineView(.animation) { timeline in
             let time = timeline.date.timeIntervalSinceReferenceDate
             let pulse: CGFloat = switch conversation.phase {
@@ -1151,9 +1160,9 @@ struct VoiceConversationView: View {
             .animation(.easeOut(duration: 0.12), value: conversation.level)
         }
         .frame(width: 260, height: 260)
-        .scaleEffect(store.commandApproval == nil ? 1 : 0.6)
-        .frame(height: store.commandApproval == nil ? 260 : 160)
-        .animation(.spring(duration: 0.4), value: store.commandApproval == nil)
+        .scaleEffect(scale)
+        .frame(width: 260 * scale, height: 260 * scale)
+        .animation(.spring(duration: 0.4), value: scale)
         .contentShape(Circle())
         .onTapGesture { conversation.tap() }
         .accessibilityAddTraits(.isButton)
