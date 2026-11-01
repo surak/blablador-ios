@@ -462,9 +462,7 @@ struct ImageViewer: View {
 
     var body: some View {
         NavigationStack {
-            StoredImage(name: name, maxPixelSize: nil)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color.black)
+            ZoomableImage(name: name)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Done") { dismiss() }
@@ -497,6 +495,83 @@ struct ImageViewer: View {
 #if os(macOS)
         .frame(minWidth: 600, minHeight: 600)
 #endif
+    }
+}
+
+/// A picture to pinch, double-tap (or double-click) and drag around, e.g. a plot with small labels.
+private struct ZoomableImage: View {
+    let name: String
+    @State private var scale: CGFloat = 1
+    @State private var lastScale: CGFloat = 1
+    @State private var offset: CGSize = .zero
+    @State private var lastOffset: CGSize = .zero
+
+    private static let maxScale: CGFloat = 8
+
+    var body: some View {
+        GeometryReader { geometry in
+            StoredImage(name: name, maxPixelSize: nil)
+                .frame(width: geometry.size.width, height: geometry.size.height)
+                .scaleEffect(scale)
+                .offset(offset)
+                .frame(width: geometry.size.width, height: geometry.size.height)
+                .contentShape(Rectangle())
+                .clipped()
+                .gesture(
+                    MagnifyGesture()
+                        .onChanged { value in scale = min(max(lastScale * value.magnification, 1), Self.maxScale) }
+                        .onEnded { _ in
+                            lastScale = scale
+                            if scale == 1 { reset() }
+                        }
+                        .simultaneously(with: DragGesture()
+                            .onChanged { value in
+                                guard scale > 1 else { return }
+                                offset = CGSize(width: lastOffset.width + value.translation.width, height: lastOffset.height + value.translation.height)
+                            }
+                            .onEnded { _ in lastOffset = offset })
+                )
+                .onTapGesture(count: 2) { location in
+                    withAnimation(.spring(duration: 0.3)) {
+                        if scale > 1 {
+                            reset()
+                        } else {
+                            // Zoom in on the point that was tapped.
+                            scale = 3
+                            lastScale = 3
+                            offset = CGSize(width: (geometry.size.width / 2 - location.x) * 2, height: (geometry.size.height / 2 - location.y) * 2)
+                            lastOffset = offset
+                        }
+                    }
+                }
+        }
+        .background(Color.black)
+        .toolbar {
+            ToolbarItemGroup(placement: .secondaryAction) {
+                Button { zoom(by: 1.5) } label: { Label("Zoom In", systemImage: "plus.magnifyingglass") }
+                    .keyboardShortcut("+", modifiers: .command)
+                Button { zoom(by: 1 / 1.5) } label: { Label("Zoom Out", systemImage: "minus.magnifyingglass") }
+                    .keyboardShortcut("-", modifiers: .command)
+                Button { withAnimation { reset() } } label: { Label("Fit to Window", systemImage: "arrow.up.left.and.down.right.magnifyingglass") }
+                    .keyboardShortcut("0", modifiers: .command)
+                    .disabled(scale == 1)
+            }
+        }
+    }
+
+    private func zoom(by factor: CGFloat) {
+        withAnimation(.spring(duration: 0.3)) {
+            scale = min(max(scale * factor, 1), Self.maxScale)
+            lastScale = scale
+            if scale == 1 { reset() }
+        }
+    }
+
+    private func reset() {
+        scale = 1
+        lastScale = 1
+        offset = .zero
+        lastOffset = .zero
     }
 }
 

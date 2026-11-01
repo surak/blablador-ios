@@ -21,6 +21,12 @@ import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -230,8 +236,52 @@ private fun ChatImage(file: File, size: Int, square: Boolean, onEdit: () -> Unit
         }
     }
     if (viewing) Dialog(onDismissRequest = { viewing = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Box(Modifier.fillMaxWidth().background(androidx.compose.ui.graphics.Color.Black).clickable { viewing = false }) {
-            AsyncImage(model = file, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxWidth())
+        ZoomableImage(file) { viewing = false }
+    }
+}
+
+/** Full-screen picture: pinch or double-tap to zoom, drag to move, tap to close. */
+@Composable
+private fun ZoomableImage(file: File, onClose: () -> Unit) {
+    var scale by remember { mutableStateOf(1f) }
+    var offset by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+    var size by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+    fun clamp(value: androidx.compose.ui.geometry.Offset, zoom: Float): androidx.compose.ui.geometry.Offset {
+        val maxX = size.width * (zoom - 1) / 2
+        val maxY = size.height * (zoom - 1) / 2
+        return androidx.compose.ui.geometry.Offset(value.x.coerceIn(-maxX, maxX), value.y.coerceIn(-maxY, maxY))
+    }
+    Box(
+        Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black)
+            .onSizeChanged { size = it }
+            .pointerInput(Unit) {
+                detectTransformGestures { _, pan, zoom, _ ->
+                    val next = (scale * zoom).coerceIn(1f, 8f)
+                    offset = if (next == 1f) androidx.compose.ui.geometry.Offset.Zero else clamp(offset + pan, next)
+                    scale = next
+                }
+            }
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = { if (scale == 1f) onClose() },
+                    onDoubleTap = { point ->
+                        if (scale > 1f) { scale = 1f; offset = androidx.compose.ui.geometry.Offset.Zero }
+                        else {
+                            scale = 3f
+                            val center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f)
+                            offset = clamp((center - point) * 2f, 3f)
+                        }
+                    },
+                )
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        AsyncImage(
+            model = file, contentDescription = null, contentScale = ContentScale.Fit,
+            modifier = Modifier.fillMaxSize().graphicsLayer { scaleX = scale; scaleY = scale; translationX = offset.x; translationY = offset.y },
+        )
+        IconButton(onClick = onClose, modifier = Modifier.align(Alignment.TopEnd).padding(12.dp)) {
+            Icon(Icons.Outlined.Close, "Close", tint = androidx.compose.ui.graphics.Color.White)
         }
     }
 }
