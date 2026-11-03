@@ -438,10 +438,16 @@ final class VoiceConversation: ObservableObject {
             if usesWhisper, phase == .speaking || playing != nil, store.commandApproval == nil {
                 // Talking over the reply: a voice clearly louder than the room (and than the reply's echo)
                 // for about half a second stops it and starts the next question.
-                let loud = peak > max(0.15, noiseFloor * 6)
+                // Clearly louder than the reply's own echo; a level not counted as a voice is learnt as echo.
+                let loud = peak > max(0.15, noiseFloor * 6, echoLevel * 2.5)
+                if !loud {
+                    echoLevels.append(peak)
+                    if echoLevels.count > 40 { echoLevels.removeFirst(echoLevels.count - 40) }
+                    echoLevel = echoLevels.sorted()[echoLevels.count / 2]
+                }
                 peak = 0
                 bargeTicks = loud ? bargeTicks + 1 : 0
-                if bargeTicks >= 3 {
+                if bargeTicks >= 5 {
                     Self.log.notice("user talked over the reply")
                     bargeTicks = 0
                     peak = 0
@@ -504,7 +510,8 @@ final class VoiceConversation: ObservableObject {
             let words = Self.words(transcript)
             let fresh = words.filter { !spokenWords.contains($0) }
             let stopWord = words.last.map { Self.stopWords.contains($0) && !spokenWords.contains($0) } ?? false
-            if fresh.count >= 2 || stopWord {
+            // Over speakers the recogniser mishears the reply's echo, so it takes three new words.
+            if (fresh.count >= 3 && !isEcho(transcript)) || stopWord {
                 interrupt(keeping: stopWord && fresh.count < 2 ? "" : transcript)
                 return
             }
@@ -592,6 +599,9 @@ final class VoiceConversation: ObservableObject {
         noiseFloor = sorted[sorted.count / 5]
     }
     private var noiseFloor: Float = 0.01
+    /// How loud the reply itself sounds in the microphone while it plays (the median of the last seconds).
+    private var echoLevel: Float = 0
+    private var echoLevels: [Float] = []
     private var recentLevels: [Float] = []
     /// The loudest moment since the last check; single readings miss speech between syllables.
     private var peak: Float = 0
