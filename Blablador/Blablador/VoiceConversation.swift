@@ -93,6 +93,8 @@ final class VoiceConversation: ObservableObject {
     /// The reply's text up to `consumed`, to notice when it's rewritten.
     private var queuedText = ""
     private var spokenWords: Set<String> = []
+    /// Until then the microphone still hears the end of the reply from the speakers (latency and the room).
+    private var echoUntil = Date.distantPast
     private var queue: [Task<[AVAudioPCMBuffer], Never>] = []
     /// The text of each queued part, so it can be spoken again with another voice.
     private var queueTexts: [String] = []
@@ -340,7 +342,17 @@ final class VoiceConversation: ObservableObject {
         Self.log.notice("listening")
         carried = ""
         phase = .listening
+        // Right after a reply, what the microphone hears is mostly its echo.
+        if !spokenWords.isEmpty { echoUntil = Date().addingTimeInterval(1.2) }
         newRequest()
+    }
+
+    /// Mostly the reply's own words: its echo from the speakers, not the user.
+    func isEcho(_ text: String) -> Bool {
+        let words = Self.words(text)
+        guard !words.isEmpty, !spokenWords.isEmpty else { return false }
+        let own = words.filter(spokenWords.contains).count
+        return Double(own) / Double(words.count) >= 0.6
     }
 
     /// A fresh recognition request; what was heard before is dropped.
@@ -374,6 +386,12 @@ final class VoiceConversation: ObservableObject {
             if let text { Self.log.notice("heard: \(text, privacy: .private)") }
             Task { @MainActor in
                 guard let self, self.running, self.requestID == id else { return }
+                if self.phase == .listening, Date() < self.echoUntil {
+                    // The reply's echo: start over once it has died down.
+                    if ended || text != nil { self.transcript = ""; self.heard = self.carried }
+                    if ended { try? await Task.sleep(for: .milliseconds(300)); if self.requestID == id { self.newRequest() } }
+                    return
+                }
                 if let text, text != self.transcript {
                     self.transcript = text
                     self.lastHeard = Date()
@@ -406,6 +424,11 @@ final class VoiceConversation: ObservableObject {
         switch phase {
         case .listening where usesWhisper:
             listenForWhisper()
+
+        case .listening where Date() < echoUntil:
+            peak = 0
+            if usesWhisper { recording.reset(); speechStarted = nil }
+            else if !transcript.isEmpty { newRequest() }
 
         case .listening:
             if !heard.trimmingCharacters(in: .whitespaces).isEmpty, Date().timeIntervalSince(lastHeard) > Self.pause {
@@ -607,6 +630,12 @@ final class VoiceConversation: ObservableObject {
     private func submit(_ text: String) {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let store, !text.isEmpty else { return }
+        if isEcho(text) {
+            Self.log.notice("ignored the reply's own echo")
+            heard = ""
+            newRequest()
+            return
+        }
         if store.isStreaming { store.stop() }
         carried = ""
         phase = .thinking
