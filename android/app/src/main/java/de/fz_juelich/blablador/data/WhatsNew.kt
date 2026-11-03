@@ -15,6 +15,17 @@ data class WhatsNewItem(val icon: String, val title: String, val text: String, v
 
 object WhatsNew {
     val releases: List<Pair<String, List<WhatsNewItem>>> = listOf(
+        "3.5" to listOf(
+            WhatsNewItem("waveform", "Talk with Blablador",
+                "Tap the waveform button and just talk. Blablador answers out loud in a Drama 3 voice, your cloned voice or the device's voice, and listens again."),
+            WhatsNewItem("flag", "Goals",
+                "Type /goal and what you want, and Blablador keeps working until it's done or needs you. It checks its results before showing them.",
+                WhatsNewItem.TryIt.Prompt("/goal ", null)),
+            WhatsNewItem("number", "# for knowledge",
+                "Type # to answer from a knowledge base; @ is for tools, skills and connected services."),
+            WhatsNewItem("zoom", "Zoom into plots",
+                "Pinch or double-tap pictures and Python plots in answers to zoom in."),
+        ),
         "3.4" to listOf(
             WhatsNewItem("doc", "Reads Google Docs",
                 "Paste a link to a Google Doc, Sheet or Slides shared by link and ask about it. No Google account needed.",

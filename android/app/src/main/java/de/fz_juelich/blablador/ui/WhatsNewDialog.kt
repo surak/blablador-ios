@@ -19,6 +19,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.outlined.AlternateEmail
+import androidx.compose.material.icons.outlined.Flag
+import androidx.compose.material.icons.outlined.GraphicEq
+import androidx.compose.material.icons.outlined.Tag
+import androidx.compose.material.icons.outlined.ZoomIn
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Checklist
 import androidx.compose.material.icons.outlined.AutoAwesome
@@ -69,6 +73,10 @@ fun WhatsNewDialog(version: String, items: List<WhatsNewItem>, onTry: (WhatsNewI
                                         "export" -> Icons.Outlined.IosShare
                                         "sparkles" -> Icons.Outlined.AutoAwesome
                                         "text" -> Icons.Outlined.FormatAlignLeft
+                                        "waveform" -> Icons.Outlined.GraphicEq
+                                        "flag" -> Icons.Outlined.Flag
+                                        "number" -> Icons.Outlined.Tag
+                                        "zoom" -> Icons.Outlined.ZoomIn
                                         else -> Icons.Outlined.AlternateEmail
                                     }, null, Modifier.size(26.dp), tint = Brand.violet)
                                 }
