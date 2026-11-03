@@ -1,4 +1,7 @@
 import AVFoundation
+#if os(macOS)
+import CoreAudio
+#endif
 import NaturalLanguage
 import os
 import Speech
@@ -305,6 +308,33 @@ final class VoiceConversation: ObservableObject {
 #endif
     }
 
+    /// Talking over the reply works only when it can't be heard by the microphone: headphones, not speakers.
+    /// Recognised words still interrupt (the reply's own words don't count); levels alone don't.
+    var canTalkOver: Bool { !usesWhisper || Self.headphones }
+
+    static var headphones: Bool {
+#if os(iOS)
+        let kinds: Set<AVAudioSession.Port> = [.headphones, .bluetoothA2DP, .bluetoothHFP, .bluetoothLE, .usbAudio, .carAudio]
+        return AVAudioSession.sharedInstance().currentRoute.outputs.contains { kinds.contains($0.portType) }
+#else
+        func property<T>(_ device: AudioObjectID, _ selector: AudioObjectPropertySelector, _ scope: AudioObjectPropertyScope, _ value: inout T) -> Bool {
+            var address = AudioObjectPropertyAddress(mSelector: selector, mScope: scope, mElement: kAudioObjectPropertyElementMain)
+            var size = UInt32(MemoryLayout<T>.size)
+            return AudioObjectGetPropertyData(device, &address, 0, nil, &size, &value) == noErr
+        }
+        var device = AudioObjectID(0)
+        guard property(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDefaultOutputDevice, kAudioObjectPropertyScopeGlobal, &device) else { return false }
+        var transport = UInt32(0)
+        guard property(device, kAudioDevicePropertyTransportType, kAudioObjectPropertyScopeGlobal, &transport) else { return false }
+        if transport == kAudioDeviceTransportTypeBluetooth || transport == kAudioDeviceTransportTypeBluetoothLE || transport == kAudioDeviceTransportTypeUSB { return true }
+        // The built-in output with something plugged into the headphone jack.
+        var source = UInt32(0)
+        return transport == kAudioDeviceTransportTypeBuiltIn
+            && property(device, kAudioDevicePropertyDataSource, kAudioDevicePropertyScopeOutput, &source)
+            && source == 0x6864_706E // 'hdpn'
+#endif
+    }
+
     /// The orb: interrupts a reply, resumes after a pause, or ends the turn right away.
     func tap() {
         if audioProblem != nil {
@@ -435,7 +465,11 @@ final class VoiceConversation: ObservableObject {
                 submit(heard)
             }
         case .thinking, .speaking:
-            if usesWhisper, phase == .speaking || playing != nil, store.commandApproval == nil {
+            if usesWhisper, phase == .speaking || playing != nil, store.commandApproval == nil, !canTalkOver {
+                // On speakers the reply's echo is as loud as a voice; a tap interrupts.
+                peak = 0
+            }
+            else if usesWhisper, phase == .speaking || playing != nil, store.commandApproval == nil {
                 // Talking over the reply: a voice clearly louder than the room (and than the reply's echo)
                 // for about half a second stops it and starts the next question.
                 // Clearly louder than the reply's own echo; a level not counted as a voice is learnt as echo.
@@ -1350,6 +1384,10 @@ struct VoiceConversationView: View {
         return phaseStatus
     }
 
+    private var interruptHint: String {
+        conversation.canTalkOver ? "talk or tap to interrupt" : "tap to interrupt"
+    }
+
     private var phaseStatus: String {
         switch conversation.phase {
         case .starting: "Starting…"
@@ -1375,9 +1413,9 @@ struct VoiceConversationView: View {
             if conversation.waitingForVoice, let next = conversation.partText(conversation.partPlaying + 1) {
                 "Preparing \(next)…"
             } else if let part = conversation.partText(conversation.partPlaying) {
-                "Speaking \(part) · talk or tap to interrupt"
+                "Speaking \(part) · \(interruptHint)"
             } else {
-                "Speaking · talk or tap to interrupt"
+                "Speaking · \(interruptHint)"
             }
         case .paused: "Paused · tap to talk"
         }
