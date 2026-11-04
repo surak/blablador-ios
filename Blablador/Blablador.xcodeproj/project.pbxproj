@@ -13,6 +13,7 @@
 		9B2A76A6E3E0A1B200000313 /* BlabladorShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000307 /* BlabladorShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		9B2A76A6E3E0A1B20000000E /* BlabladorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000006 /* BlabladorApp.swift */; };
 		9B2A76A6E3E0A1B200000010 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000008 /* Assets.xcassets */; };
+		9B2A76A6E3E0A1B2000009EB /* bla in Resources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B2000009EA /* bla */; platformFilters = (macos, ); };
 		9B2A76A6E3E0A1B200000023 /* SiriCommandCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000021 /* SiriCommandCenter.swift */; };
 		9B2A76A6E3E0A1B200000024 /* SiriIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000022 /* SiriIntents.swift */; };
 		9B2A76A6E3E0A1B200000060 /* ChatModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B200000040 /* ChatModels.swift */; };
@@ -93,6 +94,7 @@
 		9B2A76A6E3E0A1B200000307 /* BlabladorShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BlabladorShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		9B2A76A6E3E0A1B200000006 /* BlabladorApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlabladorApp.swift; sourceTree = "<group>"; };
 		9B2A76A6E3E0A1B200000008 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		9B2A76A6E3E0A1B2000009EA /* bla */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = bla; sourceTree = "<group>"; };
 		9B2A76A6E3E0A1B200000009 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		9B2A76A6E3E0A1B20000000A /* Blablador.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Blablador.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9B2A76A6E3E0A1B200000021 /* SiriCommandCenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SiriCommandCenter.swift; sourceTree = "<group>"; };
@@ -238,6 +240,7 @@
 				9B2A76A6E3E0A1B200000021 /* SiriCommandCenter.swift */,
 				9B2A76A6E3E0A1B200000022 /* SiriIntents.swift */,
 				9B2A76A6E3E0A1B200000008 /* Assets.xcassets */,
+				9B2A76A6E3E0A1B2000009EA /* bla */,
 				9B2A76A6E3E0A1B200000009 /* Info.plist */,
 			);
 			path = Blablador;
@@ -327,6 +330,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				9B2A76A6E3E0A1B200000010 /* Assets.xcassets in Resources */,
+				9B2A76A6E3E0A1B2000009EB /* bla in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -416,7 +420,7 @@
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 36;
+				CURRENT_PROJECT_VERSION = 37;
 				DEVELOPMENT_TEAM = 4Q84Z7RZ3Z;
 				GENERATE_INFOPLIST_FILE = NO;
 				"CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]" = "Blablador/Blablador-iOS.entitlements";
@@ -424,7 +428,7 @@
 				INFOPLIST_FILE = Blablador/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.6;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 3.6.0;
+				MARKETING_VERSION = 3.6.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "de.fz-juelich.blablador";
 				PRODUCT_NAME = Blablador;
 				SDKROOT = macosx;
@@ -446,7 +450,7 @@
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 36;
+				CURRENT_PROJECT_VERSION = 37;
 				DEVELOPMENT_TEAM = 4Q84Z7RZ3Z;
 				GENERATE_INFOPLIST_FILE = NO;
 				"CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]" = "Blablador/Blablador-iOS.entitlements";
@@ -454,7 +458,7 @@
 				INFOPLIST_FILE = Blablador/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.6;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 3.6.0;
+				MARKETING_VERSION = 3.6.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "de.fz-juelich.blablador";
 				PRODUCT_NAME = Blablador;
 				SDKROOT = macosx;
@@ -496,7 +500,7 @@
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 36;
+				CURRENT_PROJECT_VERSION = 37;
 				DEVELOPMENT_TEAM = 4Q84Z7RZ3Z;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -505,7 +509,7 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=iphoneos*]" = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "$(inherited) @executable_path/../Frameworks @executable_path/../../../../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 3.6.0;
+				MARKETING_VERSION = 3.6.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "de.fz-juelich.blablador.share";
 				PRODUCT_NAME = BlabladorShare;
 				SDKROOT = macosx;
@@ -527,7 +531,7 @@
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 36;
+				CURRENT_PROJECT_VERSION = 37;
 				DEVELOPMENT_TEAM = 4Q84Z7RZ3Z;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -536,7 +540,7 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=iphoneos*]" = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "$(inherited) @executable_path/../Frameworks @executable_path/../../../../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 3.6.0;
+				MARKETING_VERSION = 3.6.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "de.fz-juelich.blablador.share";
 				PRODUCT_NAME = BlabladorShare;
 				SDKROOT = macosx;

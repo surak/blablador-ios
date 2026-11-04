@@ -186,7 +186,7 @@
           <div class="card"><div class="icon">🎬</div><h3>Videos with sound</h3><p>Describe a scene and its sounds, and MiniMax-H3 makes a short clip in landscape, portrait or square. Continue a clip from its last frame, or bring a photo to life.</p></div>
           <div class="card"><div class="icon">🧠</div><h3>Choose how hard it thinks</h3><p>Set the thinking effort, Off, Low, Medium, High or Max, for each model that thinks, right in the model menu. While it thinks you see its latest line; tap to read the whole trace. Slow, deep-thinking models get as long as you allow in Settings.</p></div>
           <div class="card"><div class="icon">↪️</div><h3>Write while it answers</h3><p>Send the next message while a reply is still streaming: it waits in a queue above the composer. Steer sends it at once, or delete it. Scroll back through the chat while it writes; it follows again when you return to the end.</p></div>
-          <div class="card"><div class="icon">⌨️</div><h3>bla on the command line</h3><p>On the Mac, install the <strong>bla</strong> command from Settings and ask from the Terminal with the app's key, model and effort: <code>bla "question"</code>, <code>git diff | bla "write a commit message"</code>, or just <code>bla</code> for a chat.</p></div>
+          <div class="card"><div class="icon">⌨️</div><h3>bla on the command line</h3><p>On the Mac, install the <strong>bla</strong> command from Settings (or get it with Homebrew) and ask from the Terminal with the app's key, model and effort: <code>bla "question"</code>, <code>git diff | bla "write a commit message"</code>, or just <code>bla</code> for a chat.</p></div>
           <div class="card"><div class="icon">🎙️</div><h3>Voice in, voice out</h3><p>Tap the microphone to dictate with on-device speech recognition. Tap the speaker button under any reply to hear it read aloud.</p></div>
           <div class="card"><div class="icon">🌐</div><h3>Web search</h3><p>The model searches the web through Blablador's own search engine when it needs current information, and cites its sources.</p></div>
           <div class="card"><div class="icon">📷</div><h3>Photos and camera</h3><p>Attach pictures from your photos or files, take a photo, paste a copied image, or drag images and PDFs onto the chat on the Mac. Then ask about them with vision-capable models.</p></div>
@@ -213,6 +213,9 @@
     <section id="install">
       <div class="wrap">
         <h2>Install on your Mac</h2>
+        <p><strong>With Homebrew</strong>, one command installs the app and the <code>bla</code> command line, no Gatekeeper steps needed:</p>
+        <pre><code>brew install --cask surak/tap/blablador</code></pre>
+        <p>Then open Blablador and paste your API key in Settings (step 3 below). Or install it by hand:</p>
         <ol class="steps">
           <li>Download the <strong>.dmg</strong> from the <a href="https://github.com/surak/blablador-ios/releases/latest">latest release</a>, open it and drag Blablador into Applications.</li>
           <li>

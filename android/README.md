@@ -138,6 +138,7 @@ app/src/main/java/de/fz_juelich/blablador/
 ## Version history
 The Android and Apple apps share one version number and one release.
 
+- **3.6.1**: Mac: Homebrew cask, `bla` ships inside the app
 - **3.6.0**: thinking effort per model (Off/Low/Medium/High/Max, Medium by default); queue messages while a reply streams, Steer sends one now; faster streaming of long replies; thinking shows its last line; scroll freely while a reply is written; Mac: `bla` command line
 - **3.5.0**: talk with Blablador (spoken conversation in your language, Drama 3, cloned or device voices); /goal keeps working until a goal is reached, results are checked before they are shown; # for knowledge bases, @ for tools; zoom into pictures and plots; Mac: file changes shown as diffs with undo, project overview for the agent
 - **3.4.0**: Google Docs, Sheets and Slides shared by link are read directly (no Google account); answers copy into Google Docs or Word with formatting and save or open as Word, Excel and PowerPoint; Mac: Google Drive folder (search, read, save); an example for every feature on the empty chat; cleaner answer layout (lists, headings, width)

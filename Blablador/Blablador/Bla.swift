@@ -167,7 +167,8 @@ enum BlaCommand {
         installFolders.map { $0.appendingPathComponent("bla") }.first { FileManager.default.fileExists(atPath: $0.path) }
     }
 
-    /// Writes the `bla` script, which starts this app's binary in command-line mode. Returns where it went.
+    /// Links `bla` to the script in the app's Resources (older builds: writes a script that starts this app's
+    /// binary in command-line mode). Returns where it went.
     @discardableResult
     static func install(executable: String = Bundle.main.executablePath ?? "/Applications/Blablador.app/Contents/MacOS/Blablador") throws -> URL {
         let script = "#!/bin/sh\n# Blablador on the command line; installed by the Blablador app.\nexec '\(executable.replacingOccurrences(of: "'", with: "'\\''"))' --cli \"$@\"\n"
@@ -175,6 +176,12 @@ enum BlaCommand {
         let folder = installFolders.first { manager.isWritableFile(atPath: $0.path) } ?? installFolders.last!
         try manager.createDirectory(at: folder, withIntermediateDirectories: true)
         let url = folder.appendingPathComponent("bla")
+        if let bundled = Bundle.main.url(forResource: "bla", withExtension: nil) {
+            // A link to the script inside the app (as Homebrew makes), so it keeps working after updates.
+            try? manager.removeItem(at: url)
+            try manager.createSymbolicLink(at: url, withDestinationURL: bundled)
+            return url
+        }
         try Data(script.utf8).write(to: url, options: .atomic)
         try manager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
         return url

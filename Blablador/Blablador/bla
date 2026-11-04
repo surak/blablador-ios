@@ -1,0 +1,5 @@
+#!/bin/sh
+# Blablador on the command line. Lives in Blablador.app/Contents/Resources; Homebrew and Settings link to it.
+# Runs the app's own binary in command-line mode, so it shares the app's API key and settings.
+here=$(dirname "$(realpath "$0")")
+exec "$here/../MacOS/Blablador" --cli "$@"

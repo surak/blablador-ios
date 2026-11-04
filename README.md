@@ -19,7 +19,7 @@ Blablador is a SwiftUI app for macOS, iOS and iPadOS that chats with every Blabl
 - **Chat**: Streaming replies from all Blablador chat models (default `deepseek-v4.1-flash-at-hzdr`), with Markdown formatting, code blocks and tables
 - **Thinking**: for models that think before answering (DeepSeek, Qwen, GPT-OSS…), **Thinking…** above the reply shows the trace's latest line; tap it to read all of it. Choose the **thinking effort** (Off, Low, Medium, High, Max; Medium by default) per model in the model menu or Settings → Model. The app sends each model the setting it understands (`reasoning_effort`, chat template switches) and falls back, e.g. from Max to xhigh or High, when a model refuses one
 - **Write while it answers**: send another message while a reply streams and it waits above the composer; **Steer** stops the reply and sends it now, the bin removes it, tapping it edits it. Queued messages are sent by themselves when the reply ends. Scroll up during a reply to read; scroll back to the end (or tap the arrow) to follow it again
-- **`bla` on the command line (Mac)**: Settings → Command line → **Install the bla command**, then `bla "question"`, `git diff | bla "write a commit message"`, `bla -m gpt-oss-120b -e high "…"`, or `bla` alone for a chat in the terminal. Uses the app's key, model and effort; `bla --help` lists the options
+- **`bla` on the command line (Mac)**: Settings → Command line → **Install the bla command** (or `brew install --cask surak/tap/blablador`), then `bla "question"`, `git diff | bla "write a commit message"`, `bla -m gpt-oss-120b -e high "…"`, or `bla` alone for a chat in the terminal. Uses the app's key, model and effort; `bla --help` lists the options
 - **Slow models**: Settings → Model → **Wait for a reply** sets how long to wait for a reply to start or continue (2, 5, 10 or 30 minutes, or no limit; default 10)
 - **Voice**: On-device dictation and read-aloud
 - **Web search**: Cited results from Blablador's search engine
@@ -42,6 +42,16 @@ Blablador is a SwiftUI app for macOS, iOS and iPadOS that chats with every Blabl
 - Swift 5.9+
 
 ## Installation
+
+### Mac with Homebrew
+
+```bash
+brew install --cask surak/tap/blablador
+```
+
+Installs Blablador.app and the `bla` command line from the latest release ([surak/homebrew-tap](https://github.com/surak/homebrew-tap)). The app keeps updating itself; `brew upgrade` follows releases too.
+
+### From source
 
 1. Clone the repository
 2. Open `Blablador/Blablador.xcodeproj` in Xcode

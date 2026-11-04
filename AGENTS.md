@@ -11,7 +11,7 @@ Blablador is a native SwiftUI chat client for the Helmholtz Blablador OpenAI-com
 The Android app lives in `android/` (Kotlin, Jetpack Compose); see `android/README.md` for building and its structure.
 Keep features in sync between the two apps. Both apps share one version number (`MARKETING_VERSION` in the Xcode
 project, `versionName` in `android/app/build.gradle.kts`; bump `versionCode` and `CURRENT_PROJECT_VERSION` too) and one
-release tagged `v<version>` with the Mac DMG and zip, the Android APK and `SHA256SUMS.txt`.
+release tagged `v<version>` with the Mac DMG and zip, the Android APK and `SHA256SUMS.txt`. After publishing, update the Homebrew cask in github.com/surak/homebrew-tap (`Casks/blablador.rb`: `version` and the zip's `sha256` from `SHA256SUMS.txt`).
 
 ## Code Style Guidelines
 
@@ -64,7 +64,7 @@ release tagged `v<version>` with the Mac DMG and zip, the Android APK and `SHA25
 - Thinking effort (`ReasoningEffort` in `BlabladorAPI.swift`): Off/Low/Medium/High/Max everywhere in the UI; `levels(for:)` by model family (gpt-oss/o-series, DeepSeek V3.1+, Qwen3/GLM toggles), default Medium; `candidates` are the request fields to try (`reasoning_effort`, `chat_template_kwargs`, "max"→"xhigh"→"high", then nothing), the next is tried on 400/422 and the one that worked is remembered. Per-model choice in UserDefaults `reasoningEffort`, picked in the model menu (submenu per model) or Settings. Android: same mapping
 - Streaming: `runTurn` updates the message at most every `ChatStore.streamInterval` (80 ms); `MarkdownText` draws each block and paragraph as its own equatable view, so only the growing end is re-laid out. `ThinkingView` shows only the trace's last line while thinking. `FollowsBottom` (iOS 18/macOS 15) stops following the reply when the user scrolls up and resumes at the end, on a new question, chat switch or the arrow button
 - Queue (`ChatStore.queue`, `QueuedMessageRow`): sending while a reply streams queues the message above the composer; Steer stops the reply and sends it, it's sent by itself when the reply ends (`start` → `sendQueued`)
-- `Bla.swift`: the `bla` command (macOS). `Launcher` in `BlabladorApp.swift` runs `BlaCommand` when the binary gets `--cli`; Settings → Command line writes a `bla` script (first writable of /usr/local/bin, /opt/homebrew/bin, ~/.local/bin) that execs the app binary, so it shares the Keychain key and settings. One-shot with piped stdin, or a chat in the terminal
+- `Bla.swift`: the `bla` command (macOS). `Launcher` in `BlabladorApp.swift` runs `BlaCommand` when the binary gets `--cli`; the `bla` script ships in the app's Resources (`Blablador/Blablador/bla`, macOS only) and execs `../MacOS/Blablador --cli`; the Homebrew cask links it with `binary`, Settings → Command line links it into the first writable of /usr/local/bin, /opt/homebrew/bin, ~/.local/bin, so it shares the Keychain key and settings. One-shot with piped stdin, or a chat in the terminal
 - `Info.plist`: App configuration, microphone/speech permission strings
 
 ## Testing

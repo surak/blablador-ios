@@ -10,7 +10,7 @@ let package = Package(
         .target(
             name: "BlabladorCore",
             path: "Blablador/Blablador",
-            exclude: ["BlabladorApp.swift", "Info.plist", "Blablador.entitlements", "Assets.xcassets"]
+            exclude: ["BlabladorApp.swift", "Info.plist", "Blablador.entitlements", "Assets.xcassets", "bla"]
         ),
         .testTarget(name: "BlabladorTests", dependencies: ["BlabladorCore"], path: "Tests/BlabladorTests"),
     ]
