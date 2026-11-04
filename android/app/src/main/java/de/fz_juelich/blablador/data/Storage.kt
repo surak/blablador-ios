@@ -199,6 +199,15 @@ class Settings(context: Context) {
         get() = prefs.getString("selectedModel", BlabladorApi.DEFAULT_MODEL)!!
         set(value) = prefs.edit().putString("selectedModel", value).apply()
 
+    /** The thinking effort chosen for a model, by name (ReasoningEffort). */
+    fun effort(model: String): String? = prefs.getString("reasoningEffort.$model", null)
+    fun setEffort(model: String, level: String) = prefs.edit().putString("reasoningEffort.$model", level).apply()
+
+    /** Which effort candidate the server accepted last time for a model and level. */
+    fun effortWorked(model: String, level: String): Int? =
+        prefs.getInt("reasoningEffortWorked.$model|$level", -1).takeIf { it >= 0 }
+    fun setEffortWorked(model: String, level: String, index: Int) = prefs.edit().putInt("reasoningEffortWorked.$model|$level", index).apply()
+
     var videoSeconds: Int
         get() = prefs.getInt("videoSeconds", 4)
         set(value) = prefs.edit().putInt("videoSeconds", value).apply()

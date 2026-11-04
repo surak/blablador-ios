@@ -156,7 +156,12 @@ class BlabladorApi(private val apiKey: String) {
     }
 
     /** Streams a chat completion. `messages` are OpenAI wire-format objects. */
-    fun streamChat(model: String, messages: List<JsonObject>, tools: List<JsonObject> = emptyList()): Flow<StreamEvent> = flow {
+    /**
+     * Streams a chat completion. [extras] are request fields to try in turn (see ReasoningEffort.candidates): when the
+     * server rejects one with 400 or 422 before streaming, the next is tried; [accepted] hears which one worked.
+     */
+    fun streamChat(model: String, messages: List<JsonObject>, tools: List<JsonObject> = emptyList(),
+                   extras: List<JsonObject> = listOf(JsonObject(emptyMap())), accepted: (JsonObject) -> Unit = {}): Flow<StreamEvent> = flow {
         val body = buildJsonObject {
             put("model", model)
             put("messages", JsonArray(messages))
@@ -165,12 +170,23 @@ class BlabladorApi(private val apiKey: String) {
             // Blablador reports token counts at the end of the stream; other servers may reject the option.
             if (endpoint.trim().trimEnd('/') == DEFAULT_ENDPOINT) put("stream_options", buildJsonObject { put("include_usage", true) })
         }
-        val request = post("chat/completions", body).newBuilder().header("Accept", "text/event-stream").build()
         // Slow models can take minutes before the first token.
-        val call = client.newBuilder().readTimeout(responseTimeoutMinutes.toLong(), TimeUnit.MINUTES).build().newCall(request)
-        val response = call.await()
+        val streamingClient = client.newBuilder().readTimeout(responseTimeoutMinutes.toLong(), TimeUnit.MINUTES).build()
+        val tries = extras.ifEmpty { listOf(JsonObject(emptyMap())) }
+        lateinit var call: Call
+        lateinit var response: Response
+        for ((index, extra) in tries.withIndex()) {
+            val request = post("chat/completions", JsonObject(body + extra)).newBuilder().header("Accept", "text/event-stream").build()
+            call = streamingClient.newCall(request)
+            response = call.await()
+            if (response.isSuccessful) { accepted(extra); break }
+            val text = response.body?.string().orEmpty().take(500)
+            response.close()
+            // A way of setting the effort the model doesn't take: try the next.
+            if (response.code in setOf(400, 422) && index + 1 < tries.size) continue
+            throw BlabladorException(response.code, text)
+        }
         try {
-            if (!response.isSuccessful) throw BlabladorException(response.code, response.body?.string().orEmpty().take(500))
             val source = response.body!!.source()
             val toolCalls = sortedMapOf<Int, ToolCall>()
             while (true) {

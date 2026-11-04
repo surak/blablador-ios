@@ -289,7 +289,9 @@ struct BlabladorAPI {
     }
 
     /// Streams a chat completion. `messages` are OpenAI wire-format dictionaries.
-    func streamChat(model: String, messages: [[String: Any]], tools: [[String: Any]] = []) -> AsyncThrowingStream<StreamEvent, Error> {
+    /// With `effort`, asks the model to think that hard, trying the ways of saying it the model may understand
+    /// (see ReasoningEffort.candidates) until one is accepted.
+    func streamChat(model: String, messages: [[String: Any]], tools: [[String: Any]] = [], effort: ReasoningEffort? = nil) -> AsyncThrowingStream<StreamEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
@@ -303,13 +305,22 @@ struct BlabladorAPI {
                     if !tools.isEmpty { body["tools"] = tools }
                     // Blablador reports token counts at the end of the stream; other servers may reject the option.
                     if Embeddings.available { body["stream_options"] = ["include_usage": true] }
-                    request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-                    let (bytes, response) = try await URLSession.shared.bytes(for: request)
-                    if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-                        var body = ""
-                        for try await line in bytes.lines { body += line }
-                        throw BlabladorAPIError.http(status: http.statusCode, body: body)
+                    let candidates = effort.map { ReasoningEffort.candidates(for: model, $0) } ?? [[:]]
+                    var bytes: URLSession.AsyncBytes!
+                    for (index, extra) in candidates.enumerated() {
+                        request.httpBody = try JSONSerialization.data(withJSONObject: body.merging(extra) { $1 })
+                        let (stream, response) = try await URLSession.shared.bytes(for: request)
+                        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+                            var text = ""
+                            for try await line in stream.lines { text += line }
+                            // A way of setting the effort the model doesn't take: try the next.
+                            if [400, 422].contains(http.statusCode), index + 1 < candidates.count { continue }
+                            throw BlabladorAPIError.http(status: http.statusCode, body: text)
+                        }
+                        if let effort { ReasoningEffort.remember(index, for: model, effort) }
+                        bytes = stream
+                        break
                     }
 
                     var toolCalls: [Int: ToolCall] = [:]
@@ -353,6 +364,111 @@ struct BlabladorAPI {
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             throw BlabladorAPIError.http(status: http.statusCode, body: body)
         }
+    }
+}
+
+/// How hard a model thinks before it answers. The app uses these names for every model; `candidates` turns
+/// them into the request fields each kind of model understands.
+enum ReasoningEffort: String, CaseIterable, Identifiable {
+    case off, low, medium, high, max
+
+    var id: String { rawValue }
+    var name: String { rawValue.capitalized }
+
+    private enum Family { case openAI, deepSeek, toggle }
+
+    private static func family(_ model: String) -> Family? {
+        let id = model.lowercased()
+        if id.contains("gpt-oss") || id.contains("gpt-5") || id.range(of: #"(^|[^a-z0-9])o[134](-|$)"#, options: .regularExpression) != nil { return .openAI }
+        if id.contains("deepseek"), ["v3.1", "v3.2", "v4"].contains(where: id.contains) { return .deepSeek }
+        // Qwen3 and GLM switch thinking on or off; their instruct and coder versions don't think.
+        if (id.contains("qwen3") || id.contains("glm-4.5") || id.contains("glm-4.6") || id.contains("glm-4.7") || id.contains("glm-5")),
+           !["instruct", "coder", "thinking", "-vl"].contains(where: id.contains) { return .toggle }
+        return nil
+    }
+
+    /// The levels a model takes, or none when its thinking can't be set.
+    static func levels(for model: String) -> [ReasoningEffort] {
+        switch family(model) {
+        case .openAI: [.low, .medium, .high, .max]
+        case .deepSeek: [.off, .low, .medium, .high, .max]
+        case .toggle: [.off, .high]
+        case nil: []
+        }
+    }
+
+    /// Medium unless chosen otherwise: models left to themselves think long, which is slow for everyday questions.
+    static func defaultLevel(for model: String) -> ReasoningEffort? {
+        let levels = levels(for: model)
+        return levels.contains(.medium) ? .medium : levels.last
+    }
+
+    private static let key = "reasoningEffort"
+
+    /// The level chosen for a model (per model, in UserDefaults), or its default.
+    static func level(for model: String) -> ReasoningEffort? {
+        let levels = levels(for: model)
+        let saved = (UserDefaults.standard.dictionary(forKey: key)?[model] as? String).flatMap(ReasoningEffort.init)
+        if let saved, levels.contains(saved) { return saved }
+        return defaultLevel(for: model)
+    }
+
+    static func setLevel(_ level: ReasoningEffort, for model: String) {
+        var saved = UserDefaults.standard.dictionary(forKey: key) ?? [:]
+        saved[model] = level.rawValue
+        UserDefaults.standard.set(saved, forKey: key)
+    }
+
+    /// Request fields to try, best first. Models name the levels differently: "max" may be "xhigh" or only
+    /// "high", and some switch thinking with chat template options. The last candidate sends nothing extra.
+    /// The way that was accepted last time comes first.
+    static func candidates(for model: String, _ level: ReasoningEffort) -> [[String: Any]] {
+        var result = allCandidates(for: model, level)
+        if let worked = worked(for: model, level), worked > 0, result.indices.contains(worked) {
+            result.insert(result.remove(at: worked), at: 0)
+        }
+        return result
+    }
+
+    /// Notes which candidate (an index into `candidates`) the server accepted.
+    static func remember(_ index: Int, for model: String, _ level: ReasoningEffort) {
+        let all = allCandidates(for: model, level)
+        let tried = candidates(for: model, level)
+        guard tried.indices.contains(index),
+              let position = all.firstIndex(where: { NSDictionary(dictionary: $0).isEqual(to: tried[index]) }),
+              position != worked(for: model, level) else { return }
+        var saved = UserDefaults.standard.dictionary(forKey: workedKey) ?? [:]
+        saved["\(model)|\(level.rawValue)"] = position
+        UserDefaults.standard.set(saved, forKey: workedKey)
+    }
+
+    private static let workedKey = "reasoningEffortWorked"
+
+    private static func worked(for model: String, _ level: ReasoningEffort) -> Int? {
+        UserDefaults.standard.dictionary(forKey: workedKey)?["\(model)|\(level.rawValue)"] as? Int
+    }
+
+    private static func allCandidates(for model: String, _ level: ReasoningEffort) -> [[String: Any]] {
+        var result: [[String: Any]]
+        switch family(model) {
+        case .openAI:
+            let names = level == .max ? ["max", "xhigh", "high"] : level == .off ? ["minimal", "low"] : [level.rawValue]
+            result = names.map { ["reasoning_effort": $0] }
+        case .deepSeek:
+            if level == .off {
+                result = [["chat_template_kwargs": ["thinking": false], "thinking": ["type": "disabled"]],
+                          ["chat_template_kwargs": ["thinking": false]]]
+            } else {
+                let names = level == .max ? ["max", "xhigh", "high"] : [level.rawValue]
+                result = names.map { ["reasoning_effort": $0, "chat_template_kwargs": ["thinking": true, "reasoning_effort": $0]] }
+                    + names.map { ["reasoning_effort": $0] }
+            }
+        case .toggle:
+            result = [["chat_template_kwargs": ["enable_thinking": level != .off]]]
+        case nil:
+            return [[:]]
+        }
+        return result + [[:]]
     }
 }
 

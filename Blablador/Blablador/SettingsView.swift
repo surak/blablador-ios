@@ -7,6 +7,10 @@ struct SettingsView: View {
     @State private var apiKey = ""
     @State private var endpoint = BlabladorAPI.endpoint
     @State private var confirmDelete = false
+#if os(macOS)
+    @State private var blaInstalled = BlaCommand.installed?.path
+    @State private var blaMessage: String?
+#endif
     @AppStorage("ocrEngine") private var ocrEngine: OCREngine = .onDevice
 
     var body: some View {
@@ -60,6 +64,16 @@ struct SettingsView: View {
                             Text(model.displayName).tag(model.id)
                         }
                     }
+                    if let effort = store.effort(for: store.selectedModel) {
+                        Picker("Thinking effort", selection: Binding(
+                            get: { effort },
+                            set: { store.setEffort($0, for: store.selectedModel) }
+                        )) {
+                            ForEach(ReasoningEffort.levels(for: store.selectedModel)) { level in
+                                Text(level.name).tag(level)
+                            }
+                        }
+                    }
                     Button("Reset to \(BlabladorAPI.defaultModel)") {
                         store.selectedModel = BlabladorAPI.defaultModel
                     }
@@ -72,7 +86,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Model")
                 } footer: {
-                    Text("How long to wait for a model that is slow to start or pauses while thinking, before giving up.")
+                    Text("Thinking effort: how long the model thinks before answering, for models that let you choose (also in the model menu). Wait for a reply: how long to wait for a model that is slow to start or pauses while thinking, before giving up.")
                 }
 
                 Section {
@@ -173,6 +187,24 @@ struct SettingsView: View {
                 Section {
                     Button("Delete all chats", role: .destructive) { confirmDelete = true }
                 }
+
+#if os(macOS)
+                Section {
+                    Button(blaInstalled == nil ? "Install the bla command" : "Reinstall the bla command") {
+                        do {
+                            blaInstalled = try BlaCommand.install().path
+                            blaMessage = "Installed at \(blaInstalled ?? ""). Try: bla \"hello\""
+                        } catch {
+                            blaMessage = error.localizedDescription
+                        }
+                    }
+                    if let blaMessage { Text(blaMessage).textSelection(.enabled) }
+                } header: {
+                    Text("Command line")
+                } footer: {
+                    Text("bla asks Blablador from the Terminal with this app's key, model and thinking effort: bla \"question\", or pipe text in (git diff | bla \"write a commit message\"). bla alone starts a chat; bla --help shows the options.")
+                }
+#endif
 
                 Section("About") {
                     LabeledContent("Version", value: AppUpdater.currentVersion)

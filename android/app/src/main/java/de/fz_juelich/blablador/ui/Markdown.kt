@@ -21,6 +21,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -170,14 +171,18 @@ fun MarkdownText(text: String, modifier: Modifier = Modifier) {
     SelectionContainer(modifier) {
         // About 680 dp wide at most (scaled with the text size), so lines stay readable on tablets.
         Column(Modifier.widthIn(max = (680 * androidx.compose.ui.platform.LocalDensity.current.fontScale).dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            for (block in blocks) when (block) {
-                is Block.Text -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    for (part in parts(block.body)) PartView(part, codeBackground)
+            // Each block is its own keyed piece taking plain text, so while a reply streams only the block still
+            // being written is composed again; finished ones are skipped.
+            blocks.forEachIndexed { index, block ->
+                key(index) {
+                    when (block) {
+                        is Block.Text -> TextBlock(block.body, codeBackground)
+                        is Block.Code -> CodeBlock(block.language, block.body)
+                        is Block.Math -> WebBlock(WebBlockKind.Markdown, block.body)
+                        is Block.Artifact -> ArtifactBlock(block.language, block.body)
+                        is Block.Table -> MarkdownTable(block, codeBackground)
+                    }
                 }
-                is Block.Code -> CodeBlock(block.language, block.body)
-                is Block.Math -> WebBlock(WebBlockKind.Markdown, block.body)
-                is Block.Artifact -> ArtifactBlock(block.language, block.body)
-                is Block.Table -> MarkdownTable(block, codeBackground)
             }
         }
     }
@@ -246,10 +251,18 @@ internal fun parts(body: String): List<Part> {
 }
 
 @Composable
+private fun TextBlock(body: String, codeBackground: androidx.compose.ui.graphics.Color) {
+    val parts = remember(body) { parts(body) }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        parts.forEachIndexed { index, part -> key(index) { PartView(part, codeBackground) } }
+    }
+}
+
+@Composable
 private fun PartView(part: Part, codeBackground: androidx.compose.ui.graphics.Color) {
     val body = MaterialTheme.typography.bodyLarge.let { it.copy(lineHeight = (it.lineHeight.value + 3).sp) }
     when (part) {
-        is Part.Heading -> Text(inline(part.text, codeBackground),
+        is Part.Heading -> Text(remember(part.text, codeBackground) { inline(part.text, codeBackground) },
             style = when (part.level) {
                 1 -> MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
                 2 -> MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 19.sp)
@@ -262,13 +275,13 @@ private fun PartView(part: Part, codeBackground: androidx.compose.ui.graphics.Co
                 // The marker has its own column, so wrapped lines hang under the text.
                 Text(item.marker, style = body, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.End,
                     modifier = Modifier.widthIn(min = if (item.marker == "•") 10.dp else 20.dp))
-                Text(inline(item.text, codeBackground), style = body, modifier = Modifier.padding(start = 8.dp))
+                Text(remember(item.text, codeBackground) { inline(item.text, codeBackground) }, style = body, modifier = Modifier.padding(start = 8.dp))
             }
         }
-        is Part.Paragraph -> Text(paragraphs(part.text, codeBackground), style = body)
+        is Part.Paragraph -> Text(remember(part.text, codeBackground) { paragraphs(part.text, codeBackground) }, style = body)
         is Part.Quote -> androidx.compose.foundation.layout.Row(Modifier.height(androidx.compose.foundation.layout.IntrinsicSize.Min)) {
             androidx.compose.foundation.layout.Box(Modifier.width(3.dp).fillMaxHeight().background(Brand.gradient))
-            Text(paragraphs(part.text, codeBackground), style = body, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            Text(remember(part.text, codeBackground) { paragraphs(part.text, codeBackground) }, style = body, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 10.dp))
         }
         Part.Rule -> androidx.compose.material3.HorizontalDivider(Modifier.padding(vertical = 6.dp))

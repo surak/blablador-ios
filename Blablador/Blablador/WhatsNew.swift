@@ -12,6 +12,18 @@ struct WhatsNewItem: Identifiable, Hashable {
 
 enum WhatsNew {
     static let releases: [(version: String, items: [WhatsNewItem])] = [
+        ("3.6", [
+            WhatsNewItem(icon: "brain", title: "Choose how hard it thinks",
+                         text: "Pick Off, Low, Medium, High or Max for models that think, in the model menu or Settings. Medium is the new default, for quicker answers."),
+            WhatsNewItem(icon: "text.line.first.and.arrowtriangle.forward", title: "Write while it answers",
+                         text: "Send another message while a reply is still coming: it waits above the composer. Steer sends it right away, or remove it."),
+            WhatsNewItem(icon: "bolt", title: "Faster long answers",
+                         text: "Long replies stream smoothly and use less battery. Thinking shows just its latest line; tap it to read all of it."),
+            WhatsNewItem(icon: "arrow.up.and.down", title: "Scroll while it writes",
+                         text: "Scroll up to read earlier messages while a reply is written; scroll back down or tap the arrow to follow it again."),
+            WhatsNewItem(icon: "terminal", title: "bla on the command line",
+                         text: "On the Mac, install the bla command in Settings and ask from the Terminal: bla \"question\", or pipe text into it.")
+        ]),
         ("3.5", [
             WhatsNewItem(icon: "waveform", title: "Talk with Blablador",
                          text: "Tap the waveform button and just talk, in your language. Blablador answers out loud in a Drama 3 voice, your cloned voice or the device's voice, and listens again."),

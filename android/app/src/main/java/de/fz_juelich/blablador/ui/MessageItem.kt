@@ -84,6 +84,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -480,13 +482,15 @@ private fun EditMessageDialog(text: String, onDismiss: () -> Unit, onSend: (Stri
     )
 }
 
-/** The model's thinking trace: open and following along while it thinks, folded away once the answer starts. */
+/**
+ * The model's thinking trace, folded away: while it thinks only its last line shows under the header; a tap opens
+ * the whole trace.
+ */
 @Composable
 private fun Thinking(text: String, thinking: Boolean) {
-    var expanded by remember { mutableStateOf<Boolean?>(null) }
-    val open = expanded ?: thinking
+    var open by remember { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(Modifier.clickable { expanded = !open }, verticalAlignment = Alignment.CenterVertically,
+        Row(Modifier.clickable { open = !open }, verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Icon(Icons.Outlined.Psychology, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(if (thinking) "Thinking…" else "Thought process", style = MaterialTheme.typography.bodyMedium,
@@ -494,14 +498,25 @@ private fun Thinking(text: String, thinking: Boolean) {
             Icon(if (open) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, if (open) "Hide thinking" else "Show thinking",
                 Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        val trace = Modifier.drawBehind { drawRect(Color.Gray.copy(alpha = 0.35f), size = androidx.compose.ui.geometry.Size(2.dp.toPx(), size.height)) }
+            .padding(start = 12.dp)
         if (open) {
             val scroll = rememberScrollState()
             LaunchedEffect(text.length) { if (thinking) scroll.scrollTo(scroll.maxValue) }
             SelectionContainer {
                 Text(text.trim(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.heightIn(max = 260.dp).verticalScroll(scroll)
-                        .drawBehind { drawRect(Color.Gray.copy(alpha = 0.35f), size = androidx.compose.ui.geometry.Size(2.dp.toPx(), size.height)) }
-                        .padding(start = 12.dp))
+                    modifier = Modifier.heightIn(max = 260.dp).verticalScroll(scroll).then(trace))
+            }
+        } else if (thinking) {
+            val line = text.trimEnd().substringAfterLast('\n').trim()
+            // One line that keeps its end in view: the start is clipped as the line grows.
+            if (line.isNotEmpty()) androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth().clickable { open = true }.then(trace).clipToBounds()) {
+                var overflows by remember { mutableStateOf(false) }
+                val room = constraints.maxWidth
+                Text((if (line.length > 200) "…" else "") + line.takeLast(200), style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, softWrap = false,
+                    onTextLayout = { overflows = it.size.width > room },
+                    modifier = Modifier.align(if (overflows) Alignment.CenterEnd else Alignment.CenterStart).wrapContentWidth(Alignment.End, unbounded = true))
             }
         }
     }

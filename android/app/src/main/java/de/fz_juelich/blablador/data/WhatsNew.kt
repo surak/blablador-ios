@@ -15,6 +15,16 @@ data class WhatsNewItem(val icon: String, val title: String, val text: String, v
 
 object WhatsNew {
     val releases: List<Pair<String, List<WhatsNewItem>>> = listOf(
+        "3.6" to listOf(
+            WhatsNewItem("brain", "Choose how hard it thinks",
+                "Pick Off, Low, Medium, High or Max for models that think, in the model menu or Settings. Medium is the new default, for quicker answers."),
+            WhatsNewItem("queue", "Write while it answers",
+                "Send another message while a reply is still coming: it waits above the composer. Steer sends it right away, or remove it."),
+            WhatsNewItem("bolt", "Faster long answers",
+                "Long replies stream smoothly and use less battery. Thinking shows just its latest line; tap it to read all of it."),
+            WhatsNewItem("scroll", "Scroll while it writes",
+                "Scroll up to read earlier messages while a reply is written; scroll back down or tap the arrow to follow it again.")
+        ),
         "3.5" to listOf(
             WhatsNewItem("waveform", "Talk with Blablador",
                 "Tap the waveform button and just talk. Blablador answers out loud in a Drama 3 voice, your cloned voice or the device's voice, and listens again."),

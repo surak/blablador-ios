@@ -4,6 +4,7 @@ import android.app.Application
 import android.net.Uri
 import android.util.Base64
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -50,6 +51,7 @@ import de.fz_juelich.blablador.data.GoalTools
 import de.fz_juelich.blablador.data.Mention
 import de.fz_juelich.blablador.data.SelfCheck
 import de.fz_juelich.blablador.data.Mentions
+import de.fz_juelich.blablador.data.ReasoningEffort
 import de.fz_juelich.blablador.data.Notifier
 import de.fz_juelich.blablador.data.PlanTools
 import de.fz_juelich.blablador.data.ScheduledTask
@@ -145,6 +147,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Tool rounds per reply; a reply with a plan may take more. */
     private val maxToolRounds = 8
+    /** Milliseconds between screen updates while a reply streams. */
+    private val STREAM_INTERVAL_MS = 80L
     private val maxPlanRounds = 25
     private val prettyJson = kotlinx.serialization.json.Json { prettyPrint = true }
 
@@ -154,7 +158,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         lateinit var job: Job
         job = viewModelScope.launch {
             try { work() } finally {
-                if (running[chat] === job) running.remove(chat)
+                if (running[chat] === job) {
+                    running.remove(chat)
+                    // A stopped reply leaves the queue alone; Steer sends its message itself.
+                    if (!job.isCancelled) sendQueued()
+                }
                 checkTasks()
             }
         }
@@ -341,6 +349,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun select(conversation: Conversation) {
         currentId = conversation.id
         selectModel(conversation.model)
+        sendQueued()
     }
 
     fun delete(conversation: Conversation) {
@@ -477,6 +486,70 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun endGoal() = update { it.copy(goal = null) }
+
+    // MARK: Queue
+
+    /** A message written while the chat's reply is still being written. It is sent when the reply ends, or right away with Steer, which stops the reply. */
+    data class QueuedMessage(
+        val chat: String,
+        val text: String,
+        val attachments: List<ByteArray> = emptyList(),
+        val documents: List<DocumentAttachment> = emptyList(),
+        val mentions: List<Mention> = emptyList(),
+        val id: String = java.util.UUID.randomUUID().toString(),
+    )
+
+    private val queue = mutableStateListOf<QueuedMessage>()
+
+    /** Messages waiting in the open chat. */
+    val queued: List<QueuedMessage> get() = queue.filter { it.chat == currentId }
+
+    fun enqueue(text: String, attachments: List<ByteArray> = emptyList(), documents: List<DocumentAttachment> = emptyList(), mentions: List<Mention> = emptyList()) {
+        val chat = currentId ?: return
+        queue.add(QueuedMessage(chat, text, attachments, documents, mentions))
+    }
+
+    fun removeQueued(id: String) { queue.removeAll { it.id == id } }
+
+    /** Takes a waiting message out of the queue, to edit it in the composer. */
+    fun takeQueued(id: String): QueuedMessage? {
+        val index = queue.indexOfFirst { it.id == id }
+        return if (index < 0) null else queue.removeAt(index)
+    }
+
+    /** Sends a waiting message now: the reply stops where it is, and the model answers the new message with what it has written so far in view. */
+    fun steer(id: String) {
+        val item = takeQueued(id) ?: return
+        if (item.chat != currentId) return
+        if (isStreaming) stop()
+        send(item.text, item.attachments, item.documents, item.mentions)
+    }
+
+    /** Sends the open chat's next waiting message once it isn't writing a reply. */
+    fun sendQueued() {
+        val chat = currentId ?: return
+        if (chat in running) return
+        val index = queue.indexOfFirst { it.chat == chat }
+        if (index < 0) return
+        val item = queue.removeAt(index)
+        send(item.text, item.attachments, item.documents, item.mentions)
+    }
+
+    // MARK: Reasoning effort
+
+    /** Bumped when an effort changes, so the screens showing it update. */
+    private var effortChanges by mutableIntStateOf(0)
+
+    /** How hard the model thinks, or null when it can't be set. */
+    fun effort(model: String): ReasoningEffort? {
+        effortChanges
+        return ReasoningEffort.level(model, settings.effort(model))
+    }
+
+    fun setEffort(level: ReasoningEffort, model: String) {
+        settings.setEffort(model, level.name)
+        effortChanges++
+    }
 
     /** Stops the open chat's reply. */
     fun stop() {
@@ -784,23 +857,37 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             var text = ""
             var reasoning = ""
             var calls: List<BlabladorApi.ToolCall> = emptyList()
+            // The screen is updated at most about 12 times a second: every update redraws the reply, and models send
+            // many small pieces, so updating on each one gets slower as the reply grows.
+            var shown = 0L
+            var pending = false
+            fun show(force: Boolean = false) {
+                if (!pending || checking || (!force && System.currentTimeMillis() - shown < STREAM_INTERVAL_MS)) return
+                pending = false
+                shown = System.currentTimeMillis()
+                val (thinking, answer) = splitThinking(text)
+                val visible = stripToolMarkup(answer)
+                updateMessage(replyId) { it.copy(status = null, content = prefix + visible, reasoning = joined(reasoningPrefix, reasoning + thinking)) }
+            }
+            val effort = ReasoningEffort.level(model, settings.effort(model))
+            val extras = effort?.let { ReasoningEffort.candidates(model, it, settings.effortWorked(model, it.name)) } ?: listOf(JsonObject(emptyMap()))
             try {
-                api.streamChat(model, messages, tools).collect { event ->
+                api.streamChat(model, messages, tools, extras) { extra ->
+                    if (effort != null) {
+                        val position = ReasoningEffort.position(model, effort, extra)
+                        if (position >= 0 && position != settings.effortWorked(model, effort.name)) settings.setEffortWorked(model, effort.name, position)
+                    }
+                }.collect { event ->
                     when (event) {
                         is BlabladorApi.StreamEvent.Content -> {
                             text += event.text
-                            if (checking) return@collect
-                            val (thinking, answer) = splitThinking(text)
-                            val visible = stripToolMarkup(answer)
-                            updateMessage(replyId) {
-                                it.copy(status = null, content = prefix + visible,
-                                    reasoning = if (thinking.isEmpty()) it.reasoning else joined(reasoningPrefix, reasoning + thinking))
-                            }
+                            pending = true
+                            show()
                         }
                         is BlabladorApi.StreamEvent.Reasoning -> {
                             reasoning += event.text
-                            if (checking) return@collect
-                            updateMessage(replyId) { it.copy(status = null, reasoning = joined(reasoningPrefix, reasoning)) }
+                            pending = true
+                            show()
                         }
                         is BlabladorApi.StreamEvent.ToolCalls -> calls = event.calls
                         is BlabladorApi.StreamEvent.Usage -> updateMessage(replyId) { m ->
@@ -808,7 +895,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     }
                 }
+                show(force = true)
                 updateMessage(replyId) { m -> m.copy(trace = m.trace?.let { it.copy(rounds = it.rounds + 1) }) }
+            } catch (e: CancellationException) {
+                // Stopped (or steered): keep what was written so far.
+                show(force = true)
+                throw e
             } catch (e: BlabladorException) {
                 // Model without tool support: answer without tools.
                 if (e.status == 400 && tools.isNotEmpty() && round == 1 && !e.body.contains("image", ignoreCase = true)) {

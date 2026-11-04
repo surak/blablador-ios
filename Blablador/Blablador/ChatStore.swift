@@ -166,6 +166,9 @@ final class ChatStore: ObservableObject {
     /// Shows the voice conversation screen.
     @Published var talking = false
 
+    /// Seconds between screen updates while a reply streams.
+    static let streamInterval: TimeInterval = 0.08
+
     /// Tool rounds per reply; a reply with a plan may take more.
     private static let maxToolRounds = 8
     private static let maxPlanRounds = 25
@@ -179,7 +182,10 @@ final class ChatStore: ObservableObject {
         var task: Task<Void, Never>!
         task = Task {
             await work()
-            if running[chat] == task { running[chat] = nil }
+            if running[chat] == task {
+                running[chat] = nil
+                sendQueued()
+            }
 #if os(iOS)
             UIApplication.shared.endBackgroundTask(background)
 #endif
@@ -608,6 +614,67 @@ final class ChatStore: ObservableObject {
         } else {
             try FileManager.default.removeItem(at: url)
         }
+    }
+
+    // MARK: - Queue
+
+    /// A message written while the chat's reply is still being written. It is sent when the reply ends,
+    /// or right away with Steer, which stops the reply.
+    struct QueuedMessage: Identifiable {
+        let id = UUID()
+        let chat: UUID
+        var text: String
+        var attachments: [Data] = []
+        var documents: [DocumentAttachment] = []
+        var mentions: [Mention] = []
+    }
+
+    @Published private(set) var queue: [QueuedMessage] = []
+
+    /// Messages waiting in the open chat.
+    var queued: [QueuedMessage] { queue.filter { $0.chat == currentID } }
+
+    func enqueue(_ text: String, attachments: [Data] = [], documents: [DocumentAttachment] = [], mentions: [Mention] = []) {
+        guard let currentID else { return }
+        queue.append(QueuedMessage(chat: currentID, text: text, attachments: attachments, documents: documents, mentions: mentions))
+    }
+
+    func removeQueued(_ id: UUID) {
+        queue.removeAll { $0.id == id }
+    }
+
+    /// Takes a waiting message out of the queue, to edit it in the composer.
+    func takeQueued(_ id: UUID) -> QueuedMessage? {
+        guard let index = queue.firstIndex(where: { $0.id == id }) else { return nil }
+        return queue.remove(at: index)
+    }
+
+    /// Sends a waiting message now: the reply stops where it is, and the model answers the new message
+    /// with what it has written so far in view.
+    func steer(_ id: UUID) {
+        guard let item = takeQueued(id), item.chat == currentID else { return }
+        if isStreaming { stop() }
+        send(item.text, attachments: item.attachments, documents: item.documents, mentions: item.mentions)
+    }
+
+    /// Sends the open chat's next waiting message once it isn't writing a reply.
+    func sendQueued() {
+        guard let currentID, running[currentID] == nil,
+              let index = queue.firstIndex(where: { $0.chat == currentID }) else { return }
+        let item = queue.remove(at: index)
+        send(item.text, attachments: item.attachments, documents: item.documents, mentions: item.mentions)
+    }
+
+    // MARK: - Reasoning effort
+
+    /// How hard the model thinks, or nil when it can't be set.
+    func effort(for model: String) -> ReasoningEffort? {
+        ReasoningEffort.level(for: model)
+    }
+
+    func setEffort(_ level: ReasoningEffort, for model: String) {
+        objectWillChange.send()
+        ReasoningEffort.setLevel(level, for: model)
     }
 
     func stop() {
@@ -1190,26 +1257,33 @@ final class ChatStore: ObservableObject {
             var text = ""
             var reasoning = ""
             var calls: [BlabladorAPI.ToolCall] = []
+            // The screen is updated at most about 12 times a second: every update redraws the reply, and
+            // models send many small pieces, so updating on each one gets slower as the reply grows.
+            var shown = Date.distantPast
+            var pending = false
+            func show(force: Bool = false) {
+                guard pending, !checking, force || Date().timeIntervalSince(shown) > Self.streamInterval else { return }
+                pending = false
+                shown = Date()
+                let (thinking, answer) = Self.splitThinking(text)
+                let visible = Self.stripToolMarkup(answer)
+                updateMessage(replyID) {
+                    $0.status = nil
+                    $0.content = prefix + visible
+                    $0.reasoning = Self.joined(reasoningPrefix, reasoning + thinking)
+                }
+            }
             do {
-                for try await event in api.streamChat(model: model, messages: messages, tools: tools) {
+                for try await event in api.streamChat(model: model, messages: messages, tools: tools, effort: ReasoningEffort.level(for: model)) {
                     switch event {
                     case let .content(delta):
                         text += delta
-                        if checking { continue }
-                        let (thinking, answer) = Self.splitThinking(text)
-                        let visible = Self.stripToolMarkup(answer)
-                        updateMessage(replyID) {
-                            $0.status = nil
-                            $0.content = prefix + visible
-                            if !thinking.isEmpty { $0.reasoning = Self.joined(reasoningPrefix, reasoning + thinking) }
-                        }
+                        pending = true
+                        show()
                     case let .reasoning(delta):
                         reasoning += delta
-                        if checking { continue }
-                        updateMessage(replyID) {
-                            $0.status = nil
-                            $0.reasoning = Self.joined(reasoningPrefix, reasoning)
-                        }
+                        pending = true
+                        show()
                     case let .toolCalls(toolCalls):
                         calls = toolCalls
                     case let .usage(prompt, completion):
@@ -1219,6 +1293,7 @@ final class ChatStore: ObservableObject {
                         }
                     }
                 }
+                show(force: true)
                 updateMessage(replyID) { $0.trace?.rounds += 1 }
             } catch BlabladorAPIError.http(let status, let body) where status == 400 && !tools.isEmpty && round == 1 && !body.localizedCaseInsensitiveContains("image") {
                 // Model without tool support: answer without tools.

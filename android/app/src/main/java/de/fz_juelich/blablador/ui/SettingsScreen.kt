@@ -93,6 +93,13 @@ fun SettingsScreen(vm: ChatViewModel, onOpenKnowledge: () -> Unit, onOpenVoices:
                 if (vm.chatModels.isEmpty()) Text(vm.selectedModelName)
                 TextButton(onClick = { vm.selectModel(BlabladorApi.DEFAULT_MODEL) }) { Text("Reset to ${BlabladorApi.DEFAULT_MODEL}") }
             }
+            val levels = de.fz_juelich.blablador.data.ReasoningEffort.levels(vm.selectedModel)
+            if (levels.isNotEmpty()) {
+                Section("Thinking effort", footer = "How long ${vm.selectedModelName} thinks before answering. More effort can give better answers to hard questions but takes longer.") {
+                    val current = vm.effort(vm.selectedModel)
+                    levels.forEach { level -> Choice(level.label, level == current) { vm.setEffort(level, vm.selectedModel) } }
+                }
+            }
 
             Section("Wait for a reply", footer = "How long to wait for a model that is slow to start or pauses while thinking, before giving up.") {
                 BlabladorApi.RESPONSE_TIMEOUT_CHOICES.forEach { minutes ->

@@ -1,6 +1,20 @@
 import SwiftUI
 
+/// Starts the app, or on the Mac the `bla` command when the binary is run with `--cli`.
 @main
+enum Launcher {
+    static func main() {
+#if os(macOS)
+        let arguments = CommandLine.arguments.dropFirst()
+        if arguments.first == "--cli" {
+            Task { @MainActor in await BlaCommand.run(Array(arguments.dropFirst())) }
+            dispatchMain()
+        }
+#endif
+        BlabladorApp.main()
+    }
+}
+
 struct BlabladorApp: App {
 #if os(macOS)
     @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate

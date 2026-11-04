@@ -39,6 +39,8 @@ struct ChatView: View {
     @State private var namingKnowledge = false
     @State private var newKnowledgeName = ""
     @FocusState private var inputFocused: Bool
+    /// The chat keeps the end of the reply in view until the user scrolls away from it.
+    @State private var followsReply = true
 #if os(iOS)
     @Environment(\.horizontalSizeClass) private var sizeClass
     private var usesSidebar: Bool { sizeClass == .regular }
@@ -232,6 +234,18 @@ struct ChatView: View {
             if let goal = store.current?.goal {
                 GoalBanner(goal: goal)
             }
+            ForEach(store.queued) { item in
+                QueuedMessageRow(item: item) {
+                    // Back into the composer to change it.
+                    guard let item = store.takeQueued(item.id) else { return }
+                    draft = item.text
+                    attachments = item.attachments
+                    documents = item.documents
+                    mentions = item.mentions
+                    inputFocused = true
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
             ComposerView(draft: $draft, attachments: $attachments, documents: $documents, mentions: $mentions, imageMode: $imageMode, videoMode: $videoMode, speechMode: $speechMode, droppedFiles: $droppedFiles, speech: speech, focused: $inputFocused, onSend: send)
         }
         // Drop images and PDFs from Finder or Files onto the chat to attach them.
@@ -252,6 +266,8 @@ struct ChatView: View {
             }
         }
         .animation(.spring(duration: 0.25), value: store.commandApproval?.id)
+        .animation(.spring(duration: 0.25), value: store.queued.map(\.id))
+        .onChange(of: store.currentID) { _, _ in store.sendQueued() }
         .background(Theme.background)
         .toolbar { toolbar }
 #if os(iOS)
@@ -367,13 +383,46 @@ struct ChatView: View {
                 .frame(maxWidth: .infinity)
             }
             .scrollDismissesKeyboard(.interactively)
-            .onAppear { proxy.scrollTo("bottom", anchor: .bottom) }
-            .onChange(of: conversation.messages.last?.content) { _, _ in
-                proxy.scrollTo("bottom", anchor: .bottom)
+            .modifier(FollowsBottom(following: $followsReply))
+            .onAppear { followToBottom(proxy) }
+            .onChange(of: conversation.id) { _, _ in followToBottom(proxy) }
+            .onChange(of: conversation.messages.count) { _, _ in
+                // A new question brings the reply back into view.
+                if conversation.messages.last?.role != .assistant || conversation.messages.dropLast().last?.role == .user {
+                    followsReply = true
+                }
+                if followsReply { proxy.scrollTo("bottom", anchor: .bottom) }
             }
+            .onChange(of: conversation.messages.last?.content) { _, _ in
+                if followsReply { proxy.scrollTo("bottom", anchor: .bottom) }
+            }
+            .onChange(of: conversation.messages.last?.reasoning.utf8.count) { _, _ in
+                if followsReply { proxy.scrollTo("bottom", anchor: .bottom) }
+            }
+            .overlay(alignment: .bottom) {
+                if !followsReply {
+                    Button { withAnimation { followToBottom(proxy) } } label: {
+                        Image(systemName: "arrow.down")
+                            .scaledFont(.body, weight: .semibold)
+                            .frame(width: 36, height: 36)
+                            .background(.regularMaterial, in: Circle())
+                            .overlay(Circle().strokeBorder(.secondary.opacity(0.25)))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.bottom, 8)
+                    .accessibilityLabel("Scroll to the end")
+                    .transition(.opacity.combined(with: .scale))
+                }
+            }
+            .animation(.easeOut(duration: 0.2), value: followsReply)
             .environment(\.editImage, ImageEditAction(edit: editImage, continueVideo: continueVideo))
             .environment(\.openURL, SafeLinks.action)
         }
+    }
+
+    private func followToBottom(_ proxy: ScrollViewProxy) {
+        followsReply = true
+        proxy.scrollTo("bottom", anchor: .bottom)
     }
 
     /// Puts an image from the chat into the composer in edit mode.
@@ -462,6 +511,11 @@ struct ChatView: View {
         attachments = []
         documents = []
         mentions = []
+        if store.isStreaming {
+            // Waits above the composer until the reply ends, unless the user steers with it.
+            store.enqueue(text, attachments: images, documents: pdfs, mentions: mentioned)
+            return
+        }
         store.send(text, attachments: images, documents: pdfs, mentions: mentioned, createImage: imageMode, createVideo: videoMode, speak: speechMode)
     }
 
@@ -494,19 +548,54 @@ struct ChatView: View {
 private struct ModelMenu: View {
     @EnvironmentObject private var store: ChatStore
 
+    /// The model's name with its thinking effort, like "DeepSeek-V4.1-Flash · Medium".
+    private var modelLabel: String {
+        guard let effort = store.effort(for: store.selectedModel) else { return store.selectedModelName }
+        return "\(store.selectedModelName) · \(effort.name)"
+    }
+
     var body: some View {
         Menu {
             if store.chatModels.isEmpty {
                 Text(store.modelsError ?? "Loading models…")
             }
             ForEach(store.chatModels) { model in
-                Button {
-                    store.selectedModel = model.id
-                } label: {
-                    if model.id == store.selectedModel {
-                        Label(model.displayName, systemImage: "checkmark")
-                    } else {
-                        Text(model.displayName)
+                let levels = ReasoningEffort.levels(for: model.id)
+                if levels.isEmpty {
+                    Button {
+                        store.selectedModel = model.id
+                    } label: {
+                        if model.id == store.selectedModel {
+                            Label(model.displayName, systemImage: "checkmark")
+                        } else {
+                            Text(model.displayName)
+                        }
+                    }
+                } else {
+                    // Models whose thinking can be set: pick the model with an effort.
+                    Menu {
+                        Section("Thinking effort") {
+                            ForEach(levels) { level in
+                                Button {
+                                    store.selectedModel = model.id
+                                    store.setEffort(level, for: model.id)
+                                } label: {
+                                    if model.id == store.selectedModel && store.effort(for: model.id) == level {
+                                        Label(level.name, systemImage: "checkmark")
+                                    } else {
+                                        Text(level.name)
+                                    }
+                                }
+                            }
+                        }
+                    } label: {
+                        if model.id == store.selectedModel {
+                            Label("\(model.displayName) · \(store.effort(for: model.id)?.name ?? "")", systemImage: "checkmark")
+                        } else {
+                            Text(model.displayName)
+                        }
+                    } primaryAction: {
+                        store.selectedModel = model.id
                     }
                 }
             }
@@ -514,7 +603,7 @@ private struct ModelMenu: View {
 #if os(macOS)
             // The window title already shows "Blablador"; use a native pop-up for the model.
             // No avatar: macOS 26 toolbars ignore the image frame and draw it full size.
-            Text(store.selectedModelName)
+            Text(modelLabel)
 #else
             VStack(spacing: 0) {
                 HStack(spacing: 6) {
@@ -527,7 +616,7 @@ private struct ModelMenu: View {
                         .foregroundStyle(.primary)
                 }
                 HStack(spacing: 2) {
-                    Text(store.selectedModelName)
+                    Text(modelLabel)
                         .lineLimit(1)
                     Image(systemName: "chevron.down")
                         .imageScale(.small)
@@ -850,7 +939,7 @@ private struct ComposerView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(speech.isRecording ? "Stop dictation" : "Dictate")
 
-                if store.isStreaming {
+                if store.isStreaming && !canSend {
                     Button(action: store.stop) {
                         Image(systemName: "stop.fill")
                             .scaledFont(.body)
@@ -869,7 +958,8 @@ private struct ComposerView: View {
                             .background(Theme.gradient, in: Circle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(speechMode ? "Speak" : imageMode ? "Create image" : videoMode ? "Create video" : "Send")
+                    .accessibilityLabel(store.isStreaming ? "Queue message" : speechMode ? "Speak" : imageMode ? "Create image" : videoMode ? "Create video" : "Send")
+                    .help(store.isStreaming ? "Send when the reply is done; Steer sends it now" : "")
                     .transition(.scale.combined(with: .opacity))
                 } else if !speech.isRecording {
                     Button { store.talking = true } label: {
@@ -1422,3 +1512,84 @@ final class PasteRequest {
     }
 }
 #endif
+
+/// Keeps the end of the chat in view while a reply streams; scrolling up stops that, scrolling back to the end
+/// starts it again. Older systems always follow.
+private struct FollowsBottom: ViewModifier {
+    @Binding var following: Bool
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18, macOS 15, *) {
+            content.modifier(FollowsBottomTracking(following: $following))
+        } else {
+            content
+        }
+    }
+}
+
+@available(iOS 18, macOS 15, *)
+private struct FollowsBottomTracking: ViewModifier {
+    @Binding var following: Bool
+    @State private var phase: ScrollPhase = .idle
+
+    func body(content: Content) -> some View {
+        content
+            .onScrollPhaseChange { _, new in phase = new }
+            .onScrollGeometryChange(for: Bool.self) { geometry in
+                geometry.contentOffset.y + geometry.containerSize.height >= geometry.contentSize.height - 60
+            } action: { _, atBottom in
+                // Only the user's scrolling changes it; text growing below the screen doesn't.
+                if phase != .idle, following != atBottom { following = atBottom }
+            }
+    }
+}
+
+/// A message waiting for the reply to end, above the composer: Steer sends it now, the bin removes it,
+/// and tapping it puts it back into the composer to change.
+private struct QueuedMessageRow: View {
+    @EnvironmentObject private var store: ChatStore
+    let item: ChatStore.QueuedMessage
+    let onEdit: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "text.line.first.and.arrowtriangle.forward")
+                .foregroundStyle(.secondary)
+            Text(item.text.isEmpty ? "Attachment" : item.text)
+                .scaledFont(.subheadline)
+                .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .onTapGesture(perform: onEdit)
+            Button { store.steer(item.id) } label: {
+                Label("Steer", systemImage: "arrow.turn.down.right")
+            }
+            .buttonStyle(.borderless)
+            .scaledFont(.subheadline)
+            .help("Stop the reply and send this now")
+            Button { store.removeQueued(item.id) } label: {
+                Image(systemName: "trash")
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
+            .accessibilityLabel("Remove from queue")
+            Menu {
+                Button { onEdit() } label: { Label("Edit", systemImage: "pencil") }
+                Button { store.steer(item.id) } label: { Label("Send now", systemImage: "arrow.up") }
+                Button(role: .destructive) { store.removeQueued(item.id) } label: { Label("Remove", systemImage: "trash") }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .frame(width: 24, height: 24)
+            }
+            .menuStyle(.button)
+            .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
+            .fixedSize()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14))
+        .padding(.horizontal, 12)
+        .padding(.bottom, 4)
+    }
+}

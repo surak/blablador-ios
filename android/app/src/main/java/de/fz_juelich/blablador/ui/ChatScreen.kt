@@ -41,6 +41,18 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material3.SmallFloatingActionButton
+import androidx.compose.runtime.key
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import de.fz_juelich.blablador.data.ReasoningEffort
 import androidx.compose.material.icons.filled.Brush
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.outlined.Movie
@@ -391,6 +403,15 @@ fun ChatScreen(vm: ChatViewModel) {
                 }
                 ActiveKnowledge(vm, onOpen = { open(Page.Knowledge(it)) })
                 vm.current?.goal?.let { goal -> GoalBanner(goal, vm.isStreaming, vm::continueGoal, vm::endGoal) }
+                QueuedMessages(vm) { item ->
+                    vm.takeQueued(item.id)?.let {
+                        draft = it.text
+                        attachments.clear(); attachments.addAll(it.attachments)
+                        documents.clear(); documents.addAll(it.documents)
+                        mentions.clear(); mentions.addAll(it.mentions)
+                        runCatching { focus.requestFocus() }
+                    }
+                }
                 Composer(
                     vm, draft, { draft = it }, attachments, documents, mentions,
                     imageMode, { imageMode = it; if (it) { speechMode = false; videoMode = false } },
@@ -407,7 +428,9 @@ fun ChatScreen(vm: ChatViewModel) {
                     val docs = documents.toList()
                     val mentioned = mentions.toList()
                     draft = ""; attachments.clear(); documents.clear(); mentions.clear()
-                    vm.send(text, images, docs, mentioned, createImage = imageMode, createVideo = videoMode, speak = speechMode)
+                    // While a reply is written, the message waits its turn (or steers the reply).
+                    if (vm.isStreaming) vm.enqueue(text, images, docs, mentioned)
+                    else vm.send(text, images, docs, mentioned, createImage = imageMode, createVideo = videoMode, speak = speechMode)
                 }
             }
         }
@@ -417,18 +440,41 @@ fun ChatScreen(vm: ChatViewModel) {
 @Composable
 private fun ModelMenu(vm: ChatViewModel) {
     var open by remember { mutableStateOf(false) }
+    /** The model whose effort levels are showing. */
+    var efforts by remember { mutableStateOf<String?>(null) }
     Column(Modifier.clickable { open = true }) {
         Text("Blablador", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        Text(vm.selectedModelName + " ▾", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        Text(vm.selectedModelName + (vm.effort(vm.selectedModel)?.let { " · ${it.label}" } ?: "") + " ▾", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1, overflow = TextOverflow.Ellipsis)
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             if (vm.chatModels.isEmpty()) DropdownMenuItem(text = { Text(vm.modelsError ?: "Loading models…") }, onClick = {}, enabled = false)
             vm.chatModels.forEach { model ->
+                val levels = ReasoningEffort.levels(model.id)
+                val effort = vm.effort(model.id)
                 DropdownMenuItem(
-                    text = { Text(model.displayName) },
+                    text = {
+                        Column {
+                            Text(model.displayName)
+                            effort?.let { Text("Thinking: ${it.label}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        }
+                    },
                     leadingIcon = { if (model.id == vm.selectedModel) Icon(Icons.Outlined.Check, null) else Spacer(Modifier.size(24.dp)) },
+                    // Models that can think open their effort levels.
+                    trailingIcon = if (levels.isEmpty()) null else ({
+                        Icon(if (efforts == model.id) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, "Thinking effort",
+                            Modifier.clickable { efforts = if (efforts == model.id) null else model.id })
+                    }),
                     onClick = { vm.selectModel(model.id); open = false },
                 )
+                if (efforts == model.id) levels.forEach { level ->
+                    DropdownMenuItem(
+                        text = { Text(level.label, style = MaterialTheme.typography.bodyMedium) },
+                        leadingIcon = { Spacer(Modifier.size(24.dp)) },
+                        trailingIcon = { if (level == effort) Icon(Icons.Outlined.Check, null, Modifier.size(18.dp)) },
+                        onClick = { vm.setEffort(level, model.id); vm.selectModel(model.id); efforts = null; open = false },
+                        contentPadding = PaddingValues(start = 28.dp, end = 12.dp),
+                    )
+                }
             }
         }
     }
@@ -580,11 +626,25 @@ private fun Welcome(userName: String, onPick: (Suggestion) -> Unit) {
 private fun MessageList(conversation: Conversation, vm: ChatViewModel, speaker: Speaker, onContinueVideo: (String) -> Unit, onEditImage: (String) -> Unit) {
     val state = rememberLazyListState()
     val last = conversation.messages.lastOrNull()
-    LaunchedEffect(conversation.messages.size, last?.content?.length, last?.images?.size) {
-        state.scrollToItem(maxOf(0, conversation.messages.size - 1), Int.MAX_VALUE / 2)
+    // Follows the reply as it grows until the user scrolls up; scrolling back to the end, sending, another chat or
+    // the arrow button follow again.
+    var following by remember(conversation.id) { mutableStateOf(true) }
+    val stopFollowing = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (source == NestedScrollSource.UserInput && available.y > 0) following = false
+                return Offset.Zero
+            }
+        }
     }
+    LaunchedEffect(state) { snapshotFlow { state.canScrollForward }.collect { if (!it) following = true } }
+    LaunchedEffect(conversation.messages.size) { following = true }
+    LaunchedEffect(conversation.messages.size, last?.content?.length, last?.reasoning?.length, last?.images?.size, following) {
+        if (following) state.scrollToItem(maxOf(0, conversation.messages.size - 1), Int.MAX_VALUE / 2)
+    }
+    Box(Modifier.fillMaxSize()) {
     LazyColumn(state = state, contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(20.dp),
-        modifier = Modifier.fillMaxSize()) {
+        modifier = Modifier.fillMaxSize().nestedScroll(stopFollowing)) {
         items(conversation.messages, key = { it.id }) { message ->
             MessageItem(
                 message = message,
@@ -606,6 +666,44 @@ private fun MessageList(conversation: Conversation, vm: ChatViewModel, speaker: 
                 canRerun = vm::canRerun,
                 onRerun = { vm.rerun(it, message.id) },
             )
+        }
+    }
+    if (!following) SmallFloatingActionButton(onClick = { following = true }, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp),
+        shape = CircleShape) { Icon(Icons.Filled.ArrowDownward, "Scroll to the end") }
+    }
+}
+
+/** Messages written while the reply was still coming, waiting above the composer. */
+@Composable
+private fun QueuedMessages(vm: ChatViewModel, onEdit: (ChatViewModel.QueuedMessage) -> Unit) {
+    val queued = vm.queued
+    if (queued.isEmpty()) return
+    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        queued.forEach { item -> key(item.id) { QueuedMessageRow(item, onEdit = { onEdit(item) }, onSteer = { vm.steer(item.id) }, onRemove = { vm.removeQueued(item.id) }) } }
+    }
+}
+
+@Composable
+private fun QueuedMessageRow(item: ChatViewModel.QueuedMessage, onEdit: () -> Unit, onSteer: () -> Unit, onRemove: () -> Unit) {
+    var menu by remember { mutableStateOf(false) }
+    Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+        Row(Modifier.padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Outlined.Schedule, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            val label = item.text.ifBlank { listOfNotNull(
+                item.attachments.size.takeIf { it > 0 }?.let { "$it image" + if (it > 1) "s" else "" },
+                item.documents.size.takeIf { it > 0 }?.let { "$it file" + if (it > 1) "s" else "" }).joinToString(", ") }
+            Text(label, Modifier.weight(1f).clickable(onClick = onEdit).padding(horizontal = 8.dp, vertical = 10.dp),
+                style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            TextButton(onClick = onSteer) { Text("Steer") }
+            IconButton(onClick = onRemove) { Icon(Icons.Outlined.DeleteOutline, "Remove") }
+            Box {
+                IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreHoriz, "More") }
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    DropdownMenuItem(text = { Text("Edit") }, onClick = { menu = false; onEdit() })
+                    DropdownMenuItem(text = { Text("Send now") }, onClick = { menu = false; onSteer() })
+                    DropdownMenuItem(text = { Text("Remove") }, onClick = { menu = false; onRemove() })
+                }
+            }
         }
     }
 }
@@ -796,7 +894,7 @@ private fun Composer(
                 runCatching { dictation.launch(intent) }.onFailure { error = "Speech recognition isn't available on this device." }
             }) { Icon(Icons.Outlined.Mic, "Dictate") }
             when {
-                vm.isStreaming -> IconButton(onClick = vm::stop) {
+                vm.isStreaming && !canSend -> IconButton(onClick = vm::stop) {
                     Icon(Icons.Filled.Stop, "Stop generating", Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.onSurface).padding(8.dp),
                         tint = MaterialTheme.colorScheme.surface)
                 }

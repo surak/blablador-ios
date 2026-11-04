@@ -183,7 +183,7 @@ struct MessageView: View {
                         }
                         .foregroundStyle(.red)
                     } else {
-                        MarkdownText(text: message.content)
+                        MarkdownText(text: message.content).equatable()
                     }
                     ForEach(message.skillsUsed, id: \.self) { name in
                         Label("Used skill: \(name)", systemImage: "wand.and.stars")
@@ -653,11 +653,34 @@ private struct TypingIndicator: View {
 }
 
 /// Lightweight markdown renderer: fenced code blocks, headings, bullets and inline styles.
-struct MarkdownText: View {
+struct MarkdownText: View, Equatable {
     @Environment(\.textScale) private var textScale
     let text: String
+    /// One block of the text, drawn on its own: while a reply streams only its last block changes, so the
+    /// blocks before it are not parsed and laid out again.
+    private var single: Block?
+    /// One heading, paragraph, list or quote of a text block, for the same reason.
+    private var part: Part?
 
-    private enum Block {
+    init(text: String) {
+        self.text = text
+    }
+
+    private init(block: Block) {
+        text = ""
+        single = block
+    }
+
+    private init(part: Part) {
+        text = ""
+        self.part = part
+    }
+
+    static func == (lhs: MarkdownText, rhs: MarkdownText) -> Bool {
+        lhs.text == rhs.text && lhs.single == rhs.single && lhs.part == rhs.part
+    }
+
+    private enum Block: Equatable {
         case text(String)
         case code(language: String, body: String)
         /// Text with maths, typeset with KaTeX.
@@ -761,13 +784,29 @@ struct MarkdownText: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+        if let part {
+            partView(part)
+        } else if let single {
+            render(single)
+        } else {
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+                    MarkdownText(block: block).equatable()
+                }
+            }
+            .textSelection(.enabled)
+            // About 80 characters per line at most, like a printed page; tables and code may be wider.
+            .frame(maxWidth: 680 * textScale, alignment: .leading)
+        }
+    }
+
+    @ViewBuilder
+    private func render(_ block: Block) -> some View {
                 switch block {
                 case let .text(body):
                     VStack(alignment: .leading, spacing: 8) {
                         ForEach(Array(Self.parts(body).enumerated()), id: \.offset) { _, part in
-                            partView(part)
+                            MarkdownText(part: part).equatable()
                         }
                     }
                 case let .code(language, body):
@@ -779,11 +818,6 @@ struct MarkdownText: View {
                 case let .table(header, alignments, rows):
                     table(header: header, alignments: alignments, rows: rows)
                 }
-            }
-        }
-        .textSelection(.enabled)
-        // About 80 characters per line at most, like a printed page; tables and code may be wider.
-        .frame(maxWidth: 680 * textScale, alignment: .leading)
     }
 
     /// Index of the line that closes display maths opened on `start`, or nil while it's still being written.
@@ -1052,35 +1086,50 @@ private struct SelectTextView: View {
     }
 }
 
-/// The model's thinking trace: open and following along while it thinks, folded away once the answer starts.
+/// The model's thinking trace, folded to its last line while the model thinks (and to the title afterwards);
+/// tapping it shows all of it.
 private struct ThinkingView: View {
     let text: String
     let isThinking: Bool
-    @State private var expanded: Bool?
+    @State private var expanded = false
 
-    private var isExpanded: Bool { expanded ?? isThinking }
+    /// The last line written, found from the end so a long trace isn't scanned on every update.
+    private var lastLine: Substring {
+        let trimmed = text[..<(text.lastIndex { !$0.isWhitespace }.map(text.index(after:)) ?? text.startIndex)]
+        let start = trimmed.lastIndex(of: "\n").map(trimmed.index(after:)) ?? trimmed.startIndex
+        return trimmed[start...]
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             Button {
-                withAnimation(.spring(duration: 0.25)) { expanded = !isExpanded }
+                withAnimation(.spring(duration: 0.25)) { expanded.toggle() }
             } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "brain")
-                        .symbolEffect(.pulse, isActive: isThinking)
-                    Text(isThinking ? "Thinking…" : "Thought process")
-                    Image(systemName: "chevron.right")
-                        .scaledFont(.caption, weight: .semibold)
-                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "brain")
+                            .symbolEffect(.pulse, isActive: isThinking)
+                        Text(isThinking ? "Thinking…" : "Thought process")
+                        Image(systemName: "chevron.right")
+                            .scaledFont(.caption, weight: .semibold)
+                            .rotationEffect(.degrees(expanded ? 90 : 0))
+                    }
+                    .scaledFont(.subheadline)
+                    if isThinking && !expanded {
+                        Text(String(lastLine))
+                            .scaledFont(.callout)
+                            .lineLimit(1)
+                            .truncationMode(.head)
+                            .opacity(0.8)
+                    }
                 }
-                .scaledFont(.subheadline)
                 .foregroundStyle(.secondary)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityHint(isExpanded ? "Hides the thinking" : "Shows the thinking")
+            .accessibilityHint(expanded ? "Hides the thinking" : "Shows all of the thinking")
 
-            if isExpanded {
+            if expanded {
                 ScrollViewReader { proxy in
                     ScrollView {
                         Text(text.trimmingCharacters(in: .whitespacesAndNewlines))

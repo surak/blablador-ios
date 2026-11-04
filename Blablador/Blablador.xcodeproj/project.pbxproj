@@ -49,6 +49,7 @@
 		9B2A76A6E3E0A1B2000004AB /* AgentChanges.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B2000004AA /* AgentChanges.swift */; };
 		9B2A76A6E3E0A1B20000046B /* GoogleDocs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B20000046A /* GoogleDocs.swift */; };
 		9B2A76A6E3E0A1B20000045B /* WhatsNew.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B20000045A /* WhatsNew.swift */; };
+		9B2A76A6E3E0A1B2000009FB /* Bla.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B2000009FA /* Bla.swift */; };
 		9B2A76A6E3E0A1B20000040B /* Permissions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B20000040A /* Permissions.swift */; };
 		9B2A76A6E3E0A1B20000041B /* Planning.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B20000041A /* Planning.swift */; };
 		9B2A76A6E3E0A1B20000042B /* DeviceTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A76A6E3E0A1B20000042A /* DeviceTools.swift */; };
@@ -130,6 +131,7 @@
 		9B2A76A6E3E0A1B2000004AA /* AgentChanges.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentChanges.swift; sourceTree = "<group>"; };
 		9B2A76A6E3E0A1B20000046A /* GoogleDocs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleDocs.swift; sourceTree = "<group>"; };
 		9B2A76A6E3E0A1B20000045A /* WhatsNew.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhatsNew.swift; sourceTree = "<group>"; };
+		9B2A76A6E3E0A1B2000009FA /* Bla.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bla.swift; sourceTree = "<group>"; };
 		9B2A76A6E3E0A1B20000040A /* Permissions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Permissions.swift; sourceTree = "<group>"; };
 		9B2A76A6E3E0A1B20000041A /* Planning.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Planning.swift; sourceTree = "<group>"; };
 		9B2A76A6E3E0A1B20000042A /* DeviceTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceTools.swift; sourceTree = "<group>"; };
@@ -213,6 +215,7 @@
 				9B2A76A6E3E0A1B2000004AA /* AgentChanges.swift */,
 				9B2A76A6E3E0A1B20000046A /* GoogleDocs.swift */,
 				9B2A76A6E3E0A1B20000045A /* WhatsNew.swift */,
+				9B2A76A6E3E0A1B2000009FA /* Bla.swift */,
 				9B2A76A6E3E0A1B20000040A /* Permissions.swift */,
 				9B2A76A6E3E0A1B20000041A /* Planning.swift */,
 				9B2A76A6E3E0A1B20000042A /* DeviceTools.swift */,
@@ -365,6 +368,7 @@
 				9B2A76A6E3E0A1B2000004AB /* AgentChanges.swift in Sources */,
 				9B2A76A6E3E0A1B20000046B /* GoogleDocs.swift in Sources */,
 				9B2A76A6E3E0A1B20000045B /* WhatsNew.swift in Sources */,
+				9B2A76A6E3E0A1B2000009FB /* Bla.swift in Sources */,
 				9B2A76A6E3E0A1B20000040B /* Permissions.swift in Sources */,
 				9B2A76A6E3E0A1B20000041B /* Planning.swift in Sources */,
 				9B2A76A6E3E0A1B20000042B /* DeviceTools.swift in Sources */,
@@ -412,7 +416,7 @@
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 35;
+				CURRENT_PROJECT_VERSION = 36;
 				DEVELOPMENT_TEAM = 4Q84Z7RZ3Z;
 				GENERATE_INFOPLIST_FILE = NO;
 				"CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]" = "Blablador/Blablador-iOS.entitlements";
@@ -420,7 +424,7 @@
 				INFOPLIST_FILE = Blablador/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.6;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 3.5.0;
+				MARKETING_VERSION = 3.6.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "de.fz-juelich.blablador";
 				PRODUCT_NAME = Blablador;
 				SDKROOT = macosx;
@@ -442,7 +446,7 @@
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 35;
+				CURRENT_PROJECT_VERSION = 36;
 				DEVELOPMENT_TEAM = 4Q84Z7RZ3Z;
 				GENERATE_INFOPLIST_FILE = NO;
 				"CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]" = "Blablador/Blablador-iOS.entitlements";
@@ -450,7 +454,7 @@
 				INFOPLIST_FILE = Blablador/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.6;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 3.5.0;
+				MARKETING_VERSION = 3.6.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "de.fz-juelich.blablador";
 				PRODUCT_NAME = Blablador;
 				SDKROOT = macosx;
@@ -492,7 +496,7 @@
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 35;
+				CURRENT_PROJECT_VERSION = 36;
 				DEVELOPMENT_TEAM = 4Q84Z7RZ3Z;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -501,7 +505,7 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=iphoneos*]" = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "$(inherited) @executable_path/../Frameworks @executable_path/../../../../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 3.5.0;
+				MARKETING_VERSION = 3.6.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "de.fz-juelich.blablador.share";
 				PRODUCT_NAME = BlabladorShare;
 				SDKROOT = macosx;
@@ -523,7 +527,7 @@
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 35;
+				CURRENT_PROJECT_VERSION = 36;
 				DEVELOPMENT_TEAM = 4Q84Z7RZ3Z;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -532,7 +536,7 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=iphoneos*]" = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "$(inherited) @executable_path/../Frameworks @executable_path/../../../../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 3.5.0;
+				MARKETING_VERSION = 3.6.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "de.fz-juelich.blablador.share";
 				PRODUCT_NAME = BlabladorShare;
 				SDKROOT = macosx;
