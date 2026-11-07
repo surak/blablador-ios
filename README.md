@@ -7,8 +7,10 @@ Forschungszentrum Jülich (`https://api.blablador.fz-juelich.de/v1`).
 |---|---|---|
 | macOS, iPhone, iPad (SwiftUI) | [`Blablador/`](Blablador) | [Latest release](https://github.com/surak/blablador-ios/releases/latest): `Blablador-<version>-macOS.dmg` |
 | Android 8.0+ (Kotlin, Compose) | [`android/`](android) — see [android/README.md](android/README.md) | [Latest release](https://github.com/surak/blablador-ios/releases/latest): `Blablador-<version>-android.apk` |
+| Windows, Linux (Rust, egui) | [`desktop/`](desktop) — see [desktop/README.md](desktop/README.md) | [Latest release](https://github.com/surak/blablador-ios/releases/latest): `Blablador-<version>-windows-x86_64.zip`, `Blablador-<version>-linux-x86_64.tar.gz` |
 
-The Android app has the same features as the Apple apps except agent mode, which is Mac only.
+The Android app has the same features as the Apple apps except agent mode, which is Mac only. The Windows/Linux app is a
+smaller client: chat, thinking effort, web search, memory, attachments, knowledge bases and approved shell commands.
 
 ## Overview
 
