@@ -9,6 +9,8 @@ Blablador is a native SwiftUI chat client for the Helmholtz Blablador OpenAI-com
 ## Android
 
 The Android app lives in `android/` (Kotlin, Jetpack Compose); see `android/README.md` for building and its structure.
+The Windows/Linux desktop app lives in `desktop/` (Rust, egui); see `desktop/README.md`. Its `version` in
+`desktop/Cargo.toml` follows the same number, and `.github/workflows/desktop.yml` attaches its builds to the release.
 Keep features in sync between the two apps. Both apps share one version number (`MARKETING_VERSION` in the Xcode
 project, `versionName` in `android/app/build.gradle.kts`; bump `versionCode` and `CURRENT_PROJECT_VERSION` too) and one
 release tagged `v<version>` with the Mac DMG and zip, the Android APK and `SHA256SUMS.txt`. After publishing, update the Homebrew cask in github.com/surak/homebrew-tap (`Casks/blablador.rb`: `version` and the zip's `sha256` from `SHA256SUMS.txt`).

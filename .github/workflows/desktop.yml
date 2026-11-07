@@ -1,0 +1,80 @@
+# Builds the Rust desktop app (desktop/) for Windows and Linux and attaches it to the release,
+# adding its checksums to SHA256SUMS.txt.
+name: Desktop
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            platform: windows-x86_64
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            platform: linux-x86_64
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Linux libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libgtk-3-dev libdbus-1-dev
+      - run: cargo test --release
+      - run: cargo build --release --target ${{ matrix.target }}
+      - name: Package
+        id: package
+        run: |
+          version=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+          name="Blablador-$version-${{ matrix.platform }}"
+          mkdir "$name"
+          if [ "$RUNNER_OS" = Windows ]; then
+            cp target/${{ matrix.target }}/release/blablador.exe "$name/Blablador.exe"
+            7z a "$name.zip" "$name" >/dev/null
+            echo "file=$name.zip" >> "$GITHUB_OUTPUT"
+          else
+            cp target/${{ matrix.target }}/release/blablador "$name/blablador"
+            tar czf "$name.tar.gz" "$name"
+            echo "file=$name.tar.gz" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}
+          path: desktop/${{ steps.package.outputs.file }}
+
+  release:
+    needs: build
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ github.event.release.tag_name }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+      - name: Upload and update SHA256SUMS.txt
+        run: |
+          cd assets
+          gh release upload "$TAG" * --clobber -R "$GITHUB_REPOSITORY"
+          gh release download "$TAG" -p SHA256SUMS.txt -R "$GITHUB_REPOSITORY" -D sums || true
+          touch sums/SHA256SUMS.txt
+          for file in Blablador-*; do
+            grep -v " $file\$" sums/SHA256SUMS.txt > sums/next.txt || true
+            sha256sum "$file" >> sums/next.txt
+            mv sums/next.txt sums/SHA256SUMS.txt
+          done
+          gh release upload "$TAG" sums/SHA256SUMS.txt --clobber -R "$GITHUB_REPOSITORY"
