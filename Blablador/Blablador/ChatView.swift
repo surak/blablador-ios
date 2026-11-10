@@ -383,6 +383,11 @@ struct ChatView: View {
                 .frame(maxWidth: .infinity)
             }
             .scrollDismissesKeyboard(.interactively)
+#if os(macOS)
+            // Selecting text in a reply takes the focus from the composer; otherwise the first ⌘C goes to the
+            // composer and only the second copies the selection.
+            .background(MouseDownObserver { if inputFocused { inputFocused = false } })
+#endif
             .modifier(FollowsBottom(following: $followsReply))
             .onAppear { followToBottom(proxy) }
             .onChange(of: conversation.id) { _, _ in followToBottom(proxy) }
@@ -818,6 +823,10 @@ private struct ComposerView: View {
     /// Something picked in the panel that opens another sheet once the panel has closed.
     @State private var pendingAction: ToolsPanel.Action?
 
+    /// Height of the text in the field; above `maxFieldHeight` (about ten lines) it scrolls.
+    @State private var fieldHeight: CGFloat = 40
+    private static let maxFieldHeight: CGFloat = 230
+
     /// An "@name" being typed at the end of the draft.
     private static let mentionReference = #"(^|\s)@[^\s@]*$"#
 
@@ -918,14 +927,23 @@ private struct ComposerView: View {
                 .accessibilityLabel("Add and tools")
                 .help("Attach files, choose tools and more")
 
-                TextField(placeholder, text: $draft, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .scaledFont(.body)
-                    .lineLimit(1...6)
-                    .focused(focused)
-                    .padding(.vertical, 10)
-                    .padding(.leading, 4)
-                    .onSubmit { if canSend { onSend() } }
+                // The field grows with the text up to `maxFieldHeight`, then scrolls (the end stays in view).
+                ScrollView(.vertical) {
+                    TextField(placeholder, text: $draft, axis: .vertical)
+                        .textFieldStyle(.plain)
+                        .scaledFont(.body)
+                        .focused(focused)
+                        .padding(.vertical, 10)
+                        .padding(.leading, 4)
+                        .onSubmit { if canSend { onSend() } }
+                        .lineLimit(1...)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .background(GeometryReader { Color.clear.preference(key: FieldHeight.self, value: $0.size.height) })
+                }
+                .frame(height: min(fieldHeight, Self.maxFieldHeight))
+                .defaultScrollAnchor(.bottom)
+                .scrollIndicators(fieldHeight > Self.maxFieldHeight ? .automatic : .hidden)
+                .onPreferenceChange(FieldHeight.self) { fieldHeight = $0 }
 
                 Button {
                     speech.toggle()
@@ -1530,19 +1548,66 @@ private struct FollowsBottom: ViewModifier {
 @available(iOS 18, macOS 15, *)
 private struct FollowsBottomTracking: ViewModifier {
     @Binding var following: Bool
-    @State private var phase: ScrollPhase = .idle
+
+    private struct Position: Equatable {
+        var offset: CGFloat
+        var atBottom: Bool
+    }
 
     func body(content: Content) -> some View {
         content
-            .onScrollPhaseChange { _, new in phase = new }
-            .onScrollGeometryChange(for: Bool.self) { geometry in
-                geometry.contentOffset.y + geometry.containerSize.height >= geometry.contentSize.height - 60
-            } action: { _, atBottom in
-                // Only the user's scrolling changes it; text growing below the screen doesn't.
-                if phase != .idle, following != atBottom { following = atBottom }
+            .onScrollGeometryChange(for: Position.self) { geometry in
+                Position(offset: geometry.contentOffset.y,
+                         atBottom: geometry.contentOffset.y + geometry.containerSize.height >= geometry.contentSize.height - 60)
+            } action: { old, new in
+                // The app only ever scrolls down, so moving up is the user: stop following at once, before the
+                // next piece of the reply pulls the view back. Scroll phases aren't enough on the Mac, where a
+                // mouse wheel scrolls without them. Following starts again when the user scrolls back to the end.
+                if new.offset < old.offset - 1 {
+                    if following { following = false }
+                } else if !following, new.atBottom, new.offset > old.offset {
+                    following = true
+                }
             }
     }
 }
+
+#if os(macOS)
+/// Calls `action` when the mouse goes down inside this view's area, without taking the click.
+private struct MouseDownObserver: NSViewRepresentable {
+    let action: () -> Void
+
+    func makeNSView(context: Context) -> ObserverView {
+        let view = ObserverView()
+        view.action = action
+        return view
+    }
+
+    func updateNSView(_ view: ObserverView, context: Context) {
+        view.action = action
+    }
+
+    final class ObserverView: NSView {
+        var action: (() -> Void)?
+        private var monitor: Any?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let monitor { NSEvent.removeMonitor(monitor) }
+            monitor = nil
+            guard window != nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+                if let self, event.window === self.window, self.bounds.contains(self.convert(event.locationInWindow, from: nil)) {
+                    self.action?()
+                }
+                return event
+            }
+        }
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    }
+}
+#endif
 
 /// A message waiting for the reply to end, above the composer: Steer sends it now, the bin removes it,
 /// and tapping it puts it back into the composer to change.
@@ -1592,4 +1657,9 @@ private struct QueuedMessageRow: View {
         .padding(.horizontal, 12)
         .padding(.bottom, 4)
     }
+}
+
+private struct FieldHeight: PreferenceKey {
+    static let defaultValue: CGFloat = 40
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }

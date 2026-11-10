@@ -142,12 +142,13 @@
     <div class="wrap hero">
       <img src="logo.svg" alt="Blablador logo">
       <h1><span class="gradient">Blablador,</span><br>native on your devices</h1>
-      <p>Chat with the open models of Helmholtz Blablador on Mac, iPhone, iPad, Android, Windows and Linux. Talk to it, search the web, send photos and PDFs, create images and give it a voice, even your own. It remembers what you tell it and learns the way you like things done.</p>
+      <p>Chat with the open models of Helmholtz Blablador on Mac, iPhone, iPad, Android, Windows, Linux and Raspberry Pi. Talk to it, search the web, send photos and PDFs, create images and give it a voice, even your own. It remembers what you tell it and learns the way you like things done.</p>
       <div class="buttons">
         <a class="button primary" data-asset="-macOS.dmg" href="https://github.com/surak/blablador-ios/releases/latest">Download for Mac</a>
         <a class="button primary" data-asset="-android.apk" href="https://github.com/surak/blablador-ios/releases/latest">Download for Android</a>
         <a class="button primary" data-asset="-windows-x86_64.zip" href="https://github.com/surak/blablador-ios/releases/latest">Download for Windows</a>
         <a class="button primary" data-asset="-linux-x86_64.tar.gz" href="https://github.com/surak/blablador-ios/releases/latest">Download for Linux</a>
+        <a class="button" data-asset="-linux-arm64.tar.gz" href="https://github.com/surak/blablador-ios/releases/latest">Raspberry Pi</a>
         <a class="button secondary" href="https://github.com/surak/blablador-ios">View source</a>
       </div>
       <div class="small">Mac: Apple Silicon and Intel, macOS 14 or later · Android 8.0 or later</div>
@@ -245,10 +246,10 @@
 
     <section id="desktop">
       <div class="wrap">
-        <h2>Install on Windows or Linux</h2>
+        <h2>Install on Windows, Linux or Raspberry Pi</h2>
         <ol class="steps">
           <li>Download <strong>Blablador-&lt;version&gt;-windows-x86_64.zip</strong> or <strong>Blablador-&lt;version&gt;-linux-x86_64.tar.gz</strong> from the <a href="https://github.com/surak/blablador-ios/releases/latest">latest release</a> and unpack it. It is a single program, nothing to install.</li>
-          <li>On Windows, start <code>Blablador.exe</code>. SmartScreen may warn about an unknown publisher: click <strong>More info → Run anyway</strong>. On Linux, run <code>./blablador</code> (it needs a desktop with X11 or Wayland and GTK 3 for file dialogs).</li>
+          <li>On Windows, start <code>Blablador.exe</code>. SmartScreen may warn about an unknown publisher: click <strong>More info → Run anyway</strong>. On Linux and Raspberry Pi OS (64-bit, <code>linux-arm64</code>), run <code>./blablador</code> (it needs a desktop with X11 or Wayland and GTK 3 for file dialogs).</li>
           <li>Paste your Blablador API key in Settings. It is kept in Windows Credential Manager or your Linux keyring, and your chats are saved encrypted.</li>
         </ol>
         <div class="note">The desktop app is a smaller, separate client written in Rust: chat with every model and thinking effort, web search, memory, PDFs and text files, knowledge bases and shell commands you approve. Voice, images and agent mode are on the Mac, iPhone, iPad and Android apps.</div>
@@ -262,7 +263,7 @@
           <div class="card"><div class="icon">💻</div><h3>Mac</h3><p>Available now as a download. Sidebar with your chats, native toolbar and model picker. Make the text bigger or smaller with ⌘+ and ⌘−.</p></div>
           <div class="card"><div class="icon">📱</div><h3>iPhone and iPad</h3><p>Same app, adapted to each screen. Not yet distributed; build it from the source with Xcode.</p></div>
           <div class="card"><div class="icon">🤖</div><h3>Android</h3><p>Available now as an APK for Android 8.0 or later. Native Material design with every feature except agent mode.</p></div>
-          <div class="card"><div class="icon">🖥️</div><h3>Windows and Linux</h3><p>Available now as a single program for 64-bit Windows and Linux: chat, web search, memory, documents and knowledge bases.</p></div>
+          <div class="card"><div class="icon">🖥️</div><h3>Windows and Linux</h3><p>Available now as a single program for 64-bit Windows, Linux and Raspberry Pi (plus a lightweight Mac build): chat, web search, memory, documents and knowledge bases.</p></div>
         </div>
       </div>
     </section>

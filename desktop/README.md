@@ -1,4 +1,4 @@
-# Blablador for Windows and Linux
+# Blablador for Windows, Linux and Raspberry Pi
 
 A native desktop client written in Rust (egui), sharing the version number and release with the iOS/Mac and Android apps.
 
@@ -13,7 +13,7 @@ earlier chats, shell commands in a chosen folder after approval, attached PDFs a
 Linux needs `libxkbcommon`, GTK 3 (file dialogs) and D-Bus (Secret Service). `BLABLADOR_API_KEY` overrides the
 saved key; `BLABLADOR_DATA_DIR` moves the data folder; `BLABLADOR_NO_KEYRING=1` keeps secrets in files.
 
-Releases: `.github/workflows/desktop.yml` builds `Blablador-<version>-windows-x86_64.zip` and
+Releases: `.github/workflows/desktop.yml` builds `Blablador-<version>-windows-x86_64.zip`, `Blablador-<version>-linux-arm64.tar.gz` (Raspberry Pi OS 64-bit), `Blablador-<version>-macos-arm64-desktop.tar.gz` and
 `Blablador-<version>-linux-x86_64.tar.gz` when a release is published and adds them to `SHA256SUMS.txt`.
 Bump `version` in `Cargo.toml` with the other apps.
 

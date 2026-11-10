@@ -290,14 +290,14 @@ struct MessageView: View {
                         }
                     }
                 } label: {
-                    Image(systemName: "doc.richtext")
+                    Image(systemName: "arrow.down.doc")
                 } primaryAction: {
                     copyForDocs()
                 }
                 .menuIndicator(.hidden)
                 .fixedSize()
-                .accessibilityLabel("Copy for Google Docs")
-                .help("Copy with formatting, to paste into Google Docs or Word; or save as Word, Excel or PowerPoint")
+                .accessibilityLabel("Export as a document")
+                .help("Export: save as Word, Excel or PowerPoint, or copy with formatting for Google Docs or Word")
                 .fileExporter(isPresented: Binding(get: { exportFile != nil }, set: { if !$0 { exportFile = nil } }),
                               document: exportFile, contentType: exportFile?.contentType ?? .data,
                               defaultFilename: DocumentExport.fileName(for: message.content)) { _ in exportFile = nil }
@@ -446,12 +446,82 @@ private struct GeneratedImage: View {
     @Environment(\.editImage) private var editImage
 
     var body: some View {
-        StoredImage(name: name)
-            .frame(maxWidth: 420)
-            .clipShape(RoundedRectangle(cornerRadius: 16))
-            .onTapGesture { showViewer = true }
-            .overlay(alignment: .bottomTrailing) { EditImageButton(name: name) }
-            .sheet(isPresented: $showViewer) { ImageViewer(name: name).environment(\.editImage, editImage) }
+        VStack(alignment: .leading, spacing: 6) {
+            StoredImage(name: name)
+                .frame(maxWidth: 420)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+                .onTapGesture { showViewer = true }
+                .overlay(alignment: .bottomTrailing) { EditImageButton(name: name) }
+                .sheet(isPresented: $showViewer) { ImageViewer(name: name).environment(\.editImage, editImage) }
+            HStack(spacing: 14) {
+                ImageActions(name: name)
+            }
+            .labelStyle(.iconOnly)
+            .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
+            .padding(.leading, 4)
+        }
+    }
+}
+
+/// Download (Save to Photos on iPhone and iPad, a file on the Mac), copy and share for a stored image.
+private struct ImageActions: View {
+    let name: String
+    @State private var done: String?
+
+    var body: some View {
+        Button(action: download) {
+#if os(iOS)
+            Label(done == "saved" ? "Saved" : "Save to Photos", systemImage: done == "saved" ? "checkmark" : "square.and.arrow.down")
+#else
+            Label(done == "saved" ? "Saved" : "Download", systemImage: done == "saved" ? "checkmark" : "square.and.arrow.down")
+#endif
+        }
+        .help("Save the image")
+        Button(action: copy) {
+            Label(done == "copied" ? "Copied" : "Copy", systemImage: done == "copied" ? "checkmark" : "doc.on.doc")
+        }
+        .help("Copy the image")
+        ShareLink(item: ImageStore.url(for: name)) {
+            Label("Share", systemImage: "square.and.arrow.up")
+        }
+        .help("Share the image")
+    }
+
+    private func flash(_ state: String) {
+        done = state
+        Task {
+            try? await Task.sleep(for: .seconds(1.5))
+            if done == state { done = nil }
+        }
+    }
+
+    private func download() {
+        guard let data = ImageStore.data(for: name) else { return }
+#if os(iOS)
+        guard let image = UIImage(data: data) else { return }
+        UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
+        flash("saved")
+#else
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "Blablador image." + (name as NSString).pathExtension
+        panel.directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        if (try? data.write(to: url, options: .atomic)) != nil { flash("saved") }
+#endif
+    }
+
+    private func copy() {
+        guard let data = ImageStore.data(for: name) else { return }
+#if os(iOS)
+        guard let image = UIImage(data: data) else { return }
+        UIPasteboard.general.image = image
+#else
+        guard let image = NSImage(data: data) else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.writeObjects([image])
+#endif
+        flash("copied")
     }
 }
 
@@ -460,7 +530,6 @@ struct ImageViewer: View {
     let name: String
     @Environment(\.dismiss) private var dismiss
     @Environment(\.editImage) private var editImage
-    @State private var saved = false
 
     var body: some View {
         NavigationStack {
@@ -478,19 +547,7 @@ struct ImageViewer: View {
                                 Label("Edit", systemImage: "paintbrush.pointed")
                             }
                         }
-#if os(iOS)
-                        Button {
-                            if let data = ImageStore.data(for: name), let image = UIImage(data: data) {
-                                UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
-                                saved = true
-                            }
-                        } label: {
-                            Label(saved ? "Saved" : "Save to Photos", systemImage: saved ? "checkmark" : "square.and.arrow.down")
-                        }
-#endif
-                        ShareLink(item: ImageStore.url(for: name)) {
-                            Label("Share", systemImage: "square.and.arrow.up")
-                        }
+                        ImageActions(name: name)
                     }
                 }
         }

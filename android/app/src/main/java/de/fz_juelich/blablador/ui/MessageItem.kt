@@ -61,6 +61,7 @@ import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.StopCircle
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.Icon
@@ -237,8 +238,57 @@ private fun ChatImage(file: File, size: Int, square: Boolean, onEdit: () -> Unit
             }
         }
     }
+    if (!square) ImageActions(file)
     if (viewing) Dialog(onDismissRequest = { viewing = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         ZoomableImage(file) { viewing = false }
+    }
+}
+
+/** Download (to Pictures/Blablador), copy and share for a generated image. */
+@Composable
+private fun ImageActions(file: File) {
+    val context = LocalContext.current
+    val tint = MaterialTheme.colorScheme.onSurfaceVariant
+    var done by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(done) { if (done != null) { delay(1500); done = null } }
+    val mime = if (file.extension == "png") "image/png" else "image/jpeg"
+    fun uri() = androidx.core.content.FileProvider.getUriForFile(context, context.packageName + ".files", file)
+    // Before Android 10 there's no shared Pictures folder without a storage permission, so the user picks a place.
+    val createDocument = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument(mime)
+    ) { target ->
+        if (target != null) {
+            context.contentResolver.openOutputStream(target)?.use { out -> file.inputStream().use { it.copyTo(out) } }
+            done = "saved"
+        }
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        IconButton(onClick = {
+            if (android.os.Build.VERSION.SDK_INT >= 29) {
+                val values = android.content.ContentValues().apply {
+                    put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, "Blablador-" + file.name)
+                    put(android.provider.MediaStore.Images.Media.MIME_TYPE, mime)
+                    put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, android.os.Environment.DIRECTORY_PICTURES + "/Blablador")
+                }
+                val resolver = context.contentResolver
+                resolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)?.let { target ->
+                    resolver.openOutputStream(target)?.use { out -> file.inputStream().use { it.copyTo(out) } }
+                    done = "saved"
+                }
+            } else {
+                createDocument.launch("Blablador-" + file.name)
+            }
+        }) { Icon(if (done == "saved") Icons.Outlined.Check else Icons.Outlined.Download, "Download image", Modifier.size(18.dp), tint = tint) }
+        IconButton(onClick = {
+            context.getSystemService(android.content.ClipboardManager::class.java)
+                .setPrimaryClip(android.content.ClipData.newUri(context.contentResolver, "Blablador image", uri()))
+            done = "copied"
+        }) { Icon(if (done == "copied") Icons.Outlined.Check else Icons.Outlined.ContentCopy, "Copy image", Modifier.size(18.dp), tint = tint) }
+        IconButton(onClick = {
+            val intent = Intent(Intent.ACTION_SEND).setType(mime).putExtra(Intent.EXTRA_STREAM, uri())
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            context.startActivity(Intent.createChooser(intent, null))
+        }) { Icon(Icons.Outlined.Share, "Share image", Modifier.size(18.dp), tint = tint) }
     }
 }
 

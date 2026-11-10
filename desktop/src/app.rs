@@ -514,7 +514,12 @@ impl App {
                 .desired_rows(2)
                 .desired_width(ui.available_width() - button_width - 8.0);
             let response = ui.add(editor);
-            if self.input.is_empty() && !response.has_focus() && self.approvals.is_empty() && !self.show_settings {
+            // Focus the composer only when nothing else has focus and the window itself is focused: taking focus
+            // every frame stole it from other fields, and focusing before Windows gives the window focus left
+            // text input (IME) off, so nothing could be typed.
+            let window_focused = ui.input(|i| i.viewport().focused.unwrap_or(false));
+            let nothing_focused = ui.memory(|m| m.focused().is_none());
+            if self.input.is_empty() && window_focused && nothing_focused && self.approvals.is_empty() && !self.show_settings {
                 response.request_focus();
             }
             if busy {

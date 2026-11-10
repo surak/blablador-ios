@@ -550,8 +550,10 @@ final class VoiceConversation: ObservableObject {
                 return
             }
             feed()
-            // Safety net: the reply is done but nothing has played for a long while.
-            if !store.isStreaming, playing == nil, Date().timeIntervalSince(lastProgress) > 60 {
+            // Safety net: the reply is done but nothing has played for a long while. A part still being made
+            // gets longer: a cloned voice takes up to 45 s per try, with a retry, one part after another.
+            let waitingForAudio = playLoop != nil && (awaitingText != nil || !queue.isEmpty)
+            if !store.isStreaming, playing == nil, Date().timeIntervalSince(lastProgress) > (waitingForAudio ? 200 : 60) {
                 Self.log.notice("nothing played for a minute, listening again")
                 silence()
                 listen()
@@ -776,26 +778,38 @@ final class VoiceConversation: ObservableObject {
             let styled = library.styled(text)
             let timeout = Self.voiceTimeout
             if voice.isCloned {
-                // Cloned voices: one request at a time (the server can't make several at once), a retry,
-                // and never another voice instead.
+                // Cloned voices: one request at a time (the server can't make several at once) and a retry;
+                // only when Drama 3 fails both does the device's voice speak, with a notice.
                 let previous = clonedChain
                 let chain = Task<Data?, Never> {
                     _ = await previous?.value
                     for attempt in 1...2 {
                         let started = Date()
-                        if let data = await Self.withinTime(45, { try? await api.speech(text: styled, voice: voice) }) ?? nil {
+                        let result = await Self.withinTime(45, { () -> Result<Data, Error> in
+                            do { return .success(try await api.speech(text: styled, voice: voice)) } catch { return .failure(error) }
+                        })
+                        if case let .success(data) = result {
                             Self.log.notice("cloned voice answered after \(Date().timeIntervalSince(started)) s")
                             return data
                         }
-                        Self.log.notice("cloned voice failed (attempt \(attempt))")
+                        let reason: String
+                        if case let .failure(error) = result { reason = error.localizedDescription } else { reason = "no answer in 45 s" }
+                        Self.log.notice("cloned voice failed (attempt \(attempt)): \(reason, privacy: .public)")
                         if Task.isCancelled { return nil }
                     }
                     return nil
                 }
                 clonedChain = chain
                 job = Task {
-                    guard let data = await chain.value, let buffers = try? Self.decode(data, to: format) else { return [] }
-                    return buffers
+                    if let data = await chain.value, let buffers = try? Self.decode(data, to: format), !buffers.isEmpty {
+                        return buffers
+                    }
+                    if Task.isCancelled { return [] }
+                    // Better the device's voice than silence; the notice says why.
+                    await MainActor.run { [weak self] in
+                        self?.notice = "\(voice.name)'s voice isn't available right now (Drama 3 didn't answer), so the device's voice spoke."
+                    }
+                    return await Self.deviceSpeech(text, to: format, language: chosen)
                 }
             } else {
                 job = Task {
