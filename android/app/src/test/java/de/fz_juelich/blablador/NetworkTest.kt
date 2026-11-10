@@ -138,7 +138,8 @@ class StreamTest {
     }
 
     @Test fun httpErrorIsReported() = runTest {
-        server.enqueue(MockResponse().setResponseCode(400).setBody("model does not support tools"))
+        // Asked once with stream_options and once without.
+        repeat(2) { server.enqueue(MockResponse().setResponseCode(400).setBody("model does not support tools")) }
         try {
             BlabladorApi("test").streamChat("m", emptyList()).collect {}
             fail("expected an error")
@@ -146,5 +147,24 @@ class StreamTest {
             assertEquals(400, e.status)
             assertTrue(e.body.contains("does not support tools"))
         }
+    }
+
+    @Test fun usageCountsOnceAndFallsBackWithoutStreamOptions() = runTest {
+        BlabladorApi.usageRejected.clear()
+        val chunks = listOf(
+            """{"choices":[{"delta":{"content":"Hi"}}],"usage":{"prompt_tokens":10,"completion_tokens":1}}""",
+            """{"usage":{"prompt_tokens":10,"completion_tokens":3}}""",
+        )
+        server.enqueue(MockResponse().setResponseCode(400).setBody("unknown field stream_options"))
+        server.enqueue(MockResponse().setHeader("Content-Type", "text/event-stream")
+            .setBody(chunks.joinToString("") { "data: $it\n\n" } + "data: [DONE]\n\n"))
+        val usages = mutableListOf<BlabladorApi.StreamEvent.Usage>()
+        BlabladorApi("test").streamChat("m", emptyList()).collect { if (it is BlabladorApi.StreamEvent.Usage) usages += it }
+        assertEquals(1, usages.size)
+        assertEquals(3, usages[0].completion)
+        assertTrue(server.takeRequest().body.readUtf8().contains("stream_options"))
+        assertTrue(!server.takeRequest().body.readUtf8().contains("stream_options"))
+        assertTrue(BlabladorApi.usageRejected.isNotEmpty())
+        BlabladorApi.usageRejected.clear()
     }
 }

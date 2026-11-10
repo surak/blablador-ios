@@ -110,6 +110,34 @@ final class StreamTests: XCTestCase {
         XCTAssertEqual(MockServer.requests.first?.request.value(forHTTPHeaderField: "Authorization"), "Bearer test")
     }
 
+    /// Running totals in several chunks count once; a server that rejects stream_options is asked again without it.
+    func testUsageCountsOnceAndFallsBackWithoutStreamOptions() async throws {
+        UserDefaults.standard.removeObject(forKey: "usageRejected")
+        defer { UserDefaults.standard.removeObject(forKey: "usageRejected") }
+        let chunks = [
+            #"{"choices":[{"delta":{"content":"Hi"}}],"usage":{"prompt_tokens":10,"completion_tokens":1}}"#,
+            #"{"choices":[{"delta":{"content":"!"}}],"usage":{"prompt_tokens":10,"completion_tokens":2}}"#,
+            #"{"usage":{"prompt_tokens":10,"completion_tokens":3}}"#,
+        ]
+        let stream = chunks.map { "data: \($0)\n\n" }.joined() + "data: [DONE]\n\n"
+        MockServer.start { _, body in
+            if body.json["stream_options"] != nil { return .init(status: 400, body: Data("unknown field stream_options".utf8)) }
+            return .init(headers: ["Content-Type": "text/event-stream"], body: Data(stream.utf8))
+        }
+        var usages: [(Int, Int)] = []
+        var content = ""
+        for try await event in BlabladorAPI(apiKey: "test").streamChat(model: "m", messages: []) {
+            if case let .usage(prompt, completion) = event { usages.append((prompt, completion)) }
+            if case let .content(text) = event { content += text }
+        }
+        XCTAssertEqual(content, "Hi!")
+        XCTAssertEqual(usages.count, 1)
+        XCTAssertEqual(usages.first?.0, 10)
+        XCTAssertEqual(usages.first?.1, 3)
+        XCTAssertTrue(BlabladorAPI.usageRejected)
+        XCTAssertEqual(MockServer.requests.count, 2)
+    }
+
     func testHTTPErrorIsReported() async {
         MockServer.start { _, _ in .init(status: 400, body: Data("model does not support tools".utf8)) }
         do {

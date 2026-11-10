@@ -64,6 +64,16 @@ struct BlabladorAPI {
 
     var apiKey: String
 
+    /// Endpoints that refused `stream_options.include_usage` (token counts), so it isn't sent to them again.
+    static var usageRejected: Bool {
+        get { (UserDefaults.standard.stringArray(forKey: "usageRejected") ?? []).contains(endpoint) }
+        set {
+            var list = Set(UserDefaults.standard.stringArray(forKey: "usageRejected") ?? [])
+            if newValue { list.insert(endpoint) } else { list.remove(endpoint) }
+            UserDefaults.standard.set(Array(list), forKey: "usageRejected")
+        }
+    }
+
     private func request(path: String) throws -> URLRequest {
         guard !apiKey.isEmpty else { throw BlabladorAPIError.missingAPIKey }
         var request = URLRequest(url: Self.baseURL.appendingPathComponent(path))
@@ -303,37 +313,42 @@ struct BlabladorAPI {
                     request.timeoutInterval = minutes == 0 ? 7 * 24 * 3600 : TimeInterval(minutes * 60)
                     var body: [String: Any] = ["model": model, "messages": messages, "stream": true]
                     if !tools.isEmpty { body["tools"] = tools }
-                    // Blablador reports token counts at the end of the stream; other servers may reject the option.
-                    if Embeddings.available { body["stream_options"] = ["include_usage": true] }
-
                     let candidates = effort.map { ReasoningEffort.candidates(for: model, $0) } ?? [[:]]
+                    // Ask for token counts at the end of the stream; a server that rejects the option gets every
+                    // candidate again without it, and is remembered so later replies don't ask.
+                    let usage = !Self.usageRejected
+                    let attempts = (usage ? candidates.map { ($0, true) } : []) + candidates.map { ($0, false) }
                     var bytes: URLSession.AsyncBytes!
-                    for (index, extra) in candidates.enumerated() {
-                        request.httpBody = try JSONSerialization.data(withJSONObject: body.merging(extra) { $1 })
+                    for (attempt, (extra, withUsage)) in attempts.enumerated() {
+                        let index = attempt % candidates.count
+                        var sent = body.merging(extra) { $1 }
+                        if withUsage { sent["stream_options"] = ["include_usage": true] }
+                        request.httpBody = try JSONSerialization.data(withJSONObject: sent)
                         let (stream, response) = try await URLSession.shared.bytes(for: request)
                         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
                             var text = ""
                             for try await line in stream.lines { text += line }
                             // A way of setting the effort the model doesn't take: try the next.
-                            if [400, 422].contains(http.statusCode), index + 1 < candidates.count { continue }
+                            if [400, 422].contains(http.statusCode), attempt + 1 < attempts.count { continue }
                             throw BlabladorAPIError.http(status: http.statusCode, body: text)
                         }
+                        if usage && !withUsage { Self.usageRejected = true }
                         if let effort { ReasoningEffort.remember(index, for: model, effort) }
                         bytes = stream
                         break
                     }
 
                     var toolCalls: [Int: ToolCall] = [:]
+                    var lastUsage: ChatChunk.Usage?
                     for try await line in bytes.lines {
                         guard line.hasPrefix("data:") else { continue }
                         let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
                         if payload == "[DONE]" { break }
                         guard let data = payload.data(using: .utf8),
                               let chunk = try? JSONDecoder().decode(ChatChunk.self, from: data) else { continue }
-                        if let usage = chunk.usage {
-                            continuation.yield(.usage(prompt: usage.prompt_tokens ?? 0, completion: usage.completion_tokens ?? 0))
-                        }
-                        guard let delta = chunk.choices.first?.delta else { continue }
+                        // Some servers repeat running totals in many chunks: only the last one counts.
+                        if let usage = chunk.usage { lastUsage = usage }
+                        guard let delta = chunk.choices?.first?.delta else { continue }
                         if let thinking = delta.reasoning_content ?? delta.reasoning, !thinking.isEmpty {
                             continuation.yield(.reasoning(thinking))
                         }
@@ -350,6 +365,9 @@ struct BlabladorAPI {
                     }
                     if !toolCalls.isEmpty {
                         continuation.yield(.toolCalls(toolCalls.sorted { $0.key < $1.key }.map(\.value)))
+                    }
+                    if let lastUsage {
+                        continuation.yield(.usage(prompt: lastUsage.prompt_tokens ?? 0, completion: lastUsage.completion_tokens ?? 0))
                     }
                     continuation.finish()
                 } catch {
@@ -498,6 +516,6 @@ private struct ChatChunk: Decodable {
         let completion_tokens: Int?
     }
 
-    let choices: [Choice]
+    let choices: [Choice]?
     let usage: Usage?
 }

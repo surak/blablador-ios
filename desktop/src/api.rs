@@ -178,31 +178,43 @@ impl Api {
         if !tools.is_empty() {
             body["tools"] = json!(tools);
         }
-        // Blablador reports token counts at the end of the stream; other servers may reject the option.
-        if self.is_blablador() {
-            body["stream_options"] = json!({ "include_usage": true });
-        }
         let timeout = if self.timeout_minutes == 0 { Duration::from_secs(7 * 24 * 3600) } else { Duration::from_secs(self.timeout_minutes * 60) };
         let fallback = [Map::new()];
         let candidates = if candidates.is_empty() { &fallback[..] } else { candidates };
 
+        // Ask for token counts at the end of the stream; a server that rejects the option gets every candidate
+        // again without it, and isn't asked again while the app runs.
+        let ask_usage = !usage_rejected().lock().unwrap().contains(&self.endpoint);
+        let mut attempts: Vec<(usize, bool)> = Vec::new();
+        if ask_usage {
+            attempts.extend((0..candidates.len()).map(|i| (i, true)));
+        }
+        attempts.extend((0..candidates.len()).map(|i| (i, false)));
         let mut accepted = None;
-        for (index, extra) in candidates.iter().enumerate() {
+        for (attempt, &(index, with_usage)) in attempts.iter().enumerate() {
             let mut request_body = body.clone();
-            for (key, value) in extra {
+            for (key, value) in &candidates[index] {
                 request_body[key] = value.clone();
+            }
+            if with_usage {
+                request_body["stream_options"] = json!({ "include_usage": true });
             }
             let response = self.post("chat/completions", &request_body, timeout)?.header("Accept", "text/event-stream").send().await?;
             let status = response.status().as_u16();
-            if (status == 400 || status == 422) && index + 1 < candidates.len() {
+            if (status == 400 || status == 422) && attempt + 1 < attempts.len() {
                 continue;
             }
-            accepted = Some((index, Self::checked(response).await?));
+            let response = Self::checked(response).await?;
+            if ask_usage && !with_usage {
+                usage_rejected().lock().unwrap().insert(self.endpoint.clone());
+            }
+            accepted = Some((index, response));
             break;
         }
         let (index, response) = accepted.ok_or_else(|| anyhow!("The server refused the request."))?;
 
         let mut calls: Vec<(u64, ToolCall)> = Vec::new();
+        let mut last_usage: Option<(u64, u64)> = None;
         let mut buffer = Vec::<u8>::new();
         let mut stream = response.bytes_stream();
         'reading: while let Some(piece) = stream.next().await {
@@ -216,11 +228,9 @@ impl Api {
                     break 'reading;
                 }
                 let Ok(chunk) = serde_json::from_str::<Value>(payload) else { continue };
+                // Some servers repeat running totals in many chunks: only the last one counts.
                 if let Some(usage) = chunk.get("usage").filter(|u| u.is_object()) {
-                    on_event(StreamEvent::Usage {
-                        prompt: usage["prompt_tokens"].as_u64().unwrap_or(0),
-                        completion: usage["completion_tokens"].as_u64().unwrap_or(0),
-                    });
+                    last_usage = Some((usage["prompt_tokens"].as_u64().unwrap_or(0), usage["completion_tokens"].as_u64().unwrap_or(0)));
                 }
                 let delta = &chunk["choices"][0]["delta"];
                 if let Some(thinking) = delta["reasoning_content"].as_str().or(delta["reasoning"].as_str()) {
@@ -258,6 +268,15 @@ impl Api {
             calls.sort_by_key(|(position, _)| *position);
             on_event(StreamEvent::ToolCalls(calls.into_iter().map(|(_, call)| call).collect()));
         }
+        if let Some((prompt, completion)) = last_usage {
+            on_event(StreamEvent::Usage { prompt, completion });
+        }
         Ok(index)
     }
+}
+
+/// Endpoints that refused `stream_options.include_usage` (token counts).
+fn usage_rejected() -> &'static std::sync::Mutex<std::collections::HashSet<String>> {
+    static REJECTED: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> = std::sync::OnceLock::new();
+    REJECTED.get_or_init(Default::default)
 }

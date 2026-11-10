@@ -42,6 +42,8 @@ class BlabladorException(val status: Int, val body: String) :
 /** Client for Blablador's OpenAI-compatible API. */
 class BlabladorApi(private val apiKey: String) {
     companion object {
+        /** Endpoints that refused `stream_options.include_usage` (token counts). */
+        val usageRejected: MutableSet<String> = java.util.Collections.synchronizedSet(mutableSetOf())
         const val DEFAULT_ENDPOINT = "https://api.blablador.fz-juelich.de/v1"
         /** The OpenAI-compatible endpoint, Blablador unless changed in Settings. */
         @Volatile var endpoint = DEFAULT_ENDPOINT
@@ -167,28 +169,37 @@ class BlabladorApi(private val apiKey: String) {
             put("messages", JsonArray(messages))
             put("stream", true)
             if (tools.isNotEmpty()) put("tools", JsonArray(tools))
-            // Blablador reports token counts at the end of the stream; other servers may reject the option.
-            if (endpoint.trim().trimEnd('/') == DEFAULT_ENDPOINT) put("stream_options", buildJsonObject { put("include_usage", true) })
         }
+        // Ask for token counts at the end of the stream; a server that rejects the option gets every way of setting
+        // the effort again without it, and isn't asked again while the app runs.
+        val usageOption = buildJsonObject { put("stream_options", buildJsonObject { put("include_usage", true) }) }
+        val askUsage = endpoint !in usageRejected
         // Slow models can take minutes before the first token.
         val streamingClient = client.newBuilder().readTimeout(responseTimeoutMinutes.toLong(), TimeUnit.MINUTES).build()
         val tries = extras.ifEmpty { listOf(JsonObject(emptyMap())) }
+        val attempts = (if (askUsage) tries.map { it to true } else emptyList()) + tries.map { it to false }
         lateinit var call: Call
         lateinit var response: Response
-        for ((index, extra) in tries.withIndex()) {
-            val request = post("chat/completions", JsonObject(body + extra)).newBuilder().header("Accept", "text/event-stream").build()
+        for ((index, attempt) in attempts.withIndex()) {
+            val (extra, withUsage) = attempt
+            val sent = JsonObject(body + extra + (if (withUsage) usageOption else JsonObject(emptyMap())))
+            val request = post("chat/completions", sent).newBuilder().header("Accept", "text/event-stream").build()
             call = streamingClient.newCall(request)
             response = call.await()
-            if (response.isSuccessful) { accepted(extra); break }
+            if (response.isSuccessful) {
+                if (askUsage && !withUsage) usageRejected += endpoint
+                accepted(extra); break
+            }
             val text = response.body?.string().orEmpty().take(500)
             response.close()
             // A way of setting the effort the model doesn't take: try the next.
-            if (response.code in setOf(400, 422) && index + 1 < tries.size) continue
+            if (response.code in setOf(400, 422) && index + 1 < attempts.size) continue
             throw BlabladorException(response.code, text)
         }
         try {
             val source = response.body!!.source()
             val toolCalls = sortedMapOf<Int, ToolCall>()
+            var lastUsage: JsonObject? = null
             while (true) {
                 currentCoroutineContext().ensureActive()
                 val line = source.readUtf8Line() ?: break
@@ -196,9 +207,8 @@ class BlabladorApi(private val apiKey: String) {
                 val payload = line.removePrefix("data:").trim()
                 if (payload == "[DONE]") break
                 val chunk = runCatching { json.parseToJsonElement(payload).jsonObject }.getOrNull() ?: continue
-                (chunk["usage"] as? JsonObject)?.let { usage ->
-                    emit(StreamEvent.Usage(usage["prompt_tokens"]?.jsonPrimitive?.intOrNull ?: 0, usage["completion_tokens"]?.jsonPrimitive?.intOrNull ?: 0))
-                }
+                // Some servers repeat running totals in many chunks: only the last one counts.
+                (chunk["usage"] as? JsonObject)?.let { lastUsage = it }
                 val delta = runCatching { chunk["choices"]?.jsonArray?.firstOrNull()?.jsonObject?.get("delta")?.jsonObject }.getOrNull() ?: continue
                 // Thinking trace: vLLM and DeepSeek send reasoning_content, others reasoning.
                 (jsonString(delta["reasoning_content"]) ?: jsonString(delta["reasoning"]))?.takeIf { it.isNotEmpty() }
@@ -215,6 +225,9 @@ class BlabladorApi(private val apiKey: String) {
                 }
             }
             if (toolCalls.isNotEmpty()) emit(StreamEvent.ToolCalls(toolCalls.values.toList()))
+            lastUsage?.let { usage ->
+                emit(StreamEvent.Usage(usage["prompt_tokens"]?.jsonPrimitive?.intOrNull ?: 0, usage["completion_tokens"]?.jsonPrimitive?.intOrNull ?: 0))
+            }
         } finally {
             response.close()
             call.cancel()
