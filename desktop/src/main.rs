@@ -7,6 +7,7 @@ mod chat;
 mod effort;
 mod extract;
 mod knowledge;
+mod mapper;
 mod model;
 mod storage;
 mod tools;

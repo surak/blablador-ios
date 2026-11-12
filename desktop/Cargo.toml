@@ -1,6 +1,6 @@
 [package]
 name = "blablador"
-version = "3.6.2"
+version = "3.7.0"
 edition = "2021"
 description = "Blablador chat client for Windows and Linux"
 license = "MIT"
@@ -26,6 +26,7 @@ keyring = { version = "3", features = ["apple-native", "windows-native", "sync-s
 rfd = "0.15"
 pdf-extract = "0.7"
 arboard = "3"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 
 [profile.release]
 opt-level = 3

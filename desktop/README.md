@@ -5,7 +5,7 @@ A native desktop client written in Rust (egui), sharing the version number and r
 Features: streaming chat with model and thinking-effort choice, encrypted chat history (AES-GCM, key in the
 system keyring or a private file when there is none), web search and page reading, long-term memory, search of
 earlier chats, shell commands in a chosen folder after approval, attached PDFs and text files, and knowledge bases
-(embeddings and rerank on Blablador).
+(embeddings and rerank on Blablador), and 3D room: photos mapped into a floor plan and a point cloud by `alias-visual-geometry` (`src/mapper.rs`).
 
     cargo run --release     # build and start
     cargo test

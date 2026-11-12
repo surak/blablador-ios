@@ -52,6 +52,7 @@ pub struct App {
     show_settings: bool,
     show_memory: bool,
     show_knowledge: bool,
+    mapper: crate::mapper::Mapper,
     new_memory: String,
     new_base: String,
     renaming: Option<(Uuid, String)>,
@@ -86,6 +87,7 @@ impl App {
             allowed_chats: HashSet::new(),
             show_memory: false,
             show_knowledge: false,
+            mapper: Default::default(),
             new_memory: String::new(),
             new_base: String::new(),
             renaming: None,
@@ -345,7 +347,7 @@ impl App {
         });
         ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
             ui.add_space(6.0);
-            for (label, flag) in [("Settings", &mut self.show_settings), ("Memory", &mut self.show_memory), ("Knowledge", &mut self.show_knowledge)] {
+            for (label, flag) in [("Settings", &mut self.show_settings), ("Memory", &mut self.show_memory), ("Knowledge", &mut self.show_knowledge), ("3D room", &mut self.mapper.open)] {
                 if ui.add_sized([ui.available_width(), 24.0], egui::Button::new(label).selected(*flag)).clicked() {
                     *flag = !*flag;
                 }
@@ -865,6 +867,8 @@ impl eframe::App for App {
         self.settings_window(ctx);
         self.memory_window(ctx);
         self.knowledge_window(ctx);
+        let api = self.api();
+        self.mapper.window(ctx, &self.runtime, api);
         self.approval_window(ctx);
 
         if let Some((id, mut title)) = self.renaming.take() {

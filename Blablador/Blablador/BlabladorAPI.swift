@@ -59,6 +59,8 @@ struct BlabladorAPI {
     static let rerankModel = "alias-qwen3-4b-reranker"
     /// MiniMax-H3: text to video with sound, at 24 fps. A 4-second clip takes about 3–4 minutes.
     static let videoModel = "alias-video"
+    /// VGGT-1B: photos of a place in, a top-down map and a coloured point cloud out.
+    static let visualGeometryModel = "alias-visual-geometry"
     static let videoDurations = [4, 6, 8, 10]
     static let videoAspects: [(id: String, name: String)] = [("16:9", "Landscape"), ("9:16", "Portrait"), ("1:1", "Square")]
 
@@ -183,6 +185,32 @@ struct BlabladorAPI {
         let (data, response) = try await URLSession.shared.data(for: request)
         try Self.validate(response, body: String(data: data.prefix(500), encoding: .utf8) ?? "")
         return try JSONDecoder().decode(Response.self, from: data).choices.first?.message.content ?? ""
+    }
+
+    /// Sends a command (`step`, `finish`, `download`, `queue`) with JPEG photos to `alias-visual-geometry`; the reply is JSON.
+    func visualGeometry(_ command: String, photos: [Data] = []) async throws -> [String: Any] {
+        struct Response: Decodable {
+            struct Choice: Decodable {
+                struct Message: Decodable { let content: String? }
+                let message: Message
+            }
+            let choices: [Choice]
+        }
+        var request = try request(path: "chat/completions")
+        request.httpMethod = "POST"
+        request.timeoutInterval = 600
+        let content: [[String: Any]] = [["type": "text", "text": command]]
+            + photos.map { ["type": "image_url", "image_url": ["url": "data:image/jpeg;base64," + $0.base64EncodedString()]] }
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "model": Self.visualGeometryModel, "messages": [["role": "user", "content": content]]
+        ])
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try Self.validate(response, body: String(data: data.prefix(500), encoding: .utf8) ?? "")
+        let text = try JSONDecoder().decode(Response.self, from: data).choices.first?.message.content ?? ""
+        guard let object = try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any] else {
+            throw URLError(.cannotParseResponse)
+        }
+        return object
     }
 
     func embeddings(_ texts: [String], model: String = BlabladorAPI.embeddingModel) async throws -> [[Float]] {

@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.outlined.AlternateEmail
 import androidx.compose.material.icons.outlined.AutoFixHigh
 import androidx.compose.material.icons.outlined.Balance
+import androidx.compose.material.icons.outlined.ViewInAr
 import androidx.compose.material.icons.outlined.Brush
 import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
@@ -63,7 +64,7 @@ import androidx.compose.ui.unit.dp
 import de.fz_juelich.blablador.ChatViewModel
 
 /** Things picked in the panel that open a picker or a page. */
-enum class PanelAction { CloneVoice, Talk, Voices, Camera, Photos, Files, Paste, ScanText, Decide, Knowledge, NewKnowledge, Mcp, Skills, Tasks, Permissions }
+enum class PanelAction { CloneVoice, Talk, Voices, Camera, Photos, Files, Paste, ScanText, Decide, RoomMapper, Knowledge, NewKnowledge, Mcp, Skills, Tasks, Permissions }
 
 /**
  * What the + button opens: attach, the kind of reply, tools, knowledge, connected services and more, each with its
@@ -176,6 +177,8 @@ fun ToolsPanel(
                 LinkRow("Permissions", "What the assistant may do without asking", Icons.Outlined.PanTool) { onAction(PanelAction.Permissions) }
                 Divider()
                 LinkRow("Decide…", "Weigh options with the Clef decision model", Icons.Outlined.Balance) { onAction(PanelAction.Decide) }
+                Divider()
+                LinkRow("3D room…", "Map a room from photos and see it in 3D", Icons.Outlined.ViewInAr) { onAction(PanelAction.RoomMapper) }
             }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {

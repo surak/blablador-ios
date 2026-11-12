@@ -151,6 +151,11 @@ impl Api {
         Ok(results.into_iter().map(|(index, _)| index).collect())
     }
 
+    /// A plain JSON POST, e.g. for the Room Mapper's chat/completions commands.
+    pub async fn post_json(&self, path: &str, body: &Value, timeout: Duration) -> Result<Value> {
+        Ok(Self::checked(self.post(path, body, timeout)?.send().await?).await?.json().await?)
+    }
+
     /// One reply without tools, as text.
     pub async fn complete(&self, model: &str, system: &str, user: &str) -> Result<String> {
         let messages = [json!({ "role": "system", "content": system }), json!({ "role": "user", "content": user })];
