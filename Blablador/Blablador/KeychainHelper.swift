@@ -13,9 +13,7 @@ enum KeychainHelper {
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
-        var item: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
-              let data = item as? Data else { return nil }
+        guard let data = Keychain.copy(query, accessible: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly).data else { return nil }
         return String(data: data, encoding: .utf8)
     }
 
@@ -25,12 +23,70 @@ enum KeychainHelper {
             kSecAttrService as String: service,
             kSecAttrAccount as String: account
         ]
-        SecItemDelete(query as CFDictionary)
+        Keychain.delete(query)
         guard !value.isEmpty else { return }
         var attributes = query
         attributes[kSecValueData as String] = Data(value.utf8)
         attributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-        SecItemAdd(attributes as CFDictionary, nil)
+        Keychain.add(attributes)
+    }
+}
+
+/// SecItem calls that, on the Mac, use the data protection keychain (the iOS-style one, shared through the app
+/// group): the old file-based keychain asks for the login password after every update and doesn't take Touch ID.
+/// Items from older versions are moved over the first time they are read. Without the entitlement (`swift test`)
+/// everything stays in the file-based keychain.
+enum Keychain {
+#if os(macOS)
+    private static let accessGroup = "4Q84Z7RZ3Z.de.fz-juelich.blablador"
+
+    private static func modern(_ query: [String: Any]) -> [String: Any] {
+        var query = query
+        query[kSecUseDataProtectionKeychain as String] = true
+        query[kSecAttrAccessGroup as String] = accessGroup
+        return query
+    }
+#endif
+
+    static func copy(_ query: [String: Any], accessible: CFString) -> (status: OSStatus, data: Data?) {
+        var item: CFTypeRef?
+#if os(macOS)
+        let status = SecItemCopyMatching(modern(query) as CFDictionary, &item)
+        if status != errSecItemNotFound && status != errSecMissingEntitlement { return (status, item as? Data) }
+        item = nil
+        let legacy = SecItemCopyMatching(query as CFDictionary, &item)
+        if status == errSecItemNotFound, legacy == errSecSuccess, let data = item as? Data {
+            var attributes = modern(query)
+            for key in [kSecReturnData, kSecMatchLimit] { attributes.removeValue(forKey: key as String) }
+            attributes[kSecValueData as String] = data
+            attributes[kSecAttrAccessible as String] = accessible
+            if SecItemAdd(attributes as CFDictionary, nil) == errSecSuccess {
+                var old = query
+                for key in [kSecReturnData, kSecMatchLimit] { old.removeValue(forKey: key as String) }
+                SecItemDelete(old as CFDictionary)
+            }
+        }
+        return (legacy, item as? Data)
+#else
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        return (status, item as? Data)
+#endif
+    }
+
+    @discardableResult
+    static func add(_ attributes: [String: Any]) -> OSStatus {
+#if os(macOS)
+        let status = SecItemAdd(modern(attributes) as CFDictionary, nil)
+        if status != errSecMissingEntitlement { return status }
+#endif
+        return SecItemAdd(attributes as CFDictionary, nil)
+    }
+
+    static func delete(_ query: [String: Any]) {
+#if os(macOS)
+        SecItemDelete(modern(query) as CFDictionary)
+#endif
+        SecItemDelete(query as CFDictionary)
     }
 }
 
@@ -134,14 +190,13 @@ enum EncryptedStorage {
 
     /// False when the Keychain can't be read right now (as opposed to having no key yet).
     private static var keychainAvailable: Bool {
-        let status = SecItemCopyMatching(query(returnData: false) as CFDictionary, nil)
+        let status = Keychain.copy(query(returnData: false), accessible: kSecAttrAccessibleAfterFirstUnlock).status
         return status == errSecSuccess || status == errSecItemNotFound
     }
 
     private static func key(create: Bool) -> SymmetricKey? {
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(query(returnData: true) as CFDictionary, &item)
-        if status == errSecSuccess, let data = item as? Data, data.count == 32 { return SymmetricKey(data: data) }
+        let (status, data) = Keychain.copy(query(returnData: true), accessible: kSecAttrAccessibleAfterFirstUnlock)
+        if status == errSecSuccess, let data, data.count == 32 { return SymmetricKey(data: data) }
         // Only make a new key when there is none; any other error keeps the existing files readable later.
         guard create, status == errSecItemNotFound else { return nil }
         let key = SymmetricKey(size: .bits256)
@@ -150,7 +205,7 @@ enum EncryptedStorage {
         attributes[kSecValueData as String] = key.withUnsafeBytes { Data($0) }
         // Not "ThisDeviceOnly": the key moves with encrypted backups, so restored history stays readable.
         attributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
-        return SecItemAdd(attributes as CFDictionary, nil) == errSecSuccess ? key : nil
+        return Keychain.add(attributes) == errSecSuccess ? key : nil
     }
 
     private static func query(returnData: Bool) -> [String: Any] {
