@@ -1,5 +1,6 @@
 #if os(macOS)
 import Foundation
+import Security
 
 /// `bla`, Blablador on the command line. The app's own binary answers when started with `--cli`; the `bla`
 /// script installed from Settings runs it that way, so it uses the app's API key, endpoint, model and effort.
@@ -170,12 +171,29 @@ enum BlaCommand {
     /// Links `bla` to the script in the app's Resources (older builds: writes a script that starts this app's
     /// binary in command-line mode). Returns where it went.
     @discardableResult
+    /// The Rust bla reads the key from the login keychain, like the desktop app; this app keeps its own in the data
+    /// protection keychain, which only it can open. Installing the command puts a copy where bla looks.
+    static func shareKey() {
+        guard let key = KeychainHelper.read("apiKey"), !key.isEmpty else { return }
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "de.fz-juelich.blablador",
+            kSecAttrAccount as String: "apiKey"
+        ]
+        SecItemDelete(query as CFDictionary)
+        var attributes = query
+        attributes[kSecValueData as String] = Data(key.utf8)
+        attributes[kSecAttrLabel as String] = "Blablador API key (for bla and the desktop app)"
+        SecItemAdd(attributes as CFDictionary, nil)
+    }
+
     static func install(executable: String = Bundle.main.executablePath ?? "/Applications/Blablador.app/Contents/MacOS/Blablador") throws -> URL {
         let script = "#!/bin/sh\n# Blablador on the command line; installed by the Blablador app.\nexec '\(executable.replacingOccurrences(of: "'", with: "'\\''"))' --cli \"$@\"\n"
         let manager = FileManager.default
         let folder = installFolders.first { manager.isWritableFile(atPath: $0.path) } ?? installFolders.last!
         try manager.createDirectory(at: folder, withIntermediateDirectories: true)
         let url = folder.appendingPathComponent("bla")
+        shareKey()
         if let bundled = Bundle.main.url(forResource: "bla", withExtension: nil) {
             // A link to the script inside the app (as Homebrew makes), so it keeps working after updates.
             try? manager.removeItem(at: url)

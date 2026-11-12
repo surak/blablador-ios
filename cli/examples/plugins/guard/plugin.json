@@ -1,0 +1,5 @@
+{
+  "name": "guard",
+  "description": "Example plugin: refuses force pushes and adds a word_count tool",
+  "command": ["python3", "guard.py"]
+}

@@ -202,7 +202,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Command line")
                 } footer: {
-                    Text("bla asks Blablador from the Terminal with this app's key, model and thinking effort: bla \"question\", or pipe text in (git diff | bla \"write a commit message\"). bla alone starts a chat; bla --help shows the options.")
+                    Text("bla is a coding agent for the Terminal: bla \"fix the failing test\", or pipe text in (git diff | bla \"write a commit message\"). It reads and edits files and runs commands, asking first. bla alone starts a chat; bla --help shows the options. Installing gives it a copy of this app's key; install again after changing the key.")
                 }
 #endif
 

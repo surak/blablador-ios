@@ -12,6 +12,12 @@ struct WhatsNewItem: Identifiable, Hashable {
 
 enum WhatsNew {
     static let releases: [(version: String, items: [WhatsNewItem])] = [
+        ("3.8", [
+            WhatsNewItem(icon: "cube.transparent", title: "A place in 3D",
+                         text: "Take photos all around a room and get a top-down map after every batch, then a 3D model you can turn. In the + panel: 3D room."),
+            WhatsNewItem(icon: "terminal", title: "bla, an agent in the Terminal",
+                         text: "bla is now a coding agent: it reads and edits files and runs commands, asking first, with skills, memory and /undo. Install it in Settings → Command line.")
+        ]),
         ("3.6", [
             WhatsNewItem(icon: "brain", title: "Choose how hard it thinks",
                          text: "Pick Off, Low, Medium, High or Max for models that think, in the model menu or Settings. Medium is the new default, for quicker answers."),

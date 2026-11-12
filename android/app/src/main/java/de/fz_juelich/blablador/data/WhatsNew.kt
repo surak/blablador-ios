@@ -15,6 +15,12 @@ data class WhatsNewItem(val icon: String, val title: String, val text: String, v
 
 object WhatsNew {
     val releases: List<Pair<String, List<WhatsNewItem>>> = listOf(
+        "3.8" to listOf(
+            WhatsNewItem("cube", "A place in 3D",
+                "Take photos all around a room and get a top-down map after every batch, then a 3D model you can turn with a finger. In the + panel: 3D room."),
+            WhatsNewItem("terminal", "bla, an agent in the terminal",
+                "On a computer, bla reads and edits files and runs commands for you, asking first. For Mac, Linux, Windows and Raspberry Pi, with the release."),
+        ),
         "3.6" to listOf(
             WhatsNewItem("brain", "Choose how hard it thinks",
                 "Pick Off, Low, Medium, High or Max for models that think, in the model menu or Settings. Medium is the new default, for quicker answers."),

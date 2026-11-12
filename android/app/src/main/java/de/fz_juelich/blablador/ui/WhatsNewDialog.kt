@@ -19,6 +19,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.outlined.AlternateEmail
+import androidx.compose.material.icons.outlined.Terminal
+import androidx.compose.material.icons.outlined.ViewInAr
 import androidx.compose.material.icons.outlined.Flag
 import androidx.compose.material.icons.outlined.GraphicEq
 import androidx.compose.material.icons.outlined.Tag
@@ -85,6 +87,8 @@ fun WhatsNewDialog(version: String, items: List<WhatsNewItem>, onTry: (WhatsNewI
                                         "queue" -> Icons.Outlined.Queue
                                         "bolt" -> Icons.Outlined.Bolt
                                         "scroll" -> Icons.Outlined.SwapVert
+                                        "cube" -> Icons.Outlined.ViewInAr
+                                        "terminal" -> Icons.Outlined.Terminal
                                         else -> Icons.Outlined.AlternateEmail
                                     }, null, Modifier.size(26.dp), tint = Brand.violet)
                                 }
