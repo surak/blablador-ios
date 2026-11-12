@@ -3,7 +3,7 @@ import SceneKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// The visual geometry model (`alias-visual-geometry`, VGGT-1B): photos of a place go in batches with `step`,
+/// The visual geometry model (`alias-visual-geometry`, VGGT-Ω): photos of a place go in batches with `step`,
 /// each answer has a top-down map; `finish` builds a coloured point cloud that `download` sends back in pieces.
 enum RoomMapper {
     static let batchSize = 4

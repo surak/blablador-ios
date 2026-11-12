@@ -59,7 +59,7 @@ struct BlabladorAPI {
     static let rerankModel = "alias-qwen3-4b-reranker"
     /// MiniMax-H3: text to video with sound, at 24 fps. A 4-second clip takes about 3–4 minutes.
     static let videoModel = "alias-video"
-    /// VGGT-1B: photos of a place in, a top-down map and a coloured point cloud out.
+    /// VGGT-Ω (VGGT-Omega-1B): photos of a place in, a top-down map and a coloured point cloud out.
     static let visualGeometryModel = "alias-visual-geometry"
     static let videoDurations = [4, 6, 8, 10]
     static let videoAspects: [(id: String, name: String)] = [("16:9", "Landscape"), ("9:16", "Portrait"), ("1:1", "Square")]
