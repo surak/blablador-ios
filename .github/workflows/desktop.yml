@@ -6,6 +6,10 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to attach the builds to (empty builds without attaching)
+        required: false
 
 permissions:
   contents: write
@@ -64,6 +68,7 @@ jobs:
 
   cli:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: windows-latest
@@ -120,11 +125,11 @@ jobs:
 
   release:
     needs: [build, cli]
-    if: github.event_name == 'release'
+    if: github.event_name == 'release' || inputs.tag != ''
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
-      TAG: ${{ github.event.release.tag_name }}
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
     steps:
       - uses: actions/download-artifact@v4
         with:

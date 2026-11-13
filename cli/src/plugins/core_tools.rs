@@ -392,6 +392,10 @@ mod tests {
 
     #[test]
     fn bash_output_and_exit_code() {
+        // The commands are Unix shell; Windows runs cmd.
+        if cfg!(windows) {
+            return;
+        }
         let dir = temp();
         let cancel = AtomicBool::new(false);
         let ctx = ToolCtx { cwd: &dir, cancel: &cancel };
