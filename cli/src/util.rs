@@ -278,7 +278,8 @@ pub fn run(mut command: Command, input: &[u8], timeout: Duration, cancel: &Atomi
 fn kill_group(pid: u32) {
     #[cfg(unix)]
     {
-        let _ = Command::new("kill").arg("-KILL").arg(format!("-{pid}")).stdout(Stdio::null()).stderr(Stdio::null()).status();
+        // `--` matters: without it, procps kill (Ubuntu 22.04) misreads `-<pgid>` and kills its own group.
+        let _ = Command::new("kill").args(["-s", "KILL", "--", &format!("-{pid}")]).stdout(Stdio::null()).stderr(Stdio::null()).status();
     }
     #[cfg(not(unix))]
     let _ = pid;
