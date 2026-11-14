@@ -1421,7 +1421,7 @@ struct VoiceConversationView: View {
             } else if conversation.waitingForVoice {
                 "Preparing " + (conversation.partText(conversation.partPlaying + 1).map { $0 + " in " } ?? "") + "\(voices.selected.name)'s voice…"
             } else {
-                replyStatus ?? "Thinking…"
+                replyStatus ?? "Potatoing…"
             }
         case .speaking:
             if conversation.waitingForVoice, let next = conversation.partText(conversation.partPlaying + 1) {

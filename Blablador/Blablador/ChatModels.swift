@@ -134,3 +134,12 @@ struct RemoteModel: Identifiable, Codable, Hashable {
         return id
     }
 }
+
+/// What a reply says while the model works, picked at random like a potato would.
+enum PotatoVerbs {
+    static let all = ["Potatoing", "Spudding", "Mashing", "Tuberising", "Peeling", "Sprouting", "Roasting", "Baking",
+                      "Frying", "Boiling", "Chipping", "Hash-browning", "Rösti-ing", "Gratinating", "Scalloping",
+                      "Wedging", "Tater-totting", "Jacketing", "Eye-sprouting", "Earthing up", "Harvesting", "Digging",
+                      "Gnocchi-ing", "Croquetting", "Latke-ing", "Dauphinoising", "Smashing", "Crisping", "Fermenting"]
+    static var random: String { (all.randomElement() ?? "Potatoing") + "…" }
+}

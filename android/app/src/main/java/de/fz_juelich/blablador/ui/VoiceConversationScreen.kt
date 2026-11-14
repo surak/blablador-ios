@@ -544,7 +544,7 @@ private fun Orb(conversation: VoiceConversation) {
 private fun status(conversation: VoiceConversation, vm: ChatViewModel?): String = when (conversation.phase) {
     VoiceConversation.Phase.Starting -> "Starting…"
     VoiceConversation.Phase.Listening -> if (conversation.heard.isEmpty()) "Listening…" else "Listening · tap to send now"
-    VoiceConversation.Phase.Thinking -> conversation.replyId?.let { vm?.messageById(it)?.status } ?: "Thinking…"
+    VoiceConversation.Phase.Thinking -> conversation.replyId?.let { vm?.messageById(it)?.status } ?: "Potatoing…"
     VoiceConversation.Phase.Speaking -> "Speaking · talk or tap to interrupt"
     VoiceConversation.Phase.Paused -> "Paused · tap to talk"
 }

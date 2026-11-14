@@ -965,7 +965,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 updateMessage(replyId) { m -> m.copy(trace = m.trace?.let { t -> t.copy(calls = t.calls.map { if (it.id == traced.id) traced else it }) }) }
                 messages += buildJsonObject { put("role", "tool"); put("tool_call_id", call.id); put("content", output) }
             }
-            updateMessage(replyId) { it.copy(status = if (checking) "Checking the result…" else "Thinking…") }
+            updateMessage(replyId) { it.copy(status = if (checking) "Checking the result…" else de.fz_juelich.blablador.data.PotatoVerbs.random()) }
         }
     }
 

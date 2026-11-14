@@ -1366,7 +1366,7 @@ final class ChatStore: ObservableObject {
                 }
                 messages.append(["role": "tool", "tool_call_id": call.id, "content": output])
             }
-            updateMessage(replyID) { $0.status = checking ? "Checking the result…" : "Thinking…" }
+            updateMessage(replyID) { $0.status = checking ? "Checking the result…" : PotatoVerbs.random }
         }
     }
 

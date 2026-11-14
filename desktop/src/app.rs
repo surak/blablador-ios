@@ -214,7 +214,7 @@ impl App {
         let model = self.settings.model.clone();
         let mut reply = Message::new(Role::Assistant, "");
         reply.model = Some(model.clone());
-        reply.status = Some("Thinking…".into());
+        reply.status = Some(crate::chat::potato_verb());
         let Some(chat) = self.chat(id) else { return };
         let history = chat.messages.clone();
         let needs_title = chat.title == "New chat";

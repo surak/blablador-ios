@@ -115,3 +115,12 @@ data class RemoteModel(val id: String) {
     /** "15 - DeepSeek-V4.1-Flash on JUWELS Booster" -> "DeepSeek-V4.1-Flash on JUWELS Booster" */
     val displayName: String get() = id.replace(Regex("""^\d+\s*-\s*"""), "")
 }
+
+/** What a reply says while the model works, picked at random like a potato would. */
+object PotatoVerbs {
+    val all = listOf("Potatoing", "Spudding", "Mashing", "Tuberising", "Peeling", "Sprouting", "Roasting", "Baking",
+        "Frying", "Boiling", "Chipping", "Hash-browning", "Rösti-ing", "Gratinating", "Scalloping",
+        "Wedging", "Tater-totting", "Jacketing", "Eye-sprouting", "Earthing up", "Harvesting", "Digging",
+        "Gnocchi-ing", "Croquetting", "Latke-ing", "Dauphinoising", "Smashing", "Crisping", "Fermenting")
+    fun random(): String = all.random() + "…"
+}

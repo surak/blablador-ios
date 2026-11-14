@@ -1149,6 +1149,7 @@ private struct ThinkingView: View {
     let text: String
     let isThinking: Bool
     @State private var expanded = false
+    @State private var verb = PotatoVerbs.random
 
     /// The last line written, found from the end so a long trace isn't scanned on every update.
     private var lastLine: Substring {
@@ -1166,7 +1167,7 @@ private struct ThinkingView: View {
                     HStack(spacing: 6) {
                         Image(systemName: "brain")
                             .symbolEffect(.pulse, isActive: isThinking)
-                        Text(isThinking ? "Thinking…" : "Thought process")
+                        Text(isThinking ? verb : "Thought process")
                         Image(systemName: "chevron.right")
                             .scaledFont(.caption, weight: .semibold)
                             .rotationEffect(.degrees(expanded ? 90 : 0))

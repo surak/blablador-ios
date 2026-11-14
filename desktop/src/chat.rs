@@ -11,6 +11,16 @@ use serde_json::{json, Map, Value};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+
+/// What a reply says while the model works, picked at random like a potato would.
+pub fn potato_verb() -> String {
+    use rand::seq::SliceRandom;
+    const VERBS: &[&str] = &["Potatoing", "Spudding", "Mashing", "Tuberising", "Peeling", "Sprouting", "Roasting", "Baking",
+        "Frying", "Boiling", "Chipping", "Hash-browning", "Rösti-ing", "Gratinating", "Scalloping",
+        "Wedging", "Tater-totting", "Jacketing", "Eye-sprouting", "Earthing up", "Harvesting", "Digging",
+        "Gnocchi-ing", "Croquetting", "Latke-ing", "Dauphinoising", "Smashing", "Crisping", "Fermenting"];
+    format!("{}…", VERBS.choose(&mut rand::thread_rng()).unwrap_or(&"Potatoing"))
+}
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
@@ -286,7 +296,7 @@ async fn write_reply(turn: &mut Turn, reply: &mut Message, events: &Events) -> R
             }
             messages.push(json!({ "role": "tool", "tool_call_id": call.id, "content": output }));
         }
-        reply.status = Some("Thinking…".into());
+        reply.status = Some(potato_verb());
         events.send(Event::Reply { chat, message: reply.clone() });
     }
 }

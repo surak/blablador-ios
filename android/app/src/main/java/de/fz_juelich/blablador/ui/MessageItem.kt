@@ -539,11 +539,12 @@ private fun EditMessageDialog(text: String, onDismiss: () -> Unit, onSend: (Stri
 @Composable
 private fun Thinking(text: String, thinking: Boolean) {
     var open by remember { mutableStateOf(false) }
+    val verb = remember { de.fz_juelich.blablador.data.PotatoVerbs.random() }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(Modifier.clickable { open = !open }, verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Icon(Icons.Outlined.Psychology, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(if (thinking) "Thinking…" else "Thought process", style = MaterialTheme.typography.bodyMedium,
+            Text(if (thinking) verb else "Thought process", style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             Icon(if (open) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, if (open) "Hide thinking" else "Show thinking",
                 Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
