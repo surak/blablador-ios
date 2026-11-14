@@ -53,8 +53,28 @@ new line, Up/Down go through earlier messages. You can type while the answer is 
 turn above the input. Esc stops the answer; Ctrl-C twice quits.
 
 In a chat: `/help` lists the commands (`/new`, `/resume`, `/model`, `/effort`, `/mode`, `/compact`, `/undo`,
-`/skills`, `/memory`, `/tools`, `/plugins`, and one per skill); `!command` runs a shell command and shows the
-model its output; `@path` attaches a file; Esc or Ctrl-C stops the answer; Ctrl-C twice or Ctrl-D quits.
+`/skills`, `/memory`, `/voice`, `/tools`, `/plugins`, and one per skill); `/yolo` stops asking for the rest of the
+session and `/safe` starts again; `!command` runs a shell command and
+shows the model its output; `@path` attaches a file; Esc or Ctrl-C stops the answer; Ctrl-C twice or Ctrl-D
+quits.
+
+### Talking to it
+
+`/voice` turns the microphone on and bla answers out loud, the same conversation the apps have. Say something
+and stop; the pause ends your turn, Whisper writes it down and it is sent as if you had typed it. The answer is
+read back by Drama 3 sentence by sentence while it is still being written, so it starts talking before it has
+finished thinking. `/voice pt` (or any language code) tells Whisper which language to expect instead of
+guessing. `/voice off` ends it.
+
+A line above the input shows whether it is listening, hearing you, writing you down or speaking, with a meter
+for how loud the room is. Esc stops it talking; while it talks, so does saying "stop". To interrupt with a new
+question, just ask it: the terminal has no echo cancellation, so bla ignores anything it hears in the second
+after it stops and anything whose words are mostly words it just said, and it takes three words it did not say
+to throw the answer away and listen to you instead. While voice is on the model is told to answer to be heard —
+a few short sentences, no lists or code read out loud; code is shown on the screen and said to be there.
+
+The first `/voice` makes your terminal ask for the microphone, and the permission belongs to the terminal
+program, not to bla. On Linux, building needs the ALSA headers (`sudo apt-get install libasound2-dev`).
 
 ## Permissions
 
@@ -70,10 +90,12 @@ build` allows `npm run lint`. For anything that deletes, escalates, reaches the 
 
 | Mode | Reads | File changes | Commands |
 |---|---|---|---|
-| default | allowed (outside the folder: ask) | allowed inside the folder | ask, except looking and "always" |
-| careful | allowed (outside the folder: ask) | ask | ask |
+| default | allowed anywhere but the secrets | allowed inside the folder and in temp | ask only when it can't be undone |
+| careful | allowed anywhere but the secrets | ask | ask, except looking and "always" |
 | plan | allowed | refused | refused |
-| yolo | allowed | allowed | allowed |
+| yolo | allowed | allowed | allowed, deny rules aside |
+
+`/yolo` switches to yolo mode for the rest of the session, `/safe` back to default.
 
 Rules in `settings.json` come first: deny, then ask, then allow.
 
@@ -183,5 +205,7 @@ cd cli
 cargo test
 cargo build --release      # target/release/bla
 ```
+
+On Linux the microphone needs the ALSA headers: `sudo apt-get install libasound2-dev`.
 
 The Mac app's build runs `scripts/embed-cli.sh`, which builds a universal `bla` and puts it in the app's Resources.

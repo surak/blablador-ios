@@ -26,6 +26,8 @@ pub struct Agent {
     pub cancel: Arc<AtomicBool>,
     /// Extra instructions from -s.
     pub instructions: Option<String>,
+    /// While the user is talking rather than typing: write the answer to be heard.
+    pub spoken: bool,
     system: Option<String>,
     always: HashSet<String>,
     turn: usize,
@@ -60,6 +62,7 @@ impl Agent {
             yes: false,
             cancel: Arc::new(AtomicBool::new(false)),
             instructions: None,
+            spoken: false,
             system: None,
             always: HashSet::new(),
             turn: 0,
@@ -71,10 +74,21 @@ impl Agent {
         self.load_always();
         let ps = PluginSession { id: &self.session.id, cwd: &self.session.cwd, interactive: self.interactive };
         self.host.session_start(&ps);
+        self.build_system();
+    }
+
+    /// Makes the system prompt again after something it mentions changed, without starting the
+    /// session over: turning voice mode on and off is the only thing that does this mid-session.
+    pub fn build_system(&mut self) {
+        let ps = PluginSession { id: &self.session.id, cwd: &self.session.cwd, interactive: self.interactive };
         let mut base = base_prompt(&self.session.cwd);
         if let Some(extra) = &self.instructions {
             base.push_str("\n\n");
             base.push_str(extra);
+        }
+        if self.spoken {
+            base.push_str("\n\n");
+            base.push_str(crate::voice::SYSTEM_PROMPT);
         }
         self.system = Some(self.host.system_prompt(&ps, base));
     }

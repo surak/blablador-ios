@@ -1,6 +1,6 @@
-//! The chat screen. A full-screen view with the Blablador logo at the top of the conversation, which scrolls
-//! with the mouse wheel, the scroll bar or Page Up/Down; dragging selects text and copies it; a click on a
-//! tool call or on the thinking opens or closes it. Below: what is running, questions with buttons, messages
+//! The chat screen. A full-screen view with the Blablador logo pinned in the top right corner, over a conversation
+//! which scrolls with the mouse wheel, the scroll bar or Page Up/Down; dragging selects text and copies it; a click on
+//! a tool call or on the thinking opens or closes it. Below: what is running, questions with buttons, messages
 //! waiting their turn, the input box (history, / completion, @path completion) and a status line.
 //!
 //! The agent stays on the main thread and talks to the screen through `Screen` (which is a `Ui`); the screen
@@ -28,41 +28,6 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
-
-/// blablador-ng-notext.svg, 28 × 30 pixels, drawn two pixels per character cell in the terminal's own
-/// text colour, so it is dark on light terminals and light on dark ones, like the SVG's dark mode.
-const LOGO: [&str; 30] = [
-    "...######################...",
-    "..########################..",
-    ".###....................###.",
-    "###......................###",
-    "##........................##",
-    "##........................##",
-    "##...###.......###........##",
-    "##...####.....####........##",
-    "##..#####.....#####..##...##",
-    "##...####.....####...##...##",
-    "##....##.......##....##...##",
-    "##...................##...##",
-    "##...................##...##",
-    "##.......#####.......##...##",
-    "##......######.......##...##",
-    "##........##.........##...##",
-    "##........##.........##...##",
-    "##........##.........##...##",
-    "##...................##...##",
-    "##...................##...##",
-    "##...................##...##",
-    "###..................##...##",
-    ".###.................##...##",
-    "..#####################...##",
-    "...#####################..##",
-    "......................######",
-    "........................####",
-    ".........................###",
-    "..........................##",
-    "...........................#",
-];
 
 /// What the status says while the model works, as in the apps.
 const VERBS: &[&str] = &[
@@ -101,9 +66,16 @@ const ACCENT: Color = Color::Rgb(0xf2, 0xb1, 0x34);
 /// Lines of a tool's output shown before it is opened.
 const PREVIEW: usize = 3;
 
-fn verb() -> &'static str {
+/// The next verb: the clock picks one, and if it is the one before, then another. So the thinking, each tool call
+/// and the status line never say the same word twice in a row, as the apps pick a fresh one every time.
+fn next_verb(last: &mut usize) -> &'static str {
     let n = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.subsec_nanos() as usize).unwrap_or(0);
-    VERBS[n % VERBS.len()]
+    let mut next = n % VERBS.len();
+    if next == *last {
+        next = (next + 1 + n / VERBS.len() % (VERBS.len() - 1)) % VERBS.len();
+    }
+    *last = next;
+    VERBS[next]
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -130,6 +102,8 @@ struct Item {
     done: bool,
     started: Instant,
     took: Duration,
+    /// Thinking: the potato verb it says while it streams, never the one the status line shows.
+    verb: &'static str,
     /// Rows drawn for a width; dropped when the item changes.
     cache: Option<(u16, Vec<Row>)>,
 }
@@ -145,6 +119,7 @@ impl Item {
             done: true,
             started: Instant::now(),
             took: Duration::ZERO,
+            verb: VERBS[0],
             cache: None,
         }
     }
@@ -212,7 +187,9 @@ struct State {
     /// None follows the end; Some is the first row shown.
     top: Option<usize>,
     busy: bool,
+    /// The verb the status line shows, and the one before it, so the next is a different one.
     verb: &'static str,
+    last_verb: usize,
     since: Instant,
     queued: Vec<String>,
     question: Option<Question>,
@@ -227,6 +204,8 @@ struct State {
     /// Ctrl-C once more to quit.
     quit_armed: Option<Instant>,
     info: Info,
+    /// Set while voice mode is on: what it is doing, and Esc's way to stop it talking.
+    voice: Option<crate::voice::Watch>,
     hits: Hits,
     stop: bool,
     dirty: bool,
@@ -284,6 +263,10 @@ impl State {
 pub struct Screen {
     state: Arc<Mutex<State>>,
     lines: Receiver<Option<String>>,
+    /// The keyboard thread's end of the same channel, for voice mode to speak into.
+    send: Sender<Option<String>>,
+    /// Set while the user is talking instead of typing.
+    voice: Option<crate::voice::Voice>,
     thread: Option<std::thread::JoinHandle<()>>,
     history_file: PathBuf,
 }
@@ -320,7 +303,8 @@ impl Screen {
             browsing: None,
             top: None,
             busy: false,
-            verb: verb(),
+            verb: VERBS[0],
+            last_verb: usize::MAX,
             since: Instant::now(),
             queued: Vec::new(),
             question: None,
@@ -333,14 +317,16 @@ impl Screen {
             toast: None,
             quit_armed: None,
             info: Info { model: String::new(), effort: String::new(), cwd: String::new(), input_tokens: 0, output_tokens: 0 },
+            voice: None,
             hits: Hits::default(),
             stop: false,
             dirty: true,
         }));
         let (send, lines) = channel();
         let shared = state.clone();
-        let thread = std::thread::spawn(move || run(shared, send, cancel));
-        Ok(Screen { state, lines, thread: Some(thread), history_file })
+        let keyboard = send.clone();
+        let thread = std::thread::spawn(move || run(shared, keyboard, cancel));
+        Ok(Screen { state, lines, send, voice: None, thread: Some(thread), history_file })
     }
 
     fn with<R>(&self, f: impl FnOnce(&mut State) -> R) -> R {
@@ -383,6 +369,39 @@ impl Screen {
         });
     }
 
+    /// Starts talking: the microphone writes into the same channel the keyboard does, so a spoken
+    /// question reaches the chat loop as a typed one. Returns what to tell the user.
+    pub fn start_voice(&mut self, endpoint: &str, key: String, language: Option<String>, cancel: Arc<AtomicBool>) -> Result<String, String> {
+        self.stop_voice();
+        let voice = crate::voice::Voice::start(endpoint, key, language.clone(), None, self.send.clone(), cancel)?;
+        let watch = voice.watch();
+        self.with(|s| s.voice = Some(watch));
+        self.voice = Some(voice);
+        let language = language.map(|l| format!(" in {l}")).unwrap_or_default();
+        Ok(format!("Talking{language}. Say something; Esc stops the answer, /voice off ends it."))
+    }
+
+    pub fn stop_voice(&mut self) -> bool {
+        self.with(|s| s.voice = None);
+        match self.voice.take() {
+            Some(v) => {
+                v.stop();
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Whatever went wrong since the last time we asked: no microphone, Whisper, Drama 3.
+    pub fn voice_trouble(&self) -> Option<String> {
+        self.voice.as_ref().and_then(|v| v.watch().take_trouble())
+    }
+
+    /// True when the microphone gave up and voice mode is over whatever the user wanted.
+    pub fn voice_ended(&self) -> bool {
+        self.voice.as_ref().is_some_and(|v| v.watch().ended())
+    }
+
     /// Waits for the next line the user sends; None when they quit.
     pub fn read_line(&mut self) -> Option<String> {
         self.with(|s| s.busy = false);
@@ -398,7 +417,7 @@ impl Screen {
             s.push(Item::new(Kind::User, clean(&line)));
             s.top = None;
             s.busy = true;
-            s.verb = verb();
+            s.verb = next_verb(&mut s.last_verb);
             s.since = Instant::now();
         });
         let history: Vec<String> = self.with(|s| s.history.iter().rev().take(500).rev().cloned().collect());
@@ -434,6 +453,9 @@ impl Drop for Screen {
 
 impl Ui for Screen {
     fn text(&mut self, text: &str) {
+        if let Some(v) = &mut self.voice {
+            v.feed(text);
+        }
         self.with(|s| {
             if let Some(t) = s.last_mut(Kind::Thinking) {
                 t.done = true;
@@ -445,6 +467,8 @@ impl Ui for Screen {
                     let mut item = Item::new(Kind::Answer, text);
                     item.done = false;
                     s.push(item);
+                    // The thinking is over and the answer is coming: a new verb while it streams.
+                    s.verb = next_verb(&mut s.last_verb);
                 }
             }
         });
@@ -459,12 +483,18 @@ impl Ui for Screen {
                 }
                 let mut item = Item::new(Kind::Thinking, text.trim_start());
                 item.done = false;
+                // Its own verb, and a different one for the status line, so the two don't say the same word.
+                item.verb = next_verb(&mut s.last_verb);
+                s.verb = next_verb(&mut s.last_verb);
                 s.push(item);
             }
         });
     }
 
     fn end_reply(&mut self) {
+        if let Some(v) = &mut self.voice {
+            v.end_reply();
+        }
         self.with(|s| {
             for item in s.items.iter_mut().rev().take(3) {
                 if !item.done && matches!(item.kind, Kind::Answer | Kind::Thinking) {
@@ -483,6 +513,8 @@ impl Ui for Screen {
             let mut item = Item::new(Kind::Tool, name);
             item.title = clean(summary);
             item.done = false;
+            // The status line moves on: a tool is running, and the word is a new one.
+            s.verb = next_verb(&mut s.last_verb);
             s.push(item);
         });
     }
@@ -498,10 +530,13 @@ impl Ui for Screen {
                     item.done = true;
                     item.took = item.started.elapsed();
                     item.cache = None;
+                    // The tool is done; whatever comes next gets a new verb, so the status keeps moving.
+                    s.verb = next_verb(&mut s.last_verb);
                 }
                 // Refused before it started.
                 None => {
                     let mut item = Item::new(Kind::Tool, name);
+                    s.verb = next_verb(&mut s.last_verb);
                     item.output = Some(ToolOutput { content: clean(&output.content), is_error: output.is_error });
                     s.push(item);
                 }
@@ -808,24 +843,7 @@ fn elapsed(d: Duration) -> String {
 
 fn welcome(text: &str, width: usize) -> Vec<Row> {
     let dim = Style::default().fg(Color::DarkGray);
-    let logo: Vec<String> = LOGO
-        .chunks(2)
-        .map(|pair| {
-            pair[0]
-                .chars()
-                .zip(pair[1].chars())
-                .map(|(a, b)| match (a == '#', b == '#') {
-                    (true, true) => '█',
-                    (true, false) => '▀',
-                    (false, true) => '▄',
-                    _ => ' ',
-                })
-                .collect()
-        })
-        .collect();
     let mut info: Vec<(String, Style)> = vec![
-        (String::new(), Style::default()),
-        (String::new(), Style::default()),
         (format!("bla {}", env!("CARGO_PKG_VERSION")), Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)),
         ("BLABLADOR on the command line".into(), Style::default()),
         (String::new(), Style::default()),
@@ -833,33 +851,36 @@ fn welcome(text: &str, width: usize) -> Vec<Row> {
     for (i, line) in text.lines().enumerate() {
         info.push((line.to_string(), if i < 2 { Style::default() } else { dim }));
     }
-    let side = width >= 28 + 2 + 30;
-    let mut rows = Vec::new();
-    if width >= 30 {
-        for (i, l) in logo.iter().enumerate() {
-            let mut spans = vec![Span::raw(" "), Span::raw(l.clone())];
-            let mut plain = format!(" {l}");
-            if side {
-                if let Some((t, s)) = info.get(i) {
-                    let t = crate::util::clip(t, width.saturating_sub(33) * 3).to_string();
-                    spans.push(Span::raw("   "));
-                    spans.push(Span::styled(t.clone(), *s));
-                    plain.push_str("   ");
-                    plain.push_str(&t);
-                }
-            }
-            rows.push(Row { line: Line::from(spans), plain });
-        }
+    // The logo itself is pinned to the top right corner of the screen, above the transcript.
+    info.iter().flat_map(|(t, s)| wrapped(t, width, (" ", Style::default()), (" ", Style::default()), *s)).collect()
+}
+
+/// The pinned logo, 14 × 6 characters: blablador-ng-notext.svg (28 × 30 pixels) an eighth of its height, drawn in
+/// the terminal's own colour so it is dark on light terminals and light on dark ones, like the SVG's dark mode.
+const SMALL_LOGO: [&str; 6] = [
+    "▄▀▀▀▀▀▀▀▀▀▀▀▀▄",
+    "█ ▄█▄  ▄█    █",
+    "█   ▄▄▄   ██ █",
+    "█    ▀    ██ █",
+    "▀▄▄▄▄▄▄▄▄▄██ █",
+    "            ▀█",
+];
+
+/// Draws the logo in the top right corner over what is there, when the terminal is wide enough for it and for the
+/// text beside it.
+fn draw_logo(frame: &mut Frame, transcript: Rect) {
+    let w = SMALL_LOGO[0].chars().count() as u16;
+    if transcript.width < w + 40 || transcript.height < SMALL_LOGO.len() as u16 {
+        return;
     }
-    let from = if side && width >= 30 { logo.len() } else { 0 };
-    for (t, s) in info.iter().skip(from) {
-        rows.extend(wrapped(t, width, (" ", Style::default()), (" ", Style::default()), *s));
+    let x = transcript.x + transcript.width.saturating_sub(w + 2);
+    for (i, line) in SMALL_LOGO.iter().enumerate() {
+        frame.buffer_mut().set_string(x, transcript.y + i as u16, line, Style::default());
     }
-    rows
 }
 
 /// The rows of one item at a width; a blank row separates items.
-fn render(item: &Item, width: usize, tick: usize, verb: &str) -> Vec<Row> {
+fn render(item: &Item, width: usize, tick: usize) -> Vec<Row> {
     let dim = Style::default().fg(Color::DarkGray);
     let mut rows = vec![blank()];
     match item.kind {
@@ -876,7 +897,7 @@ fn render(item: &Item, width: usize, tick: usize, verb: &str) -> Vec<Row> {
             let star = if item.done { "✻ ".to_string() } else { format!("{} ", SPINNER[tick % SPINNER.len()]) };
             // The same potato verbs the apps use while a reply is being worked out.
             let head = if !item.done {
-                format!("{verb}…")
+                format!("{}…", item.verb)
             } else if item.took < Duration::from_secs(1) {
                 "Thought process".into()
             } else {
@@ -995,21 +1016,21 @@ fn draw(frame: &mut Frame, s: &mut State, tick: usize) {
 
     let mut bottom: Vec<(u16, &str)> = Vec::new();
     let status_h = if s.busy || s.toast.is_some() { 1 } else { 0 };
+    let voice_h = if s.voice.is_some() { 1 } else { 0 };
     let question_h = if s.question.is_some() { 5 } else { 0 };
     let queue_h = s.queued.len().min(3) as u16;
     bottom.push((status_h, "status"));
-    let below = status_h + question_h + queue_h + input_rows + 2 + 1;
+    let below = status_h + voice_h + question_h + queue_h + input_rows + 2 + 1;
     let transcript = Rect { x: 0, y: 0, width: area.width, height: area.height.saturating_sub(below) };
     let mut y = transcript.height;
 
     // The conversation.
     let width = transcript.width.saturating_sub(2).max(10) as usize;
     let mut flat: Vec<(usize, usize)> = Vec::new();
-    let verb = s.verb;
     for (i, item) in s.items.iter_mut().enumerate() {
         let animated = !item.done;
         if animated || item.cache.as_ref().map(|c| c.0) != Some(width as u16) {
-            item.cache = Some((width as u16, render(item, width, tick, verb)));
+            item.cache = Some((width as u16, render(item, width, tick)));
         }
         let n = item.cache.as_ref().map(|c| c.1.len()).unwrap_or(0);
         flat.extend((0..n).map(|r| (i, r)));
@@ -1063,6 +1084,8 @@ fn draw(frame: &mut Frame, s: &mut State, tick: usize) {
     hits.transcript = transcript;
     hits.total = total;
     hits.top = top;
+    // The small logo sits in the corner over the first rows, so it doesn't scroll away with the chat.
+    draw_logo(frame, transcript);
 
     // What is running, or a short message.
     if status_h > 0 {
@@ -1076,6 +1099,28 @@ fn draw(frame: &mut Frame, s: &mut State, tick: usize) {
             ])
         };
         frame.render_widget(Paragraph::new(line), Rect { x: 0, y, width: area.width, height: 1 });
+        y += 1;
+    }
+
+    // The microphone: what it is doing and how loud the room is.
+    if let Some(watch) = &s.voice {
+        let status = watch.status();
+        let symbol = match status.mode {
+            crate::voice::Mode::Speaking => "🔊",
+            crate::voice::Mode::Transcribing => "✎",
+            _ => "🎙",
+        };
+        let meter: String = (0..12).map(|i| if status.level * 12.0 > i as f32 { '▇' } else { '▁' }).collect();
+        let colour = if status.mode == crate::voice::Mode::Speaking { ACCENT } else { Color::Green };
+        frame.render_widget(
+            Paragraph::new(Line::from(vec![
+                Span::styled(format!("  {symbol}  "), Style::default().fg(colour)),
+                Span::styled(format!("{:<14}", status.mode.label()), Style::default().fg(colour).add_modifier(Modifier::BOLD)),
+                Span::styled(meter, Style::default().fg(colour)),
+                Span::styled("   Esc stops it talking · /voice off", dim),
+            ])),
+            Rect { x: 0, y, width: area.width, height: 1 },
+        );
         y += 1;
     }
 
@@ -1407,7 +1452,14 @@ fn key(s: &mut State, k: KeyEvent, lines: &Sender<Option<String>>, cancel: &Atom
                 s.selection = None;
             } else if s.busy {
                 cancel.store(true, Ordering::Relaxed);
+                if let Some(v) = &s.voice {
+                    v.hush();
+                }
                 s.toast("Stopping…");
+            } else if let Some(v) = &s.voice {
+                // Not thinking, so the only thing left to stop is the voice reading the last answer.
+                v.hush();
+                s.top = None;
             } else {
                 s.top = None;
             }
@@ -1810,11 +1862,16 @@ mod tests {
     }
 
     #[test]
-    fn logo_is_drawn() {
+    fn header_and_logo() {
+        // The header is text now; the logo is pinned in the corner of the transcript.
         let rows = welcome("model\nfolder", 80);
-        assert_eq!(rows.len(), 15);
-        assert!(rows[0].plain.contains('▄') || rows[0].plain.contains('█'));
         assert!(rows.iter().any(|r| r.plain.contains("bla ")));
+        assert!(rows.iter().any(|r| r.plain.contains("BLABLADOR on the command line")));
+        assert!(!rows.iter().any(|r| r.plain.contains('█')), "the logo should not scroll with the chat");
+        assert_eq!(SMALL_LOGO.len(), 6);
+        let all: Vec<char> = SMALL_LOGO.concat().chars().collect();
+        assert!(all.iter().any(|c| *c == '█' || *c == '▀' || *c == '▄'));
+        assert!(SMALL_LOGO.iter().all(|l| l.chars().count() == 14));
     }
 
     #[test]
@@ -1829,5 +1886,18 @@ mod tests {
         let layout = input_layout(&input, 4);
         assert_eq!(layout[4], (1, 0));
         assert_eq!(*layout.last().unwrap(), (2, 2));
+    }
+
+    #[test]
+    fn verbs_never_repeat() {
+        // Each thing that happens says its own verb, and two in a row are never the same.
+        let mut last = usize::MAX;
+        let mut seen = next_verb(&mut last);
+        assert_eq!(seen, VERBS[last]);
+        for _ in 0..300 {
+            let v = next_verb(&mut last);
+            assert_ne!(v, seen, "the same verb twice in a row");
+            seen = v;
+        }
     }
 }

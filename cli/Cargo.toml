@@ -20,6 +20,8 @@ unicode-width = "0.2"
 aes-gcm = "0.10"
 rand = "0.8"
 base64 = "0.22"
+cpal = "0.15"
+symphonia = { version = "0.5", default-features = false, features = ["mp3"] }
 
 [profile.release]
 opt-level = 3

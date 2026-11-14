@@ -11,6 +11,7 @@ mod session;
 mod tui;
 mod ui;
 mod util;
+mod voice;
 
 use agent::Agent;
 use config::Settings;
@@ -322,6 +323,7 @@ const CHAT_HELP: &str = "/help         this list
 /model [ID]   show or change the model
 /models       list the models
 /effort LEVEL thinking effort: off, low, medium, high, max
+/voice [LANG] talk instead of typing (/voice off ends it)
 /tools        the tools the model has
 /plugins      the plugins that are on
 /exit         quit (or Ctrl-D)
@@ -453,6 +455,30 @@ fn run_chat(agent: &mut Agent, settings: &Settings, busy: &AtomicBool, thinking:
                     screen.notice(&format!("Effort: {args}"));
                 }
                 "effort" => screen.say(&format!("Effort: {} (off, low, medium, high, max)", agent.effort.as_deref().unwrap_or("the model's default"))),
+                "voice" if args == "off" || args == "stop" => {
+                    if screen.stop_voice() {
+                        agent.spoken = false;
+                        agent.build_system();
+                        screen.notice("Voice off.");
+                    } else {
+                        screen.notice("Voice wasn't on.");
+                    }
+                }
+                "voice" => {
+                    // Whisper guesses the language when none is given; a code such as pt or de helps it.
+                    let language = (!args.is_empty()).then(|| args.to_string());
+                    match secret::api_key() {
+                        Some(key) => match screen.start_voice(&settings.endpoint, key, language, agent.cancel.clone()) {
+                            Ok(note) => {
+                                agent.spoken = true;
+                                agent.build_system();
+                                screen.notice(&note);
+                            }
+                            Err(e) => screen.error(&e),
+                        },
+                        None => screen.error("No API key. Run `bla login`."),
+                    }
+                }
                 "tools" => screen
                     .say(&agent.host.tools().iter().map(|t| format!("{:<12} {}", t.name(), util::clip(t.description(), 100))).collect::<Vec<_>>().join("\n")),
                 "plugins" => screen.say(&agent.host.plugins.iter().map(|p| format!("{:<13} {}", p.name(), p.description())).collect::<Vec<_>>().join("\n")),
@@ -474,7 +500,16 @@ fn run_chat(agent: &mut Agent, settings: &Settings, busy: &AtomicBool, thinking:
         if let Err(e) = agent.turn(input, &mut screen) {
             screen.error(&e);
         }
+        if let Some(trouble) = screen.voice_trouble() {
+            screen.error(&trouble);
+        }
+        if screen.voice_ended() {
+            screen.stop_voice();
+            agent.spoken = false;
+            agent.build_system();
+        }
     }
+    screen.stop_voice();
     screen.close();
     agent.finish();
     println!("Session {} · bla -r {} to continue", agent.session.id, agent.session.id);

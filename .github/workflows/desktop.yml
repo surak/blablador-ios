@@ -98,7 +98,7 @@ jobs:
           targets: ${{ matrix.target }}
       - name: Linux libraries
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
+        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev libasound2-dev pkg-config
       - run: cargo test --release
         if: matrix.target != 'x86_64-apple-darwin'
       - run: cargo build --release --target ${{ matrix.target }}

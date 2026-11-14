@@ -134,14 +134,26 @@ fn runs_tools_until_the_answer() {
 #[test]
 fn asks_and_respects_no() {
     let dir = temp();
-    let (address, _) = fake_server(vec![vec![call("c1", "bash", json!({"command": "touch made-it"}))], vec![text("ok")]]);
+    let (address, _) = fake_server(vec![vec![call("c1", "bash", json!({"command": "rm made-it"}))], vec![text("ok")]]);
     let mut agent = agent(&address, &dir, permissions::Mode::Default);
     let mut ui = Recorder { answer: Some(Approval::No), ..Default::default() };
     agent.turn("run it", &mut ui).unwrap();
     assert_eq!(ui.asked, ["bash"]);
-    assert!(!dir.join("made-it").exists());
     let result = agent.session.messages.iter().find(|m| m.role == "tool").unwrap();
     assert!(result.content.contains("declined"));
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn ordinary_commands_run_without_asking() {
+    let dir = temp();
+    let command = "touch made-it && rg -n 'a|b' . | head -3";
+    let (address, _) = fake_server(vec![vec![call("c1", "bash", json!({"command": command}))], vec![text("ok")]]);
+    let mut agent = agent(&address, &dir, permissions::Mode::Default);
+    let mut ui = Recorder::default();
+    agent.turn("make it", &mut ui).unwrap();
+    assert!(ui.asked.is_empty(), "asked: {:?}", ui.asked);
+    assert!(dir.join("made-it").exists());
     let _ = std::fs::remove_dir_all(dir);
 }
 
@@ -160,4 +172,81 @@ fn bad_arguments_and_unknown_tools_are_answered() {
     assert!(results[0].contains("not valid JSON"));
     assert!(results[1].contains("no tool called nope"));
     let _ = std::fs::remove_dir_all(dir);
+}
+
+// ── voice ────────────────────────────────────────────────────────────────────
+
+use crate::voice::{self, Cutter};
+use std::collections::VecDeque;
+
+/// The answer is cut where a sentence ends, and only where one does: 3.8 and alias-fast stay whole.
+#[test]
+fn speaks_whole_sentences() {
+    let mut c = Cutter::default();
+    assert!(c.feed("The bond is 3.8 Å").is_empty());
+    assert_eq!(c.feed(" wide. And the "), vec!["The bond is 3.8 Å wide."]);
+    assert!(c.feed("model is alias-fast").is_empty());
+    assert_eq!(c.flush().as_deref(), Some("And the model is alias-fast"));
+}
+
+/// Markdown is for the eye: the voice gets the words without the decoration.
+#[test]
+fn speech_drops_the_markdown() {
+    let mut c = Cutter::default();
+    assert_eq!(c.feed("- **One** thing matters.\n"), vec!["One thing matters."]);
+    assert_eq!(c.feed("## A heading\n"), vec!["A heading"]);
+    // A rule or a stray bullet is nothing to say.
+    assert!(c.feed("---\n").is_empty());
+}
+
+/// Code is shown, not read out character by character.
+#[test]
+fn code_is_not_read_aloud() {
+    let mut c = Cutter::default();
+    assert_eq!(c.feed("```rust\n"), vec!["Code, on the screen."]);
+    assert!(c.feed("fn main() { println!(\"hi\"); }\n").is_empty());
+    assert!(c.feed("```\n").is_empty());
+    assert_eq!(c.feed("That is the whole thing.\n"), vec!["That is the whole thing."]);
+}
+
+/// The microphone hears the loudspeaker; words we just said are not a new question.
+#[test]
+fn our_own_voice_is_not_a_question() {
+    let spoken: VecDeque<String> = ["the", "bond", "is", "three", "point", "eight", "angstrom", "wide"].iter().map(|s| s.to_string()).collect();
+    let heard = |t: &str| t.split(' ').filter(|w| w.len() > 1).map(|w| w.to_lowercase()).collect::<Vec<_>>();
+    assert!(voice::is_echo(&heard("the bond is three point eight angstrom"), &spoken));
+    assert!(!voice::is_echo(&heard("now fold the other sequence instead"), &spoken));
+    // Nothing heard is not a question either.
+    assert!(voice::is_echo(&[], &spoken));
+}
+
+/// "Stop" on its own means be quiet; it is never sent to the model as a question.
+#[test]
+fn stop_is_only_a_stop() {
+    assert!(voice::is_stop_word(&["stop".to_string()]));
+    assert!(voice::is_stop_word(&["chega".to_string()]));
+    assert!(!voice::is_stop_word(&["stop".to_string(), "the".to_string(), "job".to_string()]));
+    assert!(!voice::is_stop_word(&[]));
+}
+
+/// What we send Whisper is a WAV file it can read, and what comes back reads the same way.
+#[test]
+fn wav_survives_the_round_trip() {
+    let samples: Vec<f32> = (0..1600).map(|i| (i as f32 / 16.0).sin() * 0.5).collect();
+    let wav = voice::wav16(&samples, 16_000);
+    assert_eq!(&wav[0..4], b"RIFF");
+    assert_eq!(wav.len(), 44 + samples.len() * 2);
+    let (back, rate) = voice::decode(&wav).unwrap();
+    assert_eq!(rate, 16_000);
+    assert_eq!(back.len(), samples.len());
+    for (a, b) in samples.iter().zip(&back) {
+        assert!((a - b).abs() < 0.001, "{a} became {b}");
+    }
+}
+
+/// A sound file in no format we know is a message, not a panic.
+#[test]
+fn unreadable_speech_is_an_error() {
+    assert!(voice::decode(b"not a sound file at all").is_err());
+    assert!(voice::decode(&[]).is_err());
 }
