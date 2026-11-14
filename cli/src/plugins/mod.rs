@@ -27,7 +27,7 @@ pub const BUILT_IN: &[(&str, &str)] = &[
     ("openai", "Model provider for OpenAI-compatible endpoints (Blablador)"),
     ("core-tools", "read, write, edit and bash"),
     ("context", "AGENTS.md and CLAUDE.md instructions, the git branch, and @file mentions"),
-    ("permissions", "Allow, ask and deny rules and the default, accept-edits, plan and yolo modes"),
+    ("permissions", "Allow, ask and deny rules and the default, careful, plan and yolo modes"),
     ("hooks", "Shell hooks at session start, prompt, tool calls and stop (Claude Code format)"),
     ("skills", "SKILL.md skills: listed in the prompt, loaded on demand, and written by the agent itself"),
     ("memory", "The long-term memory shared with the Blablador apps, frozen into each session's prompt"),

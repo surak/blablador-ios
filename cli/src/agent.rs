@@ -68,6 +68,7 @@ impl Agent {
 
     /// Starts plugins and builds the system prompt once, so it stays the same (and cacheable) all session.
     pub fn start(&mut self) {
+        self.load_always();
         let ps = PluginSession { id: &self.session.id, cwd: &self.session.cwd, interactive: self.interactive };
         self.host.session_start(&ps);
         let mut base = base_prompt(&self.session.cwd);
@@ -203,18 +204,45 @@ impl Agent {
         }
     }
 
-    /// Key for "always allow": the whole command for bash (approving `cargo test` doesn't approve
-    /// `cargo test; rm -rf ~`), and for file changes the tool plus the file's folder.
-    fn always_key(tool: &dyn Tool, args: &Value, cwd: &std::path::Path) -> String {
+    /// What "always" approves: for commands, each simple command's program and subcommand (`cargo test`,
+    /// `npm run`), so its variants run without asking again, but only the exact command for anything that deletes,
+    /// escalates or reaches the network, and only the exact line when it redirects or substitutes; for file
+    /// changes the project (or the file's folder outside it); for other tools the tool.
+    fn always_keys(tool: &dyn Tool, args: &Value, cwd: &std::path::Path) -> Vec<String> {
         let subject = tool.subject(args).unwrap_or_default();
         match tool.kind(args) {
-            Kind::Exec => format!("{}:{}", tool.name(), subject.trim()),
+            Kind::Exec if subject.contains(['>', '<', '`', '$', '\n']) => vec![format!("{}:{}", tool.name(), subject.trim())],
+            Kind::Exec => crate::plugins::permissions::simple_commands(&subject).iter().map(|c| format!("{}:{}", tool.name(), command_prefix(c))).collect(),
             Kind::Write if !subject.is_empty() => {
                 let path = crate::util::resolve(cwd, &subject);
-                format!("{}:{}", tool.name(), path.parent().map(|p| p.display().to_string()).unwrap_or_default())
+                let place = if crate::util::inside(cwd, &path) { cwd.to_path_buf() } else { path.parent().map(|p| p.to_path_buf()).unwrap_or_default() };
+                vec![format!("{}:{}", tool.name(), place.display())]
             }
-            _ => tool.name().to_string(),
+            _ => vec![tool.name().to_string()],
         }
+    }
+
+    fn approvals_file() -> std::path::PathBuf {
+        crate::util::bla_home().join("approvals.json")
+    }
+
+    /// "Always" answers given earlier in this project.
+    fn load_always(&mut self) {
+        let all: serde_json::Map<String, Value> = std::fs::read(Self::approvals_file()).ok().and_then(|d| serde_json::from_slice(&d).ok()).unwrap_or_default();
+        let here = self.session.cwd.display().to_string();
+        self.always = all.get(&here).and_then(|v| v.as_array()).into_iter().flatten().filter_map(|k| k.as_str().map(String::from)).collect();
+    }
+
+    fn save_always(&self) {
+        let file = Self::approvals_file();
+        let mut all: serde_json::Map<String, Value> = std::fs::read(&file).ok().and_then(|d| serde_json::from_slice(&d).ok()).unwrap_or_default();
+        let mut keys: Vec<&String> = self.always.iter().collect();
+        keys.sort();
+        all.insert(self.session.cwd.display().to_string(), Value::from(keys.into_iter().cloned().collect::<Vec<_>>()));
+        if let Some(dir) = file.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = crate::secret::write_private(&file, serde_json::to_string_pretty(&all).unwrap_or_default().as_bytes());
     }
 
     fn run_tools(&mut self, calls: &[crate::llm::ToolCall], ui: &mut dyn Ui) {
@@ -251,14 +279,18 @@ impl Agent {
                     false
                 }
                 Decision::Ask(reason) => {
-                    let key = Self::always_key(tool.as_ref(), &args, &self.session.cwd);
-                    if self.yes || self.always.contains(&key) {
+                    let keys = Self::always_keys(tool.as_ref(), &args, &self.session.cwd);
+                    if self.yes || (!keys.is_empty() && keys.iter().all(|k| self.always.contains(k))) {
                         true
                     } else {
+                        let covers: Vec<&str> = keys.iter().map(|k| k.split_once(':').map(|(_, rest)| rest).unwrap_or(k)).collect();
+                        let note = format!("Always: allows {} in this project from now on", covers.join(", "));
+                        let reason = if reason.is_empty() { note } else { format!("{reason} · {note}") };
                         match ui.approve(tool.name(), &tool.summary(&args), &reason) {
                             Approval::Once => true,
                             Approval::Always => {
-                                self.always.insert(key);
+                                self.always.extend(keys);
+                                self.save_always();
                                 true
                             }
                             Approval::No => {
@@ -324,5 +356,44 @@ impl Agent {
             };
             self.session.push(Message::tool(&call.id, content));
         }
+    }
+}
+
+/// Programs whose "always" stays with the exact command: they delete, escalate, reach the network or rewrite history.
+const EXACT_ONLY: &[&str] = &[
+    "rm", "rmdir", "sudo", "doas", "su", "dd", "mkfs", "chmod", "chown", "kill", "pkill", "killall", "curl", "wget", "ssh", "scp", "rsync",
+    "nc", "eval", "exec", "sh", "bash", "zsh", "shutdown", "reboot", "launchctl", "systemctl", "docker", "kubectl", "mv", "truncate", "shred",
+    "python", "python3", "node", "ruby", "perl", "php", "deno", "bun", "npx", "uvx", "pipx", "osascript",
+];
+const GIT_EXACT_ONLY: &[&str] = &["push", "reset", "clean", "rebase", "checkout", "restore", "branch", "tag", "filter-branch", "gc", "update-ref", "config"];
+
+/// The part of a simple command that "always" approves: `cargo test` for `cargo test --release foo`.
+pub fn command_prefix(command: &str) -> String {
+    let words: Vec<&str> = command.split_whitespace().collect();
+    let Some(&first) = words.first() else { return String::new() };
+    let program = first.rsplit('/').next().unwrap_or(first);
+    let second = words.get(1).copied();
+    if EXACT_ONLY.contains(&program) || (program == "git" && second.is_some_and(|s| GIT_EXACT_ONLY.contains(&s))) {
+        return command.trim().to_string();
+    }
+    match second {
+        Some(sub) if !sub.starts_with('-') && !sub.contains(['/', '.', '=']) && sub.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == ':') => {
+            format!("{first} {sub}")
+        }
+        _ => first.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod prefix_tests {
+    #[test]
+    fn always_covers_subcommands_but_not_risky_programs() {
+        assert_eq!(super::command_prefix("cargo test --release foo"), "cargo test");
+        assert_eq!(super::command_prefix("make"), "make");
+        assert_eq!(super::command_prefix("./gradlew test"), "./gradlew test");
+        assert_eq!(super::command_prefix("rm -rf build"), "rm -rf build");
+        assert_eq!(super::command_prefix("git push origin main"), "git push origin main");
+        assert_eq!(super::command_prefix("python3 script.py"), "python3 script.py");
+        assert_eq!(super::command_prefix("npm run build"), "npm run");
     }
 }

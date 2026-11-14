@@ -520,7 +520,7 @@ impl Ui for Screen {
         self.with(|s| {
             let what = match answer {
                 Approval::Once => "allowed",
-                Approval::Always => "allowed for this session",
+                Approval::Always => "allowed from now on in this project",
                 Approval::No => "declined",
             };
             s.push(Item::new(Kind::Notice, format!("{name} {what}")));
@@ -1100,7 +1100,7 @@ fn draw(frame: &mut Frame, s: &mut State, tick: usize) {
         );
         let mut x = inner.x;
         for (i, (label, answer)) in
-            [(" Yes (y) ", Approval::Once), (" Always this session (a) ", Approval::Always), (" No (n) ", Approval::No)].into_iter().enumerate()
+            [(" Yes (y) ", Approval::Once), (" Always here (a) ", Approval::Always), (" No (n) ", Approval::No)].into_iter().enumerate()
         {
             let w = label.width() as u16;
             let style = if i == s.selected_button {

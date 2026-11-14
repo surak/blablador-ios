@@ -38,7 +38,7 @@ where there is no keyring. `BLABLADOR_API_KEY` overrides it.
 | `-s, --system TEXT` | extra instructions |
 | `-t, --thinking` | show the thinking in one-shot mode (a chat always shows it, dimmed) |
 | `-c` / `-r ID` | continue the last session here / resume one (`bla sessions` lists them) |
-| `--mode MODE` | default, accept-edits, plan, yolo |
+| `--mode MODE` | default, careful, plan, yolo |
 | `-y, --yes` | approve everything that would ask |
 | `--no-tools` | just answer |
 | `--no-plugin NAME` | turn a plugin off for this run |
@@ -58,14 +58,20 @@ model its output; `@path` attaches a file; Esc or Ctrl-C stops the answer; Ctrl-
 
 ## Permissions
 
-Before bla changes a file or runs a command it asks: yes, always (for this session), or no. Reads inside the
-working directory, its own memory, and a few commands that only look (`ls`, `git status`, `rg`… with no shell
-operators and no paths outside the folder) don't ask. The mode changes the default:
+bla asks less than it used to, and about the same as Claude Code with edits accepted. Reads and changes inside
+the working directory don't ask: every turn is checkpointed, so `/undo` takes changes back. Commands that only
+look (`ls`, `rg`, `find`, `git status`…), even joined by pipes, `&&` and `;`, don't ask either, as long as they
+don't redirect, substitute or reach outside the folder. Other commands ask: yes, always, or no.
+
+**Always** is remembered for the project (in `~/.bla/approvals.json`) and covers the program and its
+subcommand: approving `cargo test --release` also allows `cargo test` and `cargo test foo` later, and `npm run
+build` allows `npm run lint`. For anything that deletes, escalates, reaches the network or runs a script
+(`rm`, `sudo`, `curl`, `git push`, `python3 x.py`…) it covers only that exact command.
 
 | Mode | Reads | File changes | Commands |
 |---|---|---|---|
-| default | allowed (outside the folder: ask) | ask | ask |
-| accept-edits | allowed | allowed inside the folder | ask |
+| default | allowed (outside the folder: ask) | allowed inside the folder | ask, except looking and "always" |
+| careful | allowed (outside the folder: ask) | ask | ask |
 | plan | allowed | refused | refused |
 | yolo | allowed | allowed | allowed |
 

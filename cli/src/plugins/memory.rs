@@ -273,7 +273,7 @@ impl Tool for MemoryTool {
             }, "required": ["action"]}}
         }, "required": ["operations"]})
     }
-    /// Memory goes into every later prompt, so a change is a write the user approves (accept-edits allows it).
+    /// Memory goes into every later prompt, so a change is a write the user approves (default mode allows it after one "always").
     fn kind(&self, _args: &Value) -> Kind {
         Kind::Write
     }

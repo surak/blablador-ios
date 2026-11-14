@@ -135,7 +135,7 @@ impl Ui for Terminal {
         if !reason.is_empty() {
             eprintln!("  {}", s.dim(reason));
         }
-        eprint!("  Allow? [y]es  [a]lways this session  [n]o › ");
+        eprint!("  Allow? [y]es  [a]lways here  [n]o › ");
         let _ = std::io::stderr().flush();
         let answer = read_answer();
         if answer.is_empty() {

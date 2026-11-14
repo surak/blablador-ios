@@ -3,13 +3,13 @@
 //! Rules are `tool` or `tool(pattern)`: `bash(git *)`, `read(.env*)`, `edit(src/**)`. Claude Code's spelling
 //! works too (`Bash(npm run test:*)`, `Write`, `MultiEdit`). Deny wins over ask, ask over allow; then the mode:
 //!
-//! - default: reads inside the project are allowed, changes and commands ask
-//! - accept-edits: changes inside the project are allowed too, commands ask
+//! - default: reads and changes inside the project are allowed (checkpoints keep /undo), commands ask
+//! - careful: changes ask too
 //! - plan: read-only, changes and commands are refused
 //! - yolo: everything is allowed except deny rules
 //!
-//! A few commands that only look (ls, git status, rg…) run without asking when they have no shell operators
-//! and no paths outside the project.
+//! Commands that only look (ls, git status, rg, find…), alone or joined by pipes, && and ;, run without asking
+//! when they have no redirections or substitutions and no paths outside the project.
 
 use crate::plugin::{CommandResult, CommandSpec, Ctx, Decision, Kind, Plugin, Session, Tool};
 use crate::llm::Message;
@@ -20,8 +20,10 @@ use std::sync::Mutex;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mode {
+    /// Changes inside the project are allowed.
     Default,
-    AcceptEdits,
+    /// Changes ask too.
+    Careful,
     Plan,
     Yolo,
 }
@@ -29,8 +31,8 @@ pub enum Mode {
 impl Mode {
     pub fn parse(text: &str) -> Option<Mode> {
         match text.trim().to_lowercase().replace('_', "-").as_str() {
-            "default" | "ask" => Some(Mode::Default),
-            "accept-edits" | "acceptedits" | "edits" => Some(Mode::AcceptEdits),
+            "default" | "accept-edits" | "acceptedits" | "edits" => Some(Mode::Default),
+            "careful" | "ask" => Some(Mode::Careful),
             "plan" | "read-only" | "readonly" => Some(Mode::Plan),
             "yolo" | "bypass" | "bypasspermissions" | "dangerously-skip-permissions" => Some(Mode::Yolo),
             _ => None,
@@ -40,7 +42,7 @@ impl Mode {
     pub fn name(self) -> &'static str {
         match self {
             Mode::Default => "default",
-            Mode::AcceptEdits => "accept-edits",
+            Mode::Careful => "careful",
             Mode::Plan => "plan",
             Mode::Yolo => "yolo",
         }
@@ -96,10 +98,16 @@ impl Rule {
     }
 }
 
-const LOOKING: &[&str] = &["ls", "pwd", "wc", "head", "tail", "cat", "rg", "grep", "which", "date", "echo", "stat", "du", "tree", "uname", "whoami"];
+const LOOKING: &[&str] = &[
+    "ls", "pwd", "wc", "head", "tail", "cat", "rg", "grep", "which", "date", "echo", "stat", "du", "tree", "uname", "whoami", "find", "file",
+    "sort", "uniq", "cut", "tr", "diff", "cmp", "basename", "dirname", "realpath", "nl", "column", "shasum", "sha256sum", "md5sum", "md5",
+    "true", "false", "printf", "jq", "fd", "df",
+];
+/// find options that run programs or write files.
+const FIND_RISKY: &[&str] = &["-exec", "-execdir", "-ok", "-okdir", "-delete", "-fprint", "-fprint0", "-fprintf", "-fls"];
 /// git subcommands that only look. They are auto-allowed only in trusted projects: a repository that arrives with
 /// its own .git folder can make git run programs (core.fsmonitor, diff.external, a pager).
-const GIT_LOOKING: &[&str] = &["status", "diff", "log", "show", "blame"];
+const GIT_LOOKING: &[&str] = &["status", "diff", "log", "show", "blame", "ls-files", "rev-parse", "describe", "shortlog"];
 /// Options that run programs, write files or follow symlinks out of the project.
 const RISKY_LONG: &[&str] = &["--pre", "--output", "--exec", "--follow", "--ext-diff", "--config", "--dereference", "--files-from", "--hostname-bin", "--search-zip"];
 const RISKY_SHORT: &[char] = &['o', 'C', 'R', 'L', 'f', 'x', 'e'];
@@ -109,6 +117,7 @@ fn risky_short_for(program: &str) -> &'static [char] {
         "tree" => &['l'],
         "grep" => &['S', 'r', 'O', 'p'],
         "rg" => &['z'],
+        "fd" => &['X'],
         "du" | "stat" | "ls" => &['H'],
         _ => &[],
     }
@@ -157,30 +166,67 @@ pub fn simple_commands(command: &str) -> Vec<String> {
     out
 }
 
-/// A command that only looks: one simple command, no operators or substitutions, no risky options, nothing outside `cwd`.
+/// A command line that only looks: simple commands that only look, joined by |, &&, || or ;, with no
+/// redirections or substitutions, no risky options and nothing outside `cwd`.
 pub fn looks_only(command: &str, cwd: &Path, trusted: bool) -> bool {
-    if command.contains(OPERATORS) || command.contains(['*', '?', '~', '!', '"', '\'', '\\', '=']) {
+    // Throwing output away or merging it changes nothing.
+    let mut command = command.to_string();
+    for harmless in ["2>/dev/null", "&>/dev/null", ">/dev/null", "2>&1", "2> /dev/null", "> /dev/null"] {
+        command = command.replace(harmless, " ");
+    }
+    let trusted = trusted || git_config_is_plain(cwd);
+    let command = command.as_str();
+    if command.contains(['>', '<', '`', '$', '\n', '(', ')', '{', '}', '~', '\\']) {
         return false;
     }
-    let words: Vec<&str> = command.split_whitespace().collect();
-    let Some(first) = words.first() else { return false };
-    let rest = if *first == "git" {
+    // A lone & would run something in the background.
+    if command.replace("&&", "").contains('&') {
+        return false;
+    }
+    let parts: Vec<&str> = command.split(['|', '&', ';']).map(str::trim).filter(|p| !p.is_empty()).collect();
+    !parts.is_empty() && parts.iter().all(|p| simple_looks_only(p, cwd, trusted))
+}
+
+/// The repository's own git config sets nothing that makes git run a program (fsmonitor, external diff, pager,
+/// textconv, ssh command, includes), so looking git commands are safe even in an untrusted project.
+fn git_config_is_plain(cwd: &Path) -> bool {
+    let Some(git) = cwd.ancestors().map(|d| d.join(".git")).find(|g| g.exists()) else { return true };
+    // A .git file points elsewhere (worktrees, submodules): don't follow it.
+    if !git.is_dir() {
+        return false;
+    }
+    let config = std::fs::read_to_string(git.join("config")).unwrap_or_default().to_lowercase();
+    const RUNS: &[&str] = &["fsmonitor", "external", "pager", "textconv", "sshcommand", "include", "hookspath", "askpass", "editor", "program", "filter", "alias", "!"];
+    !RUNS.iter().any(|r| config.contains(r))
+}
+
+fn simple_looks_only(command: &str, cwd: &Path, trusted: bool) -> bool {
+    let words: Vec<String> = command.split_whitespace().map(|w| w.trim_matches(['"', '\'']).to_string()).collect();
+    let Some(first) = words.first().map(String::as_str) else { return false };
+    let rest = if first == "git" {
         match words.get(1) {
-            Some(sub) if trusted && GIT_LOOKING.contains(sub) => &words[2..],
+            Some(sub) if trusted && GIT_LOOKING.contains(&sub.as_str()) => &words[2..],
             _ => return false,
         }
-    } else if LOOKING.contains(first) {
+    } else if LOOKING.contains(&first) {
         &words[1..]
     } else {
         return false;
     };
+    if first == "find" && rest.iter().any(|w| FIND_RISKY.contains(&w.as_str())) {
+        return false;
+    }
     rest.iter().all(|w| {
         if let Some(long) = w.strip_prefix("--") {
             return !RISKY_LONG.iter().any(|r| format!("--{long}").starts_with(r));
         }
+        if first == "find" && w.starts_with('-') {
+            return true;
+        }
         if let Some(short) = w.strip_prefix('-') {
             return !short.chars().any(|c| RISKY_SHORT.contains(&c) || risky_short_for(first).contains(&c));
         }
+        // Words are checked as paths: patterns and messages pass, anything reaching outside doesn't.
         !w.contains("..") && !Path::new(w).is_absolute() && util::inside(cwd, &cwd.join(w))
     })
 }
@@ -231,7 +277,7 @@ impl Permissions {
                 _ => Decision::Allow,
             },
             (Mode::Plan, _) => Decision::Deny("plan mode is read-only; describe the plan, and the user can switch with /mode".into()),
-            (Mode::AcceptEdits, Kind::Write) => match s {
+            (Mode::Default, Kind::Write) => match s {
                 Some(p) if in_project(p) => Decision::Allow,
                 Some(_) => Decision::Ask("it is outside the working directory".into()),
                 // Memory and skills reach every later prompt: the user sees those changes.
@@ -254,10 +300,10 @@ impl Plugin for Permissions {
         "permissions"
     }
     fn description(&self) -> &str {
-        "Allow, ask and deny rules and the default, accept-edits, plan and yolo modes"
+        "Allow, ask and deny rules and the default, careful, plan and yolo modes"
     }
     fn commands(&self) -> Vec<CommandSpec> {
-        vec![CommandSpec { name: "mode".into(), help: "show or change the permission mode: default, accept-edits, plan, yolo".into() }]
+        vec![CommandSpec { name: "mode".into(), help: "show or change the permission mode: default, careful, plan, yolo".into() }]
     }
     fn system_prompt(&self, _session: &Session, sections: &mut Vec<String>) {
         if self.mode() == Mode::Plan {
@@ -279,7 +325,7 @@ impl Plugin for Permissions {
                 *self.mode.lock().unwrap() = mode;
                 Ok(CommandResult::Output(format!("Permission mode: {}", mode.name())))
             }
-            None => Err("Modes: default, accept-edits, plan, yolo".into()),
+            None => Err("Modes: default, careful, plan, yolo".into()),
         })
     }
 }
@@ -316,9 +362,17 @@ mod tests {
         assert!(matches!(p.decide(read.as_ref(), &json!({"path": "config/.env.local"}), &cwd), Decision::Deny(_)));
         assert_eq!(p.decide(read.as_ref(), &json!({"path": "src/main.rs"}), &cwd), Decision::Allow);
         assert!(matches!(p.decide(read.as_ref(), &json!({"path": "/etc/hosts"}), &cwd), Decision::Ask(_)));
-        assert!(matches!(p.decide(write.as_ref(), &json!({"path": "a.txt"}), &cwd), Decision::Ask(_)));
-        *p.mode.lock().unwrap() = Mode::AcceptEdits;
         assert_eq!(p.decide(write.as_ref(), &json!({"path": "a.txt"}), &cwd), Decision::Allow);
+        // Pipelines of looking commands run; a redirection or an unknown program asks.
+        assert_eq!(p.decide(bash.as_ref(), &json!({"command": "rg -n 'fn main' src 2>/dev/null | head -5"}), &cwd), Decision::Allow);
+        assert_eq!(p.decide(bash.as_ref(), &json!({"command": "ls src | wc -l; find . -name '*.rs' | sort"}), &cwd), Decision::Allow);
+        assert!(matches!(p.decide(bash.as_ref(), &json!({"command": "ls > out.txt"}), &cwd), Decision::Ask(_)));
+        assert!(matches!(p.decide(bash.as_ref(), &json!({"command": "find . -delete"}), &cwd), Decision::Ask(_)));
+        assert!(matches!(p.decide(bash.as_ref(), &json!({"command": "cat src/a | sh"}), &cwd), Decision::Ask(_)));
+        assert!(matches!(p.decide(bash.as_ref(), &json!({"command": "cat ../../etc/passwd"}), &cwd), Decision::Ask(_)));
+        *p.mode.lock().unwrap() = Mode::Careful;
+        assert!(matches!(p.decide(write.as_ref(), &json!({"path": "a.txt"}), &cwd), Decision::Ask(_)));
+        *p.mode.lock().unwrap() = Mode::Default;
         assert!(matches!(p.decide(write.as_ref(), &json!({"path": "../../x"}), &cwd), Decision::Ask(_)));
         *p.mode.lock().unwrap() = Mode::Plan;
         assert!(matches!(p.decide(write.as_ref(), &json!({"path": "a.txt"}), &cwd), Decision::Deny(_)));
@@ -333,7 +387,14 @@ mod tests {
         assert!(looks_only("ls -la", &cwd, false));
         assert!(looks_only("wc -l", &cwd, false));
         assert!(looks_only("git status --short", &cwd, true));
-        assert!(!looks_only("git status", &cwd, false));
+        // Untrusted projects: git only when the repository's config can't make it run programs.
+        let repo = cwd.join(format!("bla-git-{}", util::random_hex(6)));
+        std::fs::create_dir_all(repo.join(".git")).unwrap();
+        std::fs::write(repo.join(".git/config"), "[core]\n\tbare = false\n").unwrap();
+        assert!(looks_only("git status", &repo, false));
+        std::fs::write(repo.join(".git/config"), "[core]\n\tfsmonitor = ./evil\n").unwrap();
+        assert!(!looks_only("git status", &repo, false));
+        let _ = std::fs::remove_dir_all(&repo);
         for bad in ["ls; rm x", "cat /etc/passwd", "cat ../secret", "git push", "echo $HOME", "rg --pre ./x pattern",
                     "rg --pre=./evil x", "tree -oout.txt", "file -C -m x", "grep -R key", "rg -L key", "git branch -D main",
                     "git remote add o https://x", "du --files-from=list", "rg --hostname-bin ./evil x", "tree -l", "grep -S -r key ."] {

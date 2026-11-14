@@ -108,7 +108,7 @@ fn runs_tools_until_the_answer() {
         vec![call("c2", "read", json!({"path": "hello.txt"}))],
         vec![text("Done: hello.txt says hi.")],
     ]);
-    let mut agent = agent(&address, &dir, permissions::Mode::AcceptEdits);
+    let mut agent = agent(&address, &dir, permissions::Mode::Default);
     let mut ui = Recorder::default();
     agent.turn("make hello.txt", &mut ui).unwrap();
     assert_eq!(std::fs::read_to_string(dir.join("hello.txt")).unwrap(), "hi\n");

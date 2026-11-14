@@ -39,7 +39,7 @@ Options:
   -t, --thinking        show the model's thinking
   -c, --continue        continue the last session in this folder
   -r, --resume ID       resume a session (see bla sessions)
-      --mode MODE       permissions: default, accept-edits, plan or yolo
+      --mode MODE       permissions: default (edits allowed), careful, plan or yolo
   -y, --yes             approve everything that would ask (careful)
       --no-tools        just answer, without tools
       --no-plugin NAME  turn a plugin off for this run (repeatable)
@@ -166,7 +166,7 @@ fn main() {
     };
     let settings = Settings::load(&cwd).unwrap_or_else(|e| fail(&e));
     let mode = match args.mode.as_deref().or(settings.permissions.mode.as_deref()) {
-        Some(m) => Mode::parse(m).unwrap_or_else(|| fail("Modes: default, accept-edits, plan, yolo")),
+        Some(m) => Mode::parse(m).unwrap_or_else(|| fail("Modes: default, careful, plan, yolo")),
         None => Mode::Default,
     };
     let mut disabled = args.disabled.clone();
