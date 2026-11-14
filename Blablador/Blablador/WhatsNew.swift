@@ -12,6 +12,15 @@ struct WhatsNewItem: Identifiable, Hashable {
 
 enum WhatsNew {
     static let releases: [(version: String, items: [WhatsNewItem])] = [
+        ("3.12", [
+            WhatsNewItem(icon: "waveform", title: "Talk to bla in the Terminal",
+                         text: "Type /voice in bla and talk to it: it listens with Whisper, and reads the answer back with Drama 3 "
+                         + "while it is still writing. Say \"stop\", or press Esc, to cut it off."),
+            WhatsNewItem(icon: "paperplane", title: "bla on Telegram",
+                         text: "bla serve --telegram answers in a Telegram chat: send it a message or a voice note from your phone "
+                         + "and it works in the folder you started it in. Only the chats you allow, and it asks in the chat before "
+                         + "anything that can't be undone.")
+        ]),
         ("3.10", [
             WhatsNewItem(icon: "atom", title: "Proteins",
                          text: "Fold a sequence with ESMFold2, sample conformations with BioEmu2, design proteins with RFdiffusion3, "

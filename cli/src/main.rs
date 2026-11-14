@@ -9,6 +9,7 @@ mod plugins;
 mod secret;
 mod session;
 mod tui;
+mod telegram;
 mod ui;
 mod util;
 mod voice;
@@ -27,6 +28,7 @@ use util::Style;
 
 const USAGE: &str = "Usage: bla [options] [question…]
        bla login | logout | sessions | plugins | trust
+       bla serve --telegram [--telegram-allow ID]…
 
 Asks Blablador and lets it work in the current folder: read, edit and write files and run commands,
 asking before it changes anything. Text piped in is added to the question:
@@ -45,6 +47,10 @@ Options:
       --no-tools        just answer, without tools
       --no-plugin NAME  turn a plugin off for this run (repeatable)
       --json            write events as JSON lines (for scripts)
+      --telegram        (with serve) answer on Telegram, with the bot token in
+                        BLA_TELEGRAM_TOKEN or ~/.bla/telegram.json
+      --telegram-allow ID  a chat that may talk to it (repeatable, and required)
+      --speak           (with serve) read the answers aloud as voice notes
   -l, --models          list the models
   -v, --version         show the version
   -h, --help            show this help
@@ -66,6 +72,9 @@ struct Args {
     disabled: Vec<String>,
     json: bool,
     list_models: bool,
+    telegram: bool,
+    telegram_allow: Vec<i64>,
+    speak: bool,
     words: Vec<String>,
 }
 
@@ -93,6 +102,12 @@ fn parse(argv: Vec<String>) -> Result<Args, String> {
             "--no-plugin" => a.disabled.push(value(&mut it, &arg)?),
             "--json" => a.json = true,
             "-l" | "--models" => a.list_models = true,
+            "--telegram" => a.telegram = true,
+            "--telegram-allow" => {
+                let id = value(&mut it, &arg)?;
+                a.telegram_allow.push(id.parse().map_err(|_| format!("--telegram-allow wants a chat id, not {id}"))?);
+            }
+            "--speak" => a.speak = true,
             "-h" | "--help" => return Err(USAGE.into()),
             "-v" | "--version" => return Err(format!("bla {}", env!("CARGO_PKG_VERSION"))),
             "--" => a.words.extend(it.by_ref()),
@@ -236,7 +251,14 @@ fn main() {
         });
     }
 
-    if chat {
+    if args.words.first().is_some_and(|w| w == "serve") {
+        busy.store(true, Ordering::Relaxed);
+        if let Err(e) = serve(&mut agent, &settings, &args) {
+            agent.finish();
+            fail(&e);
+        }
+        agent.finish();
+    } else if chat {
         run_chat(&mut agent, &settings, &busy, args.thinking);
     } else {
         let mut ui: Box<dyn Ui> = if args.json { Box::new(ui::Json) } else { Box::new(ui::Terminal::new(false, args.thinking)) };
@@ -314,6 +336,43 @@ fn list_plugins(cwd: &std::path::Path) {
     if !settings.project_trusted && config::project_root(cwd).join(".bla").exists() {
         println!("\n{}", style.dim("This project has a .bla folder; its hooks, plugins and skills are used once you run `bla trust`."));
     }
+}
+
+/// `bla serve --telegram`: the agent answering in a chat on your phone instead of this terminal.
+/// The token and the allowed chats come from the command line, the environment, or ~/.bla/telegram.json.
+fn serve(agent: &mut Agent, settings: &Settings, args: &Args) -> Result<(), String> {
+    if !args.telegram {
+        return Err("bla serve needs to know where to serve: --telegram is the one there is.".into());
+    }
+    let saved: serde_json::Value = std::fs::read_to_string(util::bla_home().join("telegram.json"))
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or(serde_json::Value::Null);
+    let token = std::env::var("BLA_TELEGRAM_TOKEN")
+        .ok()
+        .filter(|t| !t.is_empty())
+        .or_else(|| saved.get("token").and_then(|t| t.as_str()).map(String::from))
+        .ok_or("No bot token. Put it in BLA_TELEGRAM_TOKEN, or in ~/.bla/telegram.json as {\"token\": \"…\"}.")?;
+    let mut allowed = args.telegram_allow.clone();
+    if let Some(list) = saved.get("allow").and_then(|a| a.as_array()) {
+        allowed.extend(list.iter().filter_map(|c| c.as_i64()));
+    }
+    allowed.sort_unstable();
+    allowed.dedup();
+    let key = secret::api_key().ok_or("No API key. Run `bla login`.")?;
+    telegram::serve(
+        agent,
+        telegram::Options {
+            token,
+            allowed,
+            speak: args.speak,
+            language: None,
+            endpoint: settings.endpoint.clone(),
+            key,
+            stop: Arc::new(AtomicBool::new(false)),
+            api: std::env::var("BLA_TELEGRAM_API").unwrap_or_else(|_| telegram::TELEGRAM.into()),
+        },
+    )
 }
 
 const CHAT_HELP: &str = "/help         this list

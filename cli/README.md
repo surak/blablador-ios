@@ -76,6 +76,36 @@ a few short sentences, no lists or code read out loud; code is shown on the scre
 The first `/voice` makes your terminal ask for the microphone, and the permission belongs to the terminal
 program, not to bla. On Linux, building needs the ALSA headers (`sudo apt-get install libasound2-dev`).
 
+### On Telegram
+
+`bla serve --telegram` answers in a Telegram chat instead of this terminal: the same folder, the same
+tools, the same memory, from wherever you are. Send a message and it works; send a voice note and it
+listens, through the same Whisper the microphone uses. `--speak` sends the answers back as voice notes
+read by Drama 3.
+
+```sh
+export BLA_TELEGRAM_TOKEN=123456:AA…          # from @BotFather
+bla serve --telegram --telegram-allow 4242    # your chat id
+```
+
+The token and the allowed chats can live in `~/.bla/telegram.json` instead:
+
+```json
+{ "token": "123456:AA…", "allow": [4242] }
+```
+
+**The allow list is not optional.** This gives whoever can message the bot an agent that reads files
+and runs commands on the machine you started it on, so a message from any chat that is not on the
+list is refused before the model sees a word of it, and the refused chat's id is printed so you can
+add it if it was you. Start it without a list and it refuses to start at all. Anything that would ask
+in the terminal asks in the chat — the command is shown and nothing runs until an allowed chat replies
+`yes`, `always` or `no`, and after ten minutes with no answer it is a no.
+
+In the chat: `/new` forgets the conversation, `/speak` turns reading aloud on and off, `/whoami` gives
+the chat id, `/help` lists them. Each chat keeps its own conversation. Ctrl-C stops the bridge.
+
+`BLA_TELEGRAM_API` points it at a bot API server of your own instead of Telegram's.
+
 ## Permissions
 
 bla asks less than it used to, and about the same as Claude Code with edits accepted. Reads and changes inside

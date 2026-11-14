@@ -823,6 +823,11 @@ impl Api {
     }
 
     fn transcribe(&self, wav: &[u8], language: Option<&str>) -> Result<String, String> {
+        self.transcribe_file(wav, "turn.wav", "audio/wav", language)
+    }
+
+    /// Whisper, for any sound file: a turn from the microphone, or a voice note from somewhere else.
+    fn transcribe_file(&self, audio: &[u8], filename: &str, content_type: &str, language: Option<&str>) -> Result<String, String> {
         let boundary = format!("bla-{}", crate::util::random_hex(16));
         let mut body = Vec::new();
         let field = |name: &str, value: &str, body: &mut Vec<u8>| {
@@ -833,9 +838,9 @@ impl Api {
             field("language", l, &mut body);
         }
         body.extend(
-            format!("--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"turn.wav\"\r\nContent-Type: audio/wav\r\n\r\n").as_bytes(),
+            format!("--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\nContent-Type: {content_type}\r\n\r\n").as_bytes(),
         );
-        body.extend(wav);
+        body.extend(audio);
         body.extend(format!("\r\n--{boundary}--\r\n").as_bytes());
         let answer = self
             .agent
@@ -848,9 +853,14 @@ impl Api {
         Ok(value.get("text").and_then(|t| t.as_str()).unwrap_or_default().trim().to_string())
     }
 
-    /// Drama 3. We ask for WAV; the service may still answer MP3, which `decode` reads too.
     fn speech(&self, text: &str, voice: Option<&str>) -> Result<Vec<u8>, String> {
-        let mut body = json!({"model": blablador_models::SPEECH_MODEL, "input": text, "response_format": "wav"});
+        self.speech_as(text, voice, "wav")
+    }
+
+    /// Drama 3. The microphone path asks for WAV (the service may still answer MP3, which `decode`
+    /// reads too); somewhere that wants a file to send asks for MP3 instead.
+    fn speech_as(&self, text: &str, voice: Option<&str>, format: &str) -> Result<Vec<u8>, String> {
+        let mut body = json!({"model": blablador_models::SPEECH_MODEL, "input": text, "response_format": format});
         if let Some(v) = voice.filter(|v| !v.is_empty()) {
             body["voice"] = json!(v);
         }
@@ -875,3 +885,13 @@ pub const SYSTEM_PROMPT: &str = "The user is talking to you out loud and your an
 short sentences, no lists, no tables, no code blocks, no markdown decoration, no URLs read out character by character. \
 Say the one thing that answers them, in at most a few sentences, and offer the detail instead of giving it. \
 When you have to show code or a long file, say so in one sentence and put it on the screen rather than reading it out.";
+
+/// Whisper for a sound file somebody sent, rather than a turn at the microphone.
+pub fn transcribe_file(endpoint: &str, key: &str, audio: &[u8], filename: &str, content_type: &str, language: Option<&str>) -> Result<String, String> {
+    Api::new(endpoint, key.to_string()).transcribe_file(audio, filename, content_type, language)
+}
+
+/// Drama 3 as an MP3 file, for sending somewhere rather than playing here.
+pub fn speech_mp3(endpoint: &str, key: &str, text: &str, voice: Option<&str>) -> Result<Vec<u8>, String> {
+    Api::new(endpoint, key.to_string()).speech_as(text, voice, "mp3")
+}

@@ -15,6 +15,15 @@ data class WhatsNewItem(val icon: String, val title: String, val text: String, v
 
 object WhatsNew {
     val releases: List<Pair<String, List<WhatsNewItem>>> = listOf(
+        "3.12" to listOf(
+            WhatsNewItem("waveform", "Talk to bla in the Terminal",
+                "Type /voice in bla and talk to it: it listens with Whisper, and reads the answer back with Drama 3 while it is " +
+                    "still writing. Say \"stop\", or press Esc, to cut it off."),
+            WhatsNewItem("send", "bla on Telegram",
+                "bla serve --telegram answers in a Telegram chat: send it a message or a voice note from your phone and it works " +
+                    "in the folder you started it in. Only the chats you allow, and it asks in the chat before anything that " +
+                    "can't be undone."),
+        ),
         "3.10" to listOf(
             WhatsNewItem("atom", "Proteins",
                 "Fold a sequence with ESMFold2, sample conformations with BioEmu2, design proteins with RFdiffusion3, or design " +

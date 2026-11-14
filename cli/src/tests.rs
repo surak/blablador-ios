@@ -250,3 +250,126 @@ fn unreadable_speech_is_an_error() {
     assert!(voice::decode(b"not a sound file at all").is_err());
     assert!(voice::decode(&[]).is_err());
 }
+
+// ── telegram ─────────────────────────────────────────────────────────────────
+
+/// Answers Telegram's bot API: one message to deliver, and every call is kept.
+fn fake_telegram(message: Value) -> (String, Arc<Mutex<Vec<(String, Value)>>>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let log = seen.clone();
+    std::thread::spawn(move || {
+        let mut delivered = false;
+        for stream in listener.incoming() {
+            let mut stream = stream.unwrap();
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut first = String::new();
+            reader.read_line(&mut first).unwrap();
+            let method = first.split('/').nth(2).unwrap_or("").split_whitespace().next().unwrap_or("").to_string();
+            let mut length = 0;
+            loop {
+                let mut line = String::new();
+                reader.read_line(&mut line).unwrap();
+                if let Some(v) = line.to_lowercase().strip_prefix("content-length:") {
+                    length = v.trim().parse().unwrap();
+                }
+                if line == "\r\n" {
+                    break;
+                }
+            }
+            let mut body = vec![0; length];
+            reader.read_exact(&mut body).unwrap();
+            let body: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
+            log.lock().unwrap().push((method.clone(), body));
+            let result = match method.as_str() {
+                "getMe" => json!({"username": "bla_test_bot"}),
+                // The message is handed over once; after that the poll comes back empty.
+                "getUpdates" if !delivered => {
+                    delivered = true;
+                    json!([{"update_id": 1, "message": message}])
+                }
+                _ => json!([]),
+            };
+            let payload = json!({"ok": true, "result": result}).to_string();
+            let out = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{payload}", payload.len());
+            let _ = stream.write_all(out.as_bytes());
+        }
+    });
+    (base, seen)
+}
+
+/// Runs the bridge until it has dealt with the one message, then stops it.
+fn serve_once(agent: &mut Agent, base: &str, allowed: Vec<i64>, calls: &Arc<Mutex<Vec<(String, Value)>>>) {
+    let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let flag = stop.clone();
+    let watch = calls.clone();
+    std::thread::spawn(move || {
+        // The turn is over once something has been said back, whether an answer or a refusal.
+        for _ in 0..400 {
+            if watch.lock().unwrap().iter().any(|(m, _)| m == "sendMessage") {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        flag.store(true, std::sync::atomic::Ordering::Relaxed);
+    });
+    let options = crate::telegram::Options {
+        token: "test-token".into(),
+        allowed,
+        speak: false,
+        language: None,
+        endpoint: "http://127.0.0.1:1/v1".into(),
+        key: "k".into(),
+        stop,
+        api: base.to_string(),
+    };
+    crate::telegram::serve(agent, options).unwrap();
+}
+
+/// A message from an allowed chat is answered in that chat.
+#[test]
+fn telegram_answers_an_allowed_chat() {
+    let dir = temp();
+    let (address, _) = fake_server(vec![vec![text("The folder holds one file.")]]);
+    let mut agent = agent(&address, &dir, permissions::Mode::Default);
+    let (base, calls) = fake_telegram(json!({"chat": {"id": 4242}, "from": {"username": "surak"}, "text": "what is here?"}));
+    serve_once(&mut agent, &base, vec![4242], &calls);
+    let calls = calls.lock().unwrap();
+    let sent: Vec<&Value> = calls.iter().filter(|(m, _)| m == "sendMessage").map(|(_, b)| b).collect();
+    assert!(!sent.is_empty(), "nothing was sent back: {calls:?}");
+    assert_eq!(sent[0].get("chat_id").and_then(|c| c.as_i64()), Some(4242));
+    assert!(sent.iter().any(|b| b.get("text").and_then(|t| t.as_str()) == Some("The folder holds one file.")), "answers: {sent:?}");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// A message from anyone else never reaches the model.
+#[test]
+fn telegram_refuses_a_stranger() {
+    let dir = temp();
+    let (address, asked) = fake_server(vec![vec![text("should never run")]]);
+    let mut agent = agent(&address, &dir, permissions::Mode::Default);
+    let (base, calls) = fake_telegram(json!({"chat": {"id": 9999}, "from": {"username": "nobody"}, "text": "delete everything"}));
+    serve_once(&mut agent, &base, vec![4242], &calls);
+    assert!(asked.lock().unwrap().is_empty(), "the model was asked anyway");
+    let calls = calls.lock().unwrap();
+    let sent: Vec<&Value> = calls.iter().filter(|(m, _)| m == "sendMessage").map(|(_, b)| b).collect();
+    assert_eq!(sent.len(), 1, "sent: {sent:?}");
+    assert!(sent[0].get("text").and_then(|t| t.as_str()).unwrap_or_default().contains("not yours"));
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// Long answers are cut where a line ends, not in the middle of a word.
+#[test]
+fn long_answers_are_split() {
+    let text = format!("{}\n\n{}", "a".repeat(3000), "b".repeat(2000));
+    let pieces = crate::telegram::split(&text, 4000);
+    assert_eq!(pieces.len(), 2);
+    assert_eq!(pieces[0].len(), 3000);
+    assert_eq!(pieces[1].len(), 2000);
+    // A word longer than the limit still has to be cut somewhere, and nothing is lost.
+    let long = "x".repeat(9000);
+    let pieces = crate::telegram::split(&long, 4000);
+    assert_eq!(pieces.iter().map(|p| p.len()).sum::<usize>(), 9000);
+}
