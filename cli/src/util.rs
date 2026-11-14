@@ -275,7 +275,7 @@ pub fn run(mut command: Command, input: &[u8], timeout: Duration, cancel: &Atomi
 }
 
 /// Stops a whole process group (Unix); without `unsafe`, through kill(1).
-fn kill_group(pid: u32) {
+pub fn kill_group(pid: u32) {
     #[cfg(unix)]
     {
         // `--` matters: without it, procps kill (Ubuntu 22.04) misreads `-<pgid>` and kills its own group.

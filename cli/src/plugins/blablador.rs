@@ -362,8 +362,13 @@ impl Catalog {
             if known {
                 continue;
             }
+            // Names served from the same weights share a description.
+            let sibling = (!root.is_empty())
+                .then(|| self.entries.lock().unwrap().values().find(|e| e["root"].as_str() == Some(root.as_str())).and_then(|e| e["about"].as_str().map(String::from)))
+                .flatten();
             let about = match KNOWN.iter().find(|(k, _)| k == id) {
                 Some((_, about)) => about.to_string(),
+                None if sibling.is_some() => sibling.unwrap_or_default(),
                 None if looked < limit => {
                     looked += 1;
                     match self.describe(id, root) {
@@ -450,7 +455,7 @@ impl Tool for ModelsTool {
         Kind::Read
     }
     fn run(&self, _args: &Value, _ctx: &ToolCtx) -> ToolOutput {
-        let note = self.catalog.refresh(20).err().map(|e| format!("(Couldn't check the list now: {e}; this is the last one known.)\n")).unwrap_or_default();
+        let note = self.catalog.refresh(6).err().map(|e| format!("(Couldn't check the list now: {e}; this is the last one known.)\n")).unwrap_or_default();
         ToolOutput::ok(format!("{note}{}", self.catalog.listing()))
     }
 }

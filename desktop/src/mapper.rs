@@ -141,6 +141,10 @@ struct Shared {
     note: Option<String>,
     map: Option<ColorImage>,
     cloud: Option<Cloud>,
+    /// What to write into the chat history: a question (the first time for a session) and an answer.
+    notes: Vec<(Option<String>, String)>,
+    /// The session whose question is already in the history.
+    recorded: Option<String>,
 }
 
 pub struct Mapper {
@@ -205,6 +209,7 @@ impl Mapper {
             let mut s = shared.lock().unwrap();
             s.busy = None;
             if let Err(e) = result {
+                s.notes.push((None, format!("3D room: {e}")));
                 s.error = Some(e.to_string());
             }
             ctx.request_repaint();
@@ -256,6 +261,12 @@ impl Mapper {
                 drop(s);
                 c.request_repaint();
             }
+            let mut s = shared.lock().unwrap();
+            let question = (s.recorded.as_deref() != Some(session.as_str())).then(|| format!("3D room · {session}: photos taken with the camera at {height} cm"));
+            s.recorded = Some(session.clone());
+            let frames = s.stats.map(|t| t.0).unwrap_or(0);
+            let note = s.note.clone().map(|n| format!(" {n}")).unwrap_or_default();
+            s.notes.push((question, format!("Sent {total} photos to the room mapper; {frames} used so far.{note}")));
             Ok(())
         });
     }
@@ -278,8 +289,23 @@ impl Mapper {
                 let data = value["data"].as_str().ok_or_else(|| anyhow!("Missing part {part}."))?;
                 ply.extend(base64::engine::general_purpose::STANDARD.decode(data.trim())?);
             }
+            // Kept encrypted with the app's data, so the history can point at it.
+            let file = crate::storage::path(&format!("rooms/{session}.ply"));
+            crate::storage::write(&file, &ply);
             let cloud = tokio::task::spawn_blocking(move || make_cloud(ply, frames, in_cm)).await??;
-            shared.lock().unwrap().cloud = Some(cloud);
+            let mut s = shared.lock().unwrap();
+            let question = (s.recorded.as_deref() != Some(session.as_str())).then(|| format!("3D room · {session}"));
+            s.recorded = Some(session.clone());
+            s.notes.push((
+                question,
+                format!(
+                    "The 3D model is ready: {} points from {frames} photos{}. The point cloud is saved, encrypted, as {}; Save PLY in the 3D room window exports it.",
+                    cloud.total,
+                    if in_cm { ", in centimetres" } else { "; no floor found, so the size is not to scale" },
+                    file.display()
+                ),
+            ));
+            s.cloud = Some(cloud);
             Ok(())
         });
     }
@@ -296,6 +322,11 @@ impl Mapper {
                 c.request_repaint();
             }
         });
+    }
+
+    /// What the room mapper did since the last call, for the chat history.
+    pub fn take_notes(&self) -> Vec<(Option<String>, String)> {
+        std::mem::take(&mut self.shared.lock().unwrap().notes)
     }
 
     pub fn window(&mut self, ctx: &egui::Context, runtime: &tokio::runtime::Runtime, api: Api) {

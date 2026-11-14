@@ -893,6 +893,9 @@ impl eframe::App for App {
         self.knowledge_window(ctx);
         let api = self.api();
         self.mapper.window(ctx, &self.runtime, api.clone());
+        for (question, answer) in self.mapper.take_notes() {
+            self.record(question, answer);
+        }
         self.proteins.update(ctx, &self.runtime, &api);
         for note in self.proteins.take_notes() {
             self.record(note.question, note.answer);

@@ -492,6 +492,8 @@ impl Ui for Screen {
             let item = s.items.iter_mut().rev().find(|i| i.kind == Kind::Tool && !i.done && i.text == name);
             match item {
                 Some(item) => {
+                    // A plan is always shown in full.
+                    item.open = name == "update_plan";
                     item.output = Some(ToolOutput { content: clean(&output.content), is_error: output.is_error });
                     item.done = true;
                     item.took = item.started.elapsed();

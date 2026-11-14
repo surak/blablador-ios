@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 /// How many times plugins may keep a finished turn going (a Stop hook, a goal), so it can't loop forever.
-const MAX_CONTINUATIONS: usize = 8;
+const MAX_CONTINUATIONS: usize = 25;
 
 pub struct Agent {
     pub host: Host,

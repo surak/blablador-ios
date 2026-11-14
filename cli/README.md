@@ -136,6 +136,12 @@ Everything lives in `~/.bla` (or `BLA_HOME`): `settings.json`, `sessions/`, `ski
 | memory | the long-term memory shared with the Blablador apps (on the Mac through the app, `Blablador --memory`; on Linux and Windows the desktop app's encrypted `memories.json`), frozen into each session's prompt; `/memory`. Facts in the old `~/.bla/memory` are moved over once |
 | checkpoints | `/undo` |
 | compaction | summarises long conversations; `/compact` |
+| blablador | Blablador's other models: `look_at_image` (vision), `ocr_image`, `generate_image`, `transcribe_audio`, and `blablador_models`, a catalog of every served model in `~/.bla/models.json` (new ones are looked up on Hugging Face or the web and described) |
+| web | `web_search` on Blablador's SearXNG and `read_page` for public pages, PDFs and shared Google Docs; local and private addresses are refused |
+| agents | `task`: subagents. `explore` ones are read-only and run in parallel; `general` ones may edit, after the usual permission check |
+| processes | `bash_background`, `bash_output`, `bash_kill` for dev servers, watchers and long builds; `/jobs` |
+| plan | `update_plan` checklists; `/goal TEXT` keeps bla working until the goal is reached and verified (`/goal clear` ends it) |
+| mcp | MCP servers in Claude Code's `mcpServers` format from `~/.bla/mcp.json` (and a trusted project's `.mcp.json`), stdio or Streamable HTTP; tools appear as `server__tool`; `/mcp` |
 
 Anything else is an external plugin: a program in any language that speaks JSON-RPC over stdin and stdout. It
 can add tools and commands, and hook into the system prompt, your messages, every tool call (allow, ask, deny or

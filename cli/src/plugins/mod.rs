@@ -1,6 +1,7 @@
 //! The built-in plugins and the list a session starts with. Each can be turned off with
 //! `"plugins": {"disabled": [...]}` or `--no-plugin NAME`, the provider and the core tools included.
 
+pub mod agents;
 pub mod blablador;
 pub mod checkpoints;
 pub mod compaction;
@@ -8,10 +9,14 @@ pub mod context;
 pub mod core_tools;
 pub mod external;
 pub mod hooks;
+pub mod mcp;
 pub mod memory;
 pub mod openai;
 pub mod permissions;
+pub mod plan;
+pub mod processes;
 pub mod skills;
+pub mod web;
 
 use crate::config::Settings;
 use crate::plugin::Plugin;
@@ -26,7 +31,12 @@ pub const BUILT_IN: &[(&str, &str)] = &[
     ("hooks", "Shell hooks at session start, prompt, tool calls and stop (Claude Code format)"),
     ("skills", "SKILL.md skills: listed in the prompt, loaded on demand, and written by the agent itself"),
     ("memory", "The long-term memory shared with the Blablador apps, frozen into each session's prompt"),
+    ("plan", "update_plan checklists and /goal: keep working until a goal is reached"),
     ("blablador", "Blablador's other models as tools: vision, OCR, image generation, transcription"),
+    ("web", "web_search on Blablador's SearXNG and read_page for public pages and PDFs"),
+    ("agents", "Subagents: the task tool runs a fresh bla on a self-contained job, read-only ones in parallel"),
+    ("processes", "Background shell jobs (dev servers, watchers, long builds): bash_background, bash_output, bash_kill; /jobs"),
+    ("mcp", "MCP servers from ~/.bla/mcp.json and a trusted project's .mcp.json, as tools"),
     ("checkpoints", "Keeps files as they were before each turn; /undo restores them"),
     ("compaction", "Summarises long conversations so they fit the model's context"),
 ];
@@ -53,6 +63,9 @@ pub fn load(o: Options) -> (Vec<Arc<dyn Plugin>>, Vec<String>) {
             Err(e) => warnings.push(e),
         }
     }
+    if on("plan") {
+        plugins.push(Arc::new(plan::Plan::new()));
+    }
     if on("blablador") {
         plugins.push(Arc::new(blablador::Blablador::new(&s.endpoint, o.api_key.clone(), &o.model)));
     }
@@ -78,6 +91,20 @@ pub fn load(o: Options) -> (Vec<Arc<dyn Plugin>>, Vec<String>) {
     }
     if on("memory") {
         plugins.push(Arc::new(memory::Memory::new(crate::util::bla_home().join("memory"))));
+    }
+    if on("web") {
+        plugins.push(Arc::new(web::Web::new()));
+    }
+    if on("processes") {
+        plugins.push(Arc::new(processes::Processes::new()));
+    }
+    if on("agents") {
+        plugins.push(Arc::new(agents::Agents::new(&o.model)));
+    }
+    if on("mcp") {
+        let mcp = mcp::Mcp::new(&crate::config::project_root(o.cwd), s.project_trusted);
+        warnings.extend(mcp.take_warnings());
+        plugins.push(Arc::new(mcp));
     }
     if on("checkpoints") {
         plugins.push(Arc::new(checkpoints::Checkpoints::default()));

@@ -171,7 +171,7 @@ fn main() {
     };
     let mut disabled = args.disabled.clone();
     if args.no_tools {
-        disabled.extend(["core-tools", "skills", "memory", "checkpoints", "blablador"].map(String::from));
+        disabled.extend(["core-tools", "skills", "memory", "checkpoints", "blablador", "mcp", "web", "agents", "processes"].map(String::from));
     }
     let (plugins, warnings) =
         plugins::load(plugins::Options { settings: &settings, cwd: &cwd, api_key: secret::api_key().unwrap_or_default(),

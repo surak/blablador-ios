@@ -74,7 +74,9 @@ impl Rule {
     }
 
     fn matches(&self, tool: &str, kind: Kind, subject: Option<&str>, cwd: &Path) -> bool {
-        if self.tool != "*" && self.tool != tool {
+        // MCP tools: Claude Code's `mcp__server__tool` names match bla's `server__tool`, with * as a wildcard.
+        let rule_tool = if tool.starts_with("mcp__") { self.tool.as_str() } else { self.tool.strip_prefix("mcp__").unwrap_or(&self.tool) };
+        if rule_tool != "*" && rule_tool != tool && !(rule_tool.contains('*') && util::glob_match(rule_tool, tool, false)) {
             return false;
         }
         let Some(pattern) = &self.pattern else { return true };
