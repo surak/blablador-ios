@@ -182,6 +182,8 @@ pub struct Memory {
 #[derive(Default)]
 pub struct MemoryStore {
     pub memories: Vec<Memory>,
+    /// When the file was last read or written here; bla, the command line, changes it too.
+    loaded: Option<std::time::SystemTime>,
 }
 
 impl MemoryStore {
@@ -189,15 +191,32 @@ impl MemoryStore {
     /// Up to this many memories are always sent; beyond it only those sharing words with the question.
     const ALWAYS_SENT: usize = 30;
 
-    pub fn load() -> MemoryStore {
-        MemoryStore { memories: storage::read_json(&storage::path("memories.json")).unwrap_or_default() }
+    fn modified() -> Option<std::time::SystemTime> {
+        std::fs::metadata(storage::path("memories.json")).and_then(|m| m.modified()).ok()
     }
 
-    fn save(&self) {
+    pub fn load() -> MemoryStore {
+        MemoryStore { memories: storage::read_json(&storage::path("memories.json")).unwrap_or_default(), loaded: Self::modified() }
+    }
+
+    /// Reads the file again when another program changed it since.
+    pub fn refresh(&mut self) {
+        let modified = Self::modified();
+        if modified.is_some() && modified != self.loaded {
+            if let Some(memories) = storage::read_json(&storage::path("memories.json")) {
+                self.memories = memories;
+            }
+            self.loaded = modified;
+        }
+    }
+
+    fn save(&mut self) {
         storage::write_json(&storage::path("memories.json"), &self.memories);
+        self.loaded = Self::modified();
     }
 
     pub fn add(&mut self, text: &str) -> bool {
+        self.refresh();
         let text = text.trim();
         if text.is_empty() || self.memories.iter().any(|m| m.text.eq_ignore_ascii_case(text)) {
             return false;
@@ -211,6 +230,7 @@ impl MemoryStore {
     }
 
     pub fn forget(&mut self, number: usize) -> Option<Memory> {
+        self.refresh();
         if number == 0 || number > self.memories.len() {
             return None;
         }
@@ -220,6 +240,7 @@ impl MemoryStore {
     }
 
     pub fn delete(&mut self, id: Uuid) {
+        self.refresh();
         self.memories.retain(|m| m.id != id);
         self.save();
     }

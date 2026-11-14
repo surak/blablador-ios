@@ -8,6 +8,7 @@ mod plugin;
 mod plugins;
 mod secret;
 mod session;
+mod tui;
 mod ui;
 mod util;
 
@@ -172,7 +173,8 @@ fn main() {
     if args.no_tools {
         disabled.extend(["core-tools", "skills", "memory", "checkpoints"].map(String::from));
     }
-    let (plugins, warnings) = plugins::load(plugins::Options { settings: &settings, cwd: &cwd, api_key: secret::api_key().unwrap_or_default(), mode, disabled: &disabled });
+    let (plugins, warnings) =
+        plugins::load(plugins::Options { settings: &settings, cwd: &cwd, api_key: secret::api_key().unwrap_or_default(), mode, disabled: &disabled });
     let host = Host::new(plugins);
     let style = Style::stderr();
     for w in warnings.iter().chain(&host.warnings) {
@@ -280,6 +282,10 @@ fn list_sessions() {
     }
 }
 
+fn sessions_text() -> String {
+    Session::list().into_iter().take(30).map(|s| format!("{}  {:<12} {}  {}", s.id, ago(s.modified), s.title, s.cwd)).collect::<Vec<_>>().join("\n")
+}
+
 fn list_plugins(cwd: &std::path::Path) {
     let style = Style::stdout();
     let settings = Settings::load(cwd).unwrap_or_default();
@@ -318,44 +324,51 @@ const CHAT_HELP: &str = "/help         this list
 @path         attach a file to your message";
 
 fn run_chat(agent: &mut Agent, settings: &Settings, busy: &AtomicBool, thinking: bool) {
-    // In a chat the thinking is shown, dimmed: long waits then show progress.
     let _ = thinking;
-    let mut ui = ui::Terminal::new(true, true);
-    let style = Style::stdout();
-    let mut editor = match rustyline::DefaultEditor::new() {
-        Ok(e) => e,
-        Err(e) => fail(&format!("terminal: {e}")),
+    let mut screen = match tui::Screen::open(agent.cancel.clone(), util::bla_home().join("history")) {
+        Ok(s) => s,
+        Err(e) => fail(&e),
     };
-    let history = util::bla_home().join("history");
-    let _ = editor.load_history(&history);
     agent.start();
-    println!(
-        "{} {} · {} · {}",
-        style.bold("bla"),
-        env!("CARGO_PKG_VERSION"),
-        agent.model,
-        style.dim(&format!("{} · /help · Ctrl-D quits", util::display_path(&util::home(), &agent.session.cwd)))
-    );
+    let cwd = util::display_path(&util::home(), &agent.session.cwd);
+    let mut lines = vec![
+        agent.model.clone(),
+        cwd.clone(),
+        String::new(),
+        "/help commands · @file attaches · !cmd runs a shell command".into(),
+        "Esc stops · Ctrl-O opens all tool output · Ctrl-C twice quits".into(),
+    ];
     if !agent.session.messages.is_empty() {
-        println!("{}", style.dim(&format!("Resumed {} ({} messages).", agent.session.id, agent.session.messages.len())));
+        lines.push(format!("Resumed {} ({} messages).", agent.session.id, agent.session.messages.len()));
     }
     if !settings.project_trusted && config::project_root(&agent.session.cwd).join(".bla").exists() {
-        println!("{}", style.yellow("This project has a .bla folder. Its hooks and plugins are ignored until you run `bla trust`."));
+        lines.push("This project has a .bla folder; its hooks and plugins are ignored until `bla trust`.".into());
     }
+    screen.welcome(lines);
+    screen.set_info(&agent.model, agent.effort.as_deref(), &cwd);
+    let mut commands: Vec<(String, String)> = CHAT_HELP
+        .lines()
+        .filter_map(|l| l.strip_prefix('/'))
+        .map(|l| {
+            let (name, help) = l.split_once(' ').unwrap_or((l, ""));
+            (name.to_string(), help.trim().to_string())
+        })
+        .collect();
+    for (_, c) in agent.host.commands() {
+        commands.push((c.name.to_string(), c.help.to_string()));
+    }
+    commands.sort();
+    screen.set_commands(commands);
+
     loop {
         busy.store(false, Ordering::Relaxed);
-        let line = match editor.readline(&style.cyan("› ")) {
-            Ok(l) => l,
-            Err(rustyline::error::ReadlineError::Interrupted) => continue,
-            Err(_) => break,
+        let Some(line) = screen.read_line() else {
+            break;
         };
         let input = line.trim();
         if input.is_empty() {
             continue;
         }
-        let _ = editor.add_history_entry(input);
-        let _ = std::fs::create_dir_all(util::bla_home());
-        let _ = editor.save_history(&history);
         busy.store(true, Ordering::Relaxed);
 
         if let Some(command) = input.strip_prefix('!') {
@@ -363,11 +376,12 @@ fn run_chat(agent: &mut Agent, settings: &Settings, busy: &AtomicBool, thinking:
             match tool {
                 Some(bash) => {
                     let args = serde_json::json!({"command": command});
+                    screen.tool_start("bash", command);
                     let out = bash.run(&args, &plugin::ToolCtx { cwd: &agent.session.cwd, cancel: &agent.cancel });
-                    println!("{}", out.content);
+                    screen.tool_end("bash", &out);
                     agent.session.push(llm::Message::user(format!("I ran `{command}` in the shell:\n```\n{}\n```", util::clip(&out.content, 20_000))));
                 }
-                None => ui.error("The bash tool is off."),
+                None => screen.error("The bash tool is off."),
             }
             continue;
         }
@@ -378,71 +392,70 @@ fn run_chat(agent: &mut Agent, settings: &Settings, busy: &AtomicBool, thinking:
             match name {
                 "exit" | "quit" | "q" => break,
                 "help" | "?" => {
-                    println!("{CHAT_HELP}");
+                    let mut text = CHAT_HELP.to_string();
                     for (plugin, c) in agent.host.commands() {
-                        println!("/{:<13}{} {}", c.name, c.help, style.dim(&format!("({plugin})")));
+                        text.push_str(&format!("\n/{:<13}{} ({plugin})", c.name, c.help));
                     }
+                    screen.say(&text);
                 }
                 "new" | "clear" => {
                     agent.switch(Session::new(&agent.session.cwd.clone(), &agent.model));
-                    println!("{}", style.dim("New session."));
+                    screen.clear();
+                    screen.notice("New session.");
                 }
-                "sessions" => list_sessions(),
+                "sessions" => screen.say(&sessions_text()),
                 "resume" => match Session::open(args) {
                     // Another folder has its own settings, trust and plugins: start bla there instead.
-                    Ok(s) if s.cwd != agent.session.cwd => ui.error(&format!("That session is in {}; run bla -r {args} there.", s.cwd.display())),
+                    Ok(s) if s.cwd != agent.session.cwd => screen.error(&format!("That session is in {}; run bla -r {args} there.", s.cwd.display())),
                     Ok(s) => {
                         let n = s.messages.len();
                         agent.switch(s);
-                        println!("{}", style.dim(&format!("Resumed ({n} messages).")));
+                        screen.notice(&format!("Resumed ({n} messages)."));
                     }
-                    Err(e) => ui.error(&e),
+                    Err(e) => screen.error(&e),
                 },
-                "model" if args.is_empty() => println!("{}", agent.model),
+                "model" if args.is_empty() => screen.say(&agent.model),
                 "model" => {
                     agent.model = args.to_string();
                     let _ = Settings::save_user("model", serde_json::Value::from(args));
-                    println!("{}", style.dim(&format!("Model: {args} (saved as the default)")));
+                    screen.set_info(&agent.model, agent.effort.as_deref(), &cwd);
+                    screen.notice(&format!("Model: {args} (saved as the default)"));
                 }
                 "models" => match agent.provider.models() {
-                    Ok(list) => list.iter().for_each(|m| println!("{}{m}", if *m == agent.model { "* " } else { "  " })),
-                    Err(e) => ui.error(&e),
+                    Ok(list) => screen.say(&list.iter().map(|m| format!("{}{m}", if *m == agent.model { "* " } else { "  " })).collect::<Vec<_>>().join("\n")),
+                    Err(e) => screen.error(&e),
                 },
                 "effort" if ["off", "low", "medium", "high", "max"].contains(&args) => {
                     agent.effort = Some(args.into());
-                    println!("{}", style.dim(&format!("Effort: {args}")));
+                    screen.set_info(&agent.model, agent.effort.as_deref(), &cwd);
+                    screen.notice(&format!("Effort: {args}"));
                 }
-                "effort" => println!("Effort: {} (off, low, medium, high, max)", agent.effort.as_deref().unwrap_or("the model's default")),
-                "tools" => {
-                    for t in agent.host.tools() {
-                        println!("{} {}", padded(t.name(), 12, |x| style.bold(x)), util::clip(t.description(), 100));
-                    }
-                }
-                "plugins" => {
-                    for p in &agent.host.plugins {
-                        println!("{} {}", padded(p.name(), 13, |x| style.bold(x)), p.description());
-                    }
-                }
-                "system" => println!("{}", agent.system_prompt()),
+                "effort" => screen.say(&format!("Effort: {} (off, low, medium, high, max)", agent.effort.as_deref().unwrap_or("the model's default"))),
+                "tools" => screen
+                    .say(&agent.host.tools().iter().map(|t| format!("{:<12} {}", t.name(), util::clip(t.description(), 100))).collect::<Vec<_>>().join("\n")),
+                "plugins" => screen.say(&agent.host.plugins.iter().map(|p| format!("{:<13} {}", p.name(), p.description())).collect::<Vec<_>>().join("\n")),
+                "system" => screen.say(agent.system_prompt()),
                 _ => match agent.command(name, args) {
-                    Some(Ok(CommandResult::Output(text))) => println!("{text}"),
+                    Some(Ok(CommandResult::Output(text))) => screen.say(&text),
                     Some(Ok(CommandResult::Prompt(prompt))) => {
-                        if let Err(e) = agent.turn(&prompt, &mut ui) {
-                            ui.error(&e);
+                        if let Err(e) = agent.turn(&prompt, &mut screen) {
+                            screen.error(&e);
                         }
                     }
-                    Some(Err(e)) => ui.error(&e),
-                    None => ui.error(&format!("Unknown command /{name}. /help lists them.")),
+                    Some(Err(e)) => screen.error(&e),
+                    None => screen.error(&format!("Unknown command /{name}. /help lists them.")),
                 },
             }
             continue;
         }
 
-        if let Err(e) = agent.turn(input, &mut ui) {
-            ui.error(&e);
+        if let Err(e) = agent.turn(input, &mut screen) {
+            screen.error(&e);
         }
     }
+    screen.close();
     agent.finish();
+    println!("Session {} · bla -r {} to continue", agent.session.id, agent.session.id);
 }
 
 #[cfg(test)]

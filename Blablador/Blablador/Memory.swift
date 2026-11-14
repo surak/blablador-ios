@@ -32,9 +32,24 @@ final class MemoryStore: ObservableObject {
         willSet { objectWillChange.send() }
     }
 
+    /// When the file was last read or written here; bla changes it too.
+    private var loadedDate: Date?
+
     private init() {
+        reloadIfChanged()
+    }
+
+    private static var fileDate: Date? {
+        (try? FileManager.default.attributesOfItem(atPath: fileURL.path))?[.modificationDate] as? Date
+    }
+
+    /// Reads the file again when another program (bla, the command line) changed it since.
+    func reloadIfChanged() {
+        let date = Self.fileDate
+        guard date != loadedDate || date == nil && loadedDate == nil else { return }
+        loadedDate = date
         if let data = EncryptedStorage.read(Self.fileURL),
-           let memories = try? JSONDecoder().decode([Memory].self, from: data) {
+           let memories = try? JSONDecoder().decode([Memory].self, from: data), memories != self.memories {
             self.memories = memories
         }
     }
@@ -42,6 +57,7 @@ final class MemoryStore: ObservableObject {
     /// Saves a fact; returns false for an empty text or one already remembered.
     @discardableResult
     func add(_ text: String, from chat: Conversation? = nil, entities: [String]? = nil) -> Bool {
+        reloadIfChanged()
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !memories.contains(where: { $0.text.caseInsensitiveCompare(text) == .orderedSame }) else { return false }
         memories.append(Memory(text: text, sourceChat: chat?.id, sourceTitle: chat?.title, entities: entities.map(Self.normalized)))
@@ -51,6 +67,7 @@ final class MemoryStore: ObservableObject {
     }
 
     func update(_ memory: Memory, text: String) {
+        reloadIfChanged()
         guard let index = memories.firstIndex(where: { $0.id == memory.id }) else { return }
         memories[index].text = text
         memories[index].vector = nil
@@ -59,12 +76,14 @@ final class MemoryStore: ObservableObject {
     }
 
     func delete(_ ids: Set<UUID>) {
+        reloadIfChanged()
         memories.removeAll { ids.contains($0.id) }
         persist()
     }
 
     /// Deletes memory number `number` as listed in the system prompt (1-based).
     func forget(number: Int) -> Memory? {
+        reloadIfChanged()
         guard memories.indices.contains(number - 1) else { return nil }
         let memory = memories.remove(at: number - 1)
         persist()
@@ -82,11 +101,13 @@ final class MemoryStore: ObservableObject {
     /// Added to the system prompt when memory is on. With many memories, only those sharing words with the
     /// question plus the newest are sent, keeping their numbers so forget still works.
     func systemPrompt(for question: String) -> String {
-        Self.systemPrompt(memories: memories, question: question)
+        reloadIfChanged()
+        return Self.systemPrompt(memories: memories, question: question)
     }
 
     /// Like `systemPrompt(for:)`, but with many memories picks the relevant ones by meaning when embeddings are available.
     func systemPrompt(for question: String, api: BlabladorAPI) async -> String {
+        reloadIfChanged()
         guard memories.count > Self.alwaysSent, Embeddings.available else { return systemPrompt(for: question) }
         await embedMissing(api: api)
         await linkMissing(api: api)
@@ -258,12 +279,46 @@ final class MemoryStore: ObservableObject {
     private func persist() {
         guard let data = try? JSONEncoder().encode(memories) else { return }
         EncryptedStorage.write(data, to: Self.fileURL)
+        loadedDate = Self.fileDate
     }
 
     private static var fileURL: URL {
         let url = AppFolder.url
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url.appendingPathComponent("memories.json")
+    }
+}
+
+/// `Blablador --memory list|add TEXT|update ID TEXT|remove ID`: how bla reads and changes the memory on the Mac.
+/// Only the app's own binary can open the key in its Keychain, so bla runs it for each change.
+enum MemoryCommand {
+    @MainActor
+    static func run(_ arguments: [String]) -> Int32 {
+        let store = MemoryStore.shared
+        func output(_ text: String) { FileHandle.standardOutput.write(Data((text + "\n").utf8)) }
+        switch (arguments.first, arguments.count) {
+        case ("list", 1):
+            let list = store.memories.map { ["id": $0.id.uuidString, "text": $0.text] }
+            guard let data = try? JSONSerialization.data(withJSONObject: list), let text = String(data: data, encoding: .utf8) else { return 1 }
+            output(text)
+        case ("add", 2):
+            output(store.add(arguments[1]) ? "added" : "exists")
+        case ("update", 3):
+            guard let memory = store.memories.first(where: { $0.id.uuidString == arguments[1].uppercased() }) else {
+                FileHandle.standardError.write(Data("That fact is gone.\n".utf8))
+                return 1
+            }
+            store.update(memory, text: arguments[2])
+            output("updated")
+        case ("remove", 2):
+            guard let id = UUID(uuidString: arguments[1]) else { return 1 }
+            store.delete([id])
+            output("removed")
+        default:
+            FileHandle.standardError.write(Data("Usage: Blablador --memory list | add TEXT | update ID TEXT | remove ID\n".utf8))
+            return 2
+        }
+        return 0
     }
 }
 

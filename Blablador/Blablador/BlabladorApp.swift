@@ -10,6 +10,11 @@ enum Launcher {
             Task { @MainActor in await BlaCommand.run(Array(arguments.dropFirst())) }
             dispatchMain()
         }
+        if arguments.first == "--memory" {
+            let rest = Array(arguments.dropFirst())
+            Task { @MainActor in exit(MemoryCommand.run(rest)) }
+            dispatchMain()
+        }
 #endif
         BlabladorApp.main()
     }

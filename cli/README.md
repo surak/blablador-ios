@@ -14,8 +14,8 @@ It starts in under 10 ms, is a single 2–3 MB binary with no runtime, and uses 
 Like [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness), everything else is a plugin,
 the model provider and those four tools included. From [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
 it takes permission rules and modes, hooks, AGENTS.md/CLAUDE.md, skills, `@file` and print/JSON modes;
-from [Hermes Agent](https://github.com/NousResearch/hermes-agent) a small frozen memory and skills it writes
-itself.
+from [Hermes Agent](https://github.com/NousResearch/hermes-agent) a frozen memory and skills it writes
+itself. Its memory is the Blablador apps' memory: what you tell the app, bla knows, and the other way round.
 
 ## Install
 
@@ -46,9 +46,15 @@ where there is no keyring. `BLABLADOR_API_KEY` overrides it.
 
 In one-shot mode only the answer goes to stdout; tool lines and questions go to stderr, so `bla … > file` works.
 
+The chat is a full-screen view with the Blablador logo at the top. Scroll back with the mouse wheel, the scroll
+bar or Page Up/Down; drag over text to select and copy it; click a tool call or the thinking to open or close
+it (Ctrl-O opens all). `/` suggests commands, Tab completes `@path`, Shift-Enter (or `\` then Enter) starts a
+new line, Up/Down go through earlier messages. You can type while the answer is written: messages wait their
+turn above the input. Esc stops the answer; Ctrl-C twice quits.
+
 In a chat: `/help` lists the commands (`/new`, `/resume`, `/model`, `/effort`, `/mode`, `/compact`, `/undo`,
 `/skills`, `/memory`, `/tools`, `/plugins`, and one per skill); `!command` runs a shell command and shows the
-model its output; `@path` attaches a file; Ctrl-C stops the answer, twice quits; Ctrl-D quits.
+model its output; `@path` attaches a file; Esc or Ctrl-C stops the answer; Ctrl-C twice or Ctrl-D quits.
 
 ## Permissions
 
@@ -127,7 +133,7 @@ Everything lives in `~/.bla` (or `BLA_HOME`): `settings.json`, `sessions/`, `ski
 | permissions | rules and modes, `/mode` |
 | hooks | shell hooks in Claude Code's format |
 | skills | `SKILL.md` skills from `~/.bla/skills`, `~/.claude/skills`, `~/.agents/skills` (and the project's, when trusted); the agent saves new ones; `/skills`, `/<skill> task` |
-| memory | `~/.bla/memory/MEMORY.md` and `USER.md`, at most 2,200 and 1,400 characters, frozen into each session's prompt; `/memory` |
+| memory | the long-term memory shared with the Blablador apps (on the Mac through the app, `Blablador --memory`; on Linux and Windows the desktop app's encrypted `memories.json`), frozen into each session's prompt; `/memory`. Facts in the old `~/.bla/memory` are moved over once |
 | checkpoints | `/undo` |
 | compaction | summarises long conversations; `/compact` |
 

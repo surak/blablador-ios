@@ -137,7 +137,7 @@ pub async fn run(mut turn: Turn, events: Events) {
 
 /// Asks the helper model which lasting facts about the user the exchange holds, and saves them.
 async fn learn(api: &Api, model: &str, exchange: &str, memory: &Arc<Mutex<MemoryStore>>, events: &Events) {
-    let known: Vec<String> = memory.lock().unwrap().memories.iter().map(|m| format!("- {}", m.text)).collect();
+    let known: Vec<String> = { let mut m = memory.lock().unwrap(); m.refresh(); m }.memories.iter().map(|m| format!("- {}", m.text)).collect();
     let system = format!(
         "You pick out lasting facts about the user (name, job, preferences, ongoing projects) from a chat exchange. Answer with a JSON array of short third-person sentences, or [] when there is nothing new. Never include passwords, keys or other secrets, and skip what is already known:\n{}",
         known.join("\n")
@@ -169,7 +169,11 @@ async fn write_reply(turn: &mut Turn, reply: &mut Message, events: &Events) -> R
         system += tools::WEB_PROMPT;
     }
     if turn.settings.memory {
-        system += &format!("\n\n{}", turn.memory.lock().unwrap().system_prompt(&question));
+        system += &format!("\n\n{}", {
+            let mut memory = turn.memory.lock().unwrap();
+            memory.refresh();
+            memory.system_prompt(&question)
+        });
     }
     if !turn.knowledge.is_empty() {
         reply.status = Some("Searching knowledge…".into());
