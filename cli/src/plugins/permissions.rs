@@ -21,7 +21,7 @@ use crate::plugin::{CommandResult, CommandSpec, Ctx, Decision, Kind, Plugin, Ses
 use crate::llm::Message;
 use crate::util;
 use serde_json::Value;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -329,8 +329,10 @@ fn secret(path: &Path) -> bool {
 fn scratch(path: &Path) -> bool {
     const OWN: &[&str] = &["/tmp", "/var/tmp", "/private/tmp", "/private/var/tmp", "/var/folders", "/private/var/folders"];
     let real = util::real_path(path);
+    // The system's temp folder too: %TEMP% on Windows.
+    let temp = util::real_path(&std::env::temp_dir());
     // The folder itself isn't scratch: `rm -rf /tmp` still asks.
-    OWN.iter().any(|own| real.starts_with(own) && real != Path::new(own))
+    OWN.iter().map(PathBuf::from).chain(std::iter::once(temp)).any(|own| real.starts_with(&own) && real != own)
 }
 
 /// Whether a git command line can discard work. Looking subcommands never do; the ones that change things ask only
@@ -623,8 +625,9 @@ mod tests {
         }
         assert_eq!(p.decide(write.as_ref(), &json!({"path": "a.txt"}), &cwd), Decision::Allow);
         // Scratch files are written and deleted freely; the project itself still asks to be deleted. (The cwd of
-        // this test is the system temp folder, so the scratch project goes in /tmp proper.)
-        let scratch_dir = Path::new("/tmp").join(format!("bla-scratch-{}", util::random_hex(6)));
+        // this test is the system temp folder, which is /tmp itself on Linux, so this part works from the crate.)
+        let cwd = std::env::current_dir().unwrap().canonicalize().unwrap();
+        let scratch_dir = std::env::temp_dir().join(format!("bla-scratch-{}", util::random_hex(6)));
         std::fs::create_dir_all(&scratch_dir).unwrap();
         let frame = scratch_dir.join("frame.png").display().to_string();
         // (A fresh set of rules: this test's own deny rule names `rm -rf` and would catch the cleanup.)
