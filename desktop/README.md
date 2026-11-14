@@ -7,6 +7,15 @@ system keyring or a private file when there is none), web search and page readin
 earlier chats, shell commands in a chosen folder after approval, attached PDFs and text files, and knowledge bases
 (embeddings and rerank on Blablador), and 3D room: photos mapped into a floor plan and a point cloud by `alias-visual-geometry` (`src/mapper.rs`).
 
+Proteins (`src/proteins.rs`): the five molecular models — ESMFold2, BioEmu2, RFdiffusion3, BindCraft and
+Proteina-Complexa. They are job APIs, not chat models: a submitted job is kept here (encrypted, like everything
+else) because the service has no job list of its own, is polled while the app is open, and its result archive is
+downloaded as soon as it finishes, since results are deleted upstream after 48 hours. There is no progress
+percentage and no ETA — the service publishes neither. Every downloaded structure is measured before it is
+shown: a job can finish, report success and hand back a backbone that no chemistry allows. The protocol, the
+five forms and that check live in the shared crate (`../shared`, `blablador-models`), which also says which
+models can chat, so `bla` and the app always agree.
+
     cargo run --release     # build and start
     cargo test
 

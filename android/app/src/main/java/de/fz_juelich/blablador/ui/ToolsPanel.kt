@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.outlined.AlternateEmail
 import androidx.compose.material.icons.outlined.AutoFixHigh
 import androidx.compose.material.icons.outlined.Balance
+import androidx.compose.material.icons.outlined.Biotech
 import androidx.compose.material.icons.outlined.ViewInAr
 import androidx.compose.material.icons.outlined.Brush
 import androidx.compose.material.icons.outlined.CameraAlt
@@ -64,7 +65,7 @@ import androidx.compose.ui.unit.dp
 import de.fz_juelich.blablador.ChatViewModel
 
 /** Things picked in the panel that open a picker or a page. */
-enum class PanelAction { CloneVoice, Talk, Voices, Camera, Photos, Files, Paste, ScanText, Decide, RoomMapper, Knowledge, NewKnowledge, Mcp, Skills, Tasks, Permissions }
+enum class PanelAction { CloneVoice, Talk, Voices, Camera, Photos, Files, Paste, ScanText, Decide, RoomMapper, Proteins, Knowledge, NewKnowledge, Mcp, Skills, Tasks, Permissions }
 
 /**
  * What the + button opens: attach, the kind of reply, tools, knowledge, connected services and more, each with its
@@ -179,6 +180,8 @@ fun ToolsPanel(
                 LinkRow("Decide…", "Weigh options with the Clef decision model", Icons.Outlined.Balance) { onAction(PanelAction.Decide) }
                 Divider()
                 LinkRow("3D room…", "Map a room from photos and see it in 3D", Icons.Outlined.ViewInAr) { onAction(PanelAction.RoomMapper) }
+                Divider()
+                LinkRow("Proteins…", "Fold, design and sample proteins on GPUs", Icons.Outlined.Biotech) { onAction(PanelAction.Proteins) }
             }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {

@@ -817,6 +817,7 @@ private struct ComposerView: View {
     @State private var scanning = false
     @State private var showDecision = false
     @State private var showRoomMapper = false
+    @State private var showProteins = false
     @State private var ocrItems: [PhotosPickerItem] = []
     @State private var readingPDFs = 0
     @State private var pdfError: String?
@@ -1058,6 +1059,9 @@ private struct ComposerView: View {
         }
         .sheet(isPresented: $showRoomMapper) {
             RoomMapperView().environmentObject(store)
+        }
+        .sheet(isPresented: $showProteins) {
+            ProteinsView().environmentObject(store)
         }
         .photosPicker(isPresented: $showOCRPicker, selection: $ocrItems, maxSelectionCount: 10, matching: .images)
         .onChange(of: ocrItems) { _, items in
@@ -1301,6 +1305,7 @@ private struct ComposerView: View {
         case .scanText: showScanChoice = true
         case .decide: showDecision = true
         case .mapRoom: showRoomMapper = true
+        case .proteins: showProteins = true
         case .newKnowledge: showKnowledge = true
         case .cloneVoice: showCloneVoice = true
         case .talk: store.talking = true

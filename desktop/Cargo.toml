@@ -1,11 +1,12 @@
 [package]
 name = "blablador"
-version = "3.9.0"
+version = "3.10.0"
 edition = "2021"
 description = "Blablador chat client for Windows and Linux"
 license = "MIT"
 
 [dependencies]
+blablador-models = { path = "../shared" }
 eframe = { version = "0.31", default-features = false, features = ["default_fonts", "glow", "wayland", "x11", "persistence"] }
 egui_commonmark = "0.20"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "time", "sync"] }
@@ -21,6 +22,7 @@ url = "2"
 aes-gcm = "0.10"
 rand = "0.8"
 base64 = "0.22"
+flate2 = "1"
 directories = "5"
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
 rfd = "0.15"

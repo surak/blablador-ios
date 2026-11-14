@@ -171,10 +171,11 @@ fn main() {
     };
     let mut disabled = args.disabled.clone();
     if args.no_tools {
-        disabled.extend(["core-tools", "skills", "memory", "checkpoints"].map(String::from));
+        disabled.extend(["core-tools", "skills", "memory", "checkpoints", "blablador"].map(String::from));
     }
     let (plugins, warnings) =
-        plugins::load(plugins::Options { settings: &settings, cwd: &cwd, api_key: secret::api_key().unwrap_or_default(), mode, disabled: &disabled });
+        plugins::load(plugins::Options { settings: &settings, cwd: &cwd, api_key: secret::api_key().unwrap_or_default(),
+        model: args.model.clone().unwrap_or_else(|| settings.model.clone()), mode, disabled: &disabled });
     let host = Host::new(plugins);
     let style = Style::stderr();
     for w in warnings.iter().chain(&host.warnings) {
@@ -184,7 +185,11 @@ fn main() {
 
     if args.list_models {
         match provider.models() {
-            Ok(models) => models.iter().for_each(|m| println!("{m}")),
+            // The endpoint lists its tools next to its chat models; say which is which.
+            Ok(models) => models.iter().for_each(|m| match blablador_models::kind(m) {
+                blablador_models::Kind::Chat => println!("{m}"),
+                other => println!("{m}  ({})", other.name()),
+            }),
             Err(e) => fail(&e),
         }
         return;
@@ -415,6 +420,11 @@ fn run_chat(agent: &mut Agent, settings: &Settings, busy: &AtomicBool, thinking:
                     Err(e) => screen.error(&e),
                 },
                 "model" if args.is_empty() => screen.say(&agent.model),
+                // Embedders, image models and the molecular job APIs are all in /v1/models; none of them answers a question.
+                "model" if !blablador_models::is_chat_capable(args) => screen.error(&format!(
+                    "{args} is for {}, not for chatting.",
+                    blablador_models::kind(args).name()
+                )),
                 "model" => {
                     agent.model = args.to_string();
                     let _ = Settings::save_user("model", serde_json::Value::from(args));
@@ -422,7 +432,19 @@ fn run_chat(agent: &mut Agent, settings: &Settings, busy: &AtomicBool, thinking:
                     screen.notice(&format!("Model: {args} (saved as the default)"));
                 }
                 "models" => match agent.provider.models() {
-                    Ok(list) => screen.say(&list.iter().map(|m| format!("{}{m}", if *m == agent.model { "* " } else { "  " })).collect::<Vec<_>>().join("\n")),
+                    Ok(list) => screen.say(
+                        &list
+                            .iter()
+                            .map(|m| {
+                                let mark = if *m == agent.model { "* " } else { "  " };
+                                match blablador_models::kind(m) {
+                                    blablador_models::Kind::Chat => format!("{mark}{m}"),
+                                    other => format!("{mark}{m}  ({})", other.name()),
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n"),
+                    ),
                     Err(e) => screen.error(&e),
                 },
                 "effort" if ["off", "low", "medium", "high", "max"].contains(&args) => {

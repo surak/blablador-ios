@@ -127,6 +127,8 @@ fun MessageItem(
     onShowVersion: (Int) -> Unit = {},
     canRerun: (String) -> Boolean = { false },
     onRerun: (String) -> Unit = {},
+    /** A file the app made and kept with the chat (a 3D model). */
+    madeFile: (DocumentAttachment) -> ByteArray? = { null },
 ) {
     var editing by remember { mutableStateOf(false) }
     if (editing) EditMessageDialog(message.content, onDismiss = { editing = false }) { editing = false; onEdit(it) }
@@ -170,6 +172,9 @@ fun MessageItem(
                 if (message.reasoning.isNotEmpty()) Thinking(message.reasoning, isLast && isStreaming && message.content.isEmpty())
                 if (message.webImages.isNotEmpty()) WebImages(message.webImages)
                 message.images.forEach { ChatImage(imageFile(it), 420, square = false) { onEditImage(it) } }
+                message.documents.forEach { document ->
+                    if (document.name.lowercase().endsWith(".ply")) SavedRoomModel(document) { madeFile(document) } else DocumentChip(document)
+                }
                 message.audio.forEach { speechClip(it) }
                 message.videos.forEach { name -> VideoClip(videoFile(name)) { onContinueVideo(name) } }
                 when {

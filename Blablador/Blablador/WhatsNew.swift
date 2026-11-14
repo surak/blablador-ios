@@ -12,6 +12,16 @@ struct WhatsNewItem: Identifiable, Hashable {
 
 enum WhatsNew {
     static let releases: [(version: String, items: [WhatsNewItem])] = [
+        ("3.10", [
+            WhatsNewItem(icon: "atom", title: "Proteins",
+                         text: "Fold a sequence with ESMFold2, sample conformations with BioEmu2, design proteins with RFdiffusion3, "
+                         + "or design binders with BindCraft and Proteina-Complexa. The job runs on the Jülich GPUs for minutes to "
+                         + "hours — close the app and come back. In the + panel: Proteins.",
+                         tryIt: .panel),
+            WhatsNewItem(icon: "checkmark.seal", title: "Checks what came back",
+                         text: "A folding job can finish, call itself a success and hand back a structure that no chemistry allows. "
+                         + "Every result is measured against the real bonds between residues, and told plainly when it doesn't hold up.")
+        ]),
         ("3.8", [
             WhatsNewItem(icon: "cube.transparent", title: "A place in 3D",
                          text: "Take photos all around a room and get a top-down map after every batch, then a 3D model you can turn. In the + panel: 3D room."),

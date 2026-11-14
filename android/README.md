@@ -30,6 +30,10 @@ It is the Android counterpart of [blablador-ios](https://github.com/surak/blabla
   the assistant can also speak with the `generate_speech` tool
 - **Voice cloning**: record a sample, pick an audio or video file, or fetch a link; Whisper transcribes it for Drama 3
 - **Decide** (+ → Decide): the Clef decision model (`alias-clef`); write your own decisions and questions (yes/no, choice, score) and save them, or start from 73 examples; answers with probabilities
+- **Proteins** (+ → Proteins…): the five molecular models (ESMFold2, BioEmu2, RFdiffusion3, BindCraft, Proteina-Complexa).
+  They are job APIs, not chats: a job queues on a GPU for minutes to hours, the result archive is downloaded and kept
+  on the phone (the service deletes its copy after 48 hours), and the backbone of the returned structure is measured
+  before you trust it. Each job also leaves a chat in the history
 - **Update notice**: when GitHub has a newer release, a banner above the chat links to the new APK
 
 Agent mode is Mac only on iOS and isn't ported.
@@ -59,6 +63,15 @@ The decision examples in `app/src/main/assets/decision-examples.json` are genera
 - Keep samples short (about 5 s). The server's time grows with the sample length, and samples longer than about 10 s
   currently exceed the gateway timeout and fail with 502. Samples at 44.1 kHz also fail, which is why the app converts
   everything to 16 kHz.
+
+### Proteins
+**+ → Proteins…** lists the five models. Pick one, fill in its form (each field's range is the service's own) and
+submit. The job then queues on a GPU: the screen shows its stage, message and queue order — never a percentage or an
+estimate, because the service publishes neither — and the result archive is fetched as soon as the job finishes,
+because the service deletes it 48 hours later. Opening a result unpacks the archive, finds the structure, draws the
+backbone and says whether the chain is physically possible at all: a finished job is **not** a sound result, and too
+few sampling steps returns a well-formed file that is not a folded protein. Cancelling asks the job to stop; it may
+still finish. Every job also appears in the chat history under the model's name.
 
 ### Decisions (Clef)
 **+ → Decide (Clef)** opens the decision screen. Tap the decision name and choose **New decision**, a saved one
@@ -118,6 +131,7 @@ app/src/main/java/de/fz_juelich/blablador/
 │   ├── Knowledge.kt           # Knowledge bases: chunking, embeddings, vector store, search, rerank
 │   ├── Voice.kt               # Voices, delivery settings, audio decoding/resampling, recorder, playback
 │   ├── Decision.kt            # Clef questions, examples, saved decisions and answers
+│   ├── Proteins.kt            # The five molecular models: actions, job records, chunked results, backbone check
 │   ├── Updates.kt             # Checks GitHub for a newer release
 │   ├── PdfExtractor.kt        # PDF text (PdfBox), OCR (ML Kit or LightOnOCR)
 │   └── Storage.kt             # Chat history, images, settings, encrypted API key
@@ -128,6 +142,7 @@ app/src/main/java/de/fz_juelich/blablador/
     ├── KnowledgeScreen.kt     # Knowledge base list and documents
     ├── VoiceScreens.kt        # Speech clips, Expressions menu, voices, clone a voice
     ├── DecisionScreen.kt      # Clef decisions
+    ├── ProteinsScreen.kt      # Protein jobs: the list, a form per model, the result and its backbone
     ├── ToolsPanel.kt          # The + panel: attach, reply mode, tools, knowledge, connected tools, more
     ├── AgentViews.kt          # Plan card, trace line and sheet, @mention chips and suggestions
     ├── AgentScreens.kt        # Permissions and scheduled tasks

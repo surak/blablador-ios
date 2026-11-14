@@ -120,7 +120,7 @@ struct MentionChips: View {
 /// What the + button opens: attach, the kind of reply, tools, knowledge, connected services and more, each with
 /// its state visible instead of hidden in a menu.
 struct ToolsPanel: View {
-    enum Action { case camera, photos, files, paste, scanText, decide, mapRoom, workspace, newKnowledge, cloneVoice, talk }
+    enum Action { case camera, photos, files, paste, scanText, decide, mapRoom, proteins, workspace, newKnowledge, cloneVoice, talk }
 
     @Binding var imageMode: Bool
     @Binding var videoMode: Bool
@@ -324,6 +324,13 @@ struct ToolsPanelContent: View {
                             Divider().padding(.leading, 44)
                             Button { onAction(.mapRoom) } label: {
                                 row("3D room…", "cube.transparent", "Turn photos of a place into a 3D model") {
+                                    Image(systemName: "chevron.right").foregroundStyle(.secondary)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            Divider().padding(.leading, 44)
+                            Button { onAction(.proteins) } label: {
+                                row("Proteins…", "atom", "Fold, design and sample proteins on the GPUs") {
                                     Image(systemName: "chevron.right").foregroundStyle(.secondary)
                                 }
                             }

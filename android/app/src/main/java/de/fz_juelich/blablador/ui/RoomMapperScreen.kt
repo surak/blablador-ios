@@ -101,6 +101,9 @@ fun RoomMapperScreen(vm: ChatViewModel, onClose: () -> Unit) {
     var queue by remember { mutableStateOf<RoomMapper.Queue?>(null) }
     var cloud by remember { mutableStateOf<RoomMapper.PointCloud?>(null) }
     var ply by remember { mutableStateOf<ByteArray?>(null) }
+    // The chat that keeps this room in the history: its id and the reply's.
+    var activity by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var mapPng by remember { mutableStateOf<ByteArray?>(null) }
     var info by remember { mutableStateOf("") }
 
     LaunchedEffect(session) {
@@ -129,7 +132,16 @@ fun RoomMapperScreen(vm: ChatViewModel, onClose: () -> Unit) {
         if (busy != null) return
         error = null; busy = label; progress = 0f
         scope.launch {
-            try { block() } catch (e: CancellationException) { throw e } catch (e: Exception) { error = e.message ?: e.toString() } finally { busy = null }
+            try {
+                block()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                error = e.message ?: e.toString()
+                activity?.let { vm.updateActivityChat(it.second, error ?: "Failed", failed = true) }
+            } finally {
+                busy = null
+            }
         }
     }
     fun note(q: RoomMapper.Queue?, extra: String?) {
@@ -174,15 +186,20 @@ fun RoomMapperScreen(vm: ChatViewModel, onClose: () -> Unit) {
             }
             Button(enabled = busy == null && unsent.isNotEmpty() && valid && cm != null, onClick = {
                 run("Sending photos…") {
+                    val chat = activity ?: vm.startActivityChat("3D room · $session", "3D room from photos (session $session, camera at $cm cm)").also { activity = it }
                     val batches = unsent.chunked(RoomMapper.BATCH)
                     batches.forEachIndexed { i, batch ->
                         val result = vm.api.roomStep(session, cm!!, batch.map { it.jpeg })
                         batch.forEach { it.sent = true }
+                        vm.addToActivityRequest(chat.first, batch.map { vm.images.save(it.jpeg) })
+                        result.map?.let { mapPng = it }
                         step = result
                         result.map?.let { png -> map = withContext(Dispatchers.Default) { BitmapFactory.decodeByteArray(png, 0, png.size)?.asImageBitmap() } }
                         note(result.queue, result.note)
                         progress = (i + 1f) / batches.size
                     }
+                    vm.updateActivityChat(chat.second, "${photos.count { it.sent }} photos sent; ${step?.frames ?: 0} used so far. The map so far:" +
+                        (step?.note?.let { "\n\n$it" } ?: ""), images = mapPng?.let { listOf(vm.images.save(it)) })
                 }
             }) { Text(if (unsent.size == 1) "Send 1 photo" else "Send ${unsent.size} photos") }
             busy?.let {
@@ -212,6 +229,11 @@ fun RoomMapperScreen(vm: ChatViewModel, onClose: () -> Unit) {
                         ply = data; cloud = parsed
                         info = "${parsed.count} points from ${finish.framesUsed} photos" +
                             if (finish.centimetres) ", in centimetres." else ". No floor found, so the size is not to scale."
+                        activity?.let {
+                            val model = vm.storeMadeFile("$session.ply", data, "3D point cloud (PLY) of the room: $info")
+                            vm.updateActivityChat(it.second, "The 3D model is ready: $info\n\nTop-down map:",
+                                images = mapPng?.let { png -> listOf(vm.images.save(png)) }, documents = listOf(model))
+                        }
                     }
                 }) { Text("Build the 3D model") }
             }
@@ -246,7 +268,7 @@ private fun Stat(label: String, value: String) {
 
 /** A software point renderer: rotated by π around X (y points down), centred on the bounding sphere, drawn with a depth buffer. */
 @Composable
-private fun PointCloudView(cloud: RoomMapper.PointCloud, modifier: Modifier) {
+internal fun PointCloudView(cloud: RoomMapper.PointCloud, modifier: Modifier) {
     val prepared = remember(cloud) {
         val p = cloud.positions
         val n = cloud.count
@@ -310,4 +332,23 @@ private fun render(points: FloatArray, radius: Float, colors: IntArray, yaw: Flo
         }
     }
     return Bitmap.createBitmap(pixels, w, h, Bitmap.Config.ARGB_8888).asImageBitmap()
+}
+
+/** A 3D room kept in a chat: opens the point cloud again from the history. */
+@Composable
+fun SavedRoomModel(document: de.fz_juelich.blablador.data.DocumentAttachment, load: () -> ByteArray?) {
+    var cloud by remember { mutableStateOf<RoomMapper.PointCloud?>(null) }
+    var failed by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val c = cloud
+    if (c != null) {
+        PointCloudView(c, Modifier.fillMaxWidth().height(320.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF111418)))
+    } else {
+        OutlinedButton(enabled = !failed, onClick = {
+            scope.launch {
+                val parsed = withContext(Dispatchers.Default) { load()?.let { runCatching { RoomMapper.parsePly(it) }.getOrNull() } }
+                if (parsed == null) failed = true else cloud = parsed
+            }
+        }) { Text(if (failed) "The 3D model can't be opened" else "Open the 3D model (${document.name})") }
+    }
 }

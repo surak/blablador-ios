@@ -53,6 +53,7 @@ pub struct App {
     show_memory: bool,
     show_knowledge: bool,
     mapper: crate::mapper::Mapper,
+    proteins: crate::proteins::Proteins,
     new_memory: String,
     new_base: String,
     renaming: Option<(Uuid, String)>,
@@ -88,6 +89,7 @@ impl App {
             show_memory: false,
             show_knowledge: false,
             mapper: Default::default(),
+            proteins: Default::default(),
             new_memory: String::new(),
             new_base: String::new(),
             renaming: None,
@@ -133,6 +135,28 @@ impl App {
         let chat = Conversation::new();
         self.current = Some(chat.id);
         self.chats.insert(0, chat);
+    }
+
+    /// Writes what a feature did into the chat history, so a protein job or a mapped room is in the history
+    /// next to the questions asked around it, not only in its own window.
+    fn record(&mut self, question: Option<String>, answer: String) {
+        if self.current.is_none_or(|id| self.chat(id).is_none()) {
+            self.new_chat();
+        }
+        let id = self.current.unwrap();
+        let title = question.clone();
+        let Some(chat) = self.chat_mut(id) else { return };
+        if let Some(question) = question {
+            chat.messages.push(Message::new(Role::User, question));
+        }
+        chat.messages.push(Message::new(Role::Assistant, answer));
+        chat.updated = chrono::Utc::now();
+        if chat.title == "New chat" {
+            if let Some(title) = title {
+                chat.title = title.chars().take(60).collect();
+            }
+        }
+        self.save_chats();
     }
 
     fn handle_events(&mut self) {
@@ -315,7 +339,7 @@ impl App {
             self.new_chat();
         }
         ui.add_space(6.0);
-        let bottom = 3.0 * 26.0 + 12.0;
+        let bottom = 5.0 * 26.0 + 12.0;
         egui::ScrollArea::vertical().max_height(ui.available_height() - bottom).auto_shrink([false, false]).show(ui, |ui| {
             let mut delete = None;
             for chat in &self.chats {
@@ -347,7 +371,7 @@ impl App {
         });
         ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
             ui.add_space(6.0);
-            for (label, flag) in [("Settings", &mut self.show_settings), ("Memory", &mut self.show_memory), ("Knowledge", &mut self.show_knowledge), ("3D room", &mut self.mapper.open)] {
+            for (label, flag) in [("Settings", &mut self.show_settings), ("Memory", &mut self.show_memory), ("Knowledge", &mut self.show_knowledge), ("3D room", &mut self.mapper.open), ("Proteins…", &mut self.proteins.open)] {
                 if ui.add_sized([ui.available_width(), 24.0], egui::Button::new(label).selected(*flag)).clicked() {
                     *flag = !*flag;
                 }
@@ -868,7 +892,11 @@ impl eframe::App for App {
         self.memory_window(ctx);
         self.knowledge_window(ctx);
         let api = self.api();
-        self.mapper.window(ctx, &self.runtime, api);
+        self.mapper.window(ctx, &self.runtime, api.clone());
+        self.proteins.update(ctx, &self.runtime, &api);
+        for note in self.proteins.take_notes() {
+            self.record(note.question, note.answer);
+        }
         self.approval_window(ctx);
 
         if let Some((id, mut title)) = self.renaming.take() {

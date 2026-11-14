@@ -130,3 +130,19 @@ data class DecisionAnswer(
     val confidence: Double? = null,
     val probabilities: Map<String, Double>? = null,
 )
+
+/** The answers as text, for the decision's chat in the history. */
+fun decisionSummary(questions: List<DecisionQuestion>, answers: Map<String, DecisionAnswer>): String =
+    questions.joinToString("\n\n") { q ->
+        val a = answers[q.id] ?: return@joinToString "**${q.instructions}** — no answer"
+        fun percent(p: Double) = "${Math.round(p * 100)}%"
+        val text = when (a.type) {
+            "noul" -> (a.noul ?: 0.0).let { if (it >= 0.5) "Yes (${percent(it)})" else "No (${percent(1 - it)} sure)" }
+            "choice" -> {
+                val key = a.choice.orEmpty()
+                (q.options?.firstOrNull { it.key == key }?.text ?: key) + (a.probabilities?.get(key)?.let { " (${percent(it)})" } ?: "")
+            }
+            else -> (a.score?.let { String.format(java.util.Locale.ROOT, "%.2f", it) } ?: "?") + (q.levels?.let { " on " + it.joinToString(" → ") } ?: "")
+        }
+        "**${q.instructions}** — $text"
+    }

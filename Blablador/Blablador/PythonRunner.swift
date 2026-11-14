@@ -238,6 +238,14 @@ enum DataFiles {
         return DocumentAttachment(name: name, text: text, pageCount: 0, dataFile: stored)
     }
 
+    /// Keeps a file the app made (a 3D model) with a chat, encrypted like attached ones.
+    static func store(_ data: Data, name: String, description: String) -> DocumentAttachment {
+        let ext = (name as NSString).pathExtension.lowercased()
+        let stored = UUID().uuidString + (ext.isEmpty ? "" : "." + ext)
+        EncryptedStorage.write(data, to: directory.appendingPathComponent(stored))
+        return DocumentAttachment(name: name, text: description, pageCount: 0, dataFile: stored)
+    }
+
     static func data(for stored: String) -> Data? {
         EncryptedStorage.readFile(directory.appendingPathComponent(stored), isPlain: { _ in false })
     }

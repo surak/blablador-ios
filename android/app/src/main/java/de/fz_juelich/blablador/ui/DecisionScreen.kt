@@ -60,6 +60,7 @@ import de.fz_juelich.blablador.data.DecisionExample
 import de.fz_juelich.blablador.data.DecisionQuestion
 import de.fz_juelich.blablador.data.SavedDecisions
 import de.fz_juelich.blablador.data.decide
+import de.fz_juelich.blablador.data.decisionSummary
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -103,13 +104,18 @@ fun DecisionScreen(vm: ChatViewModel, onClose: () -> Unit) {
         decision = decision.copy(questions = questions)
         running = true
         error = null
+        val title = decision.name.ifBlank { decision.state.take(40) }
+        val request = decision.state + "\n\n" + questions.joinToString("\n") { "• " + it.instructions }
+        val activity = vm.startActivityChat("Decision · $title", request)
         scope.launch {
             try {
                 answers = vm.api.decide(decision.state, questions)
+                vm.updateActivityChat(activity.second, decisionSummary(questions, answers))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 error = e.message
+                vm.updateActivityChat(activity.second, e.message ?: e.toString(), failed = true)
             } finally {
                 running = false
             }

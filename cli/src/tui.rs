@@ -825,7 +825,7 @@ fn welcome(text: &str, width: usize) -> Vec<Row> {
         (String::new(), Style::default()),
         (String::new(), Style::default()),
         (format!("bla {}", env!("CARGO_PKG_VERSION")), Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)),
-        ("Blablador on the command line".into(), Style::default()),
+        ("BLABLADOR on the command line".into(), Style::default()),
         (String::new(), Style::default()),
     ];
     for (i, line) in text.lines().enumerate() {
@@ -857,7 +857,7 @@ fn welcome(text: &str, width: usize) -> Vec<Row> {
 }
 
 /// The rows of one item at a width; a blank row separates items.
-fn render(item: &Item, width: usize, tick: usize) -> Vec<Row> {
+fn render(item: &Item, width: usize, tick: usize, verb: &str) -> Vec<Row> {
     let dim = Style::default().fg(Color::DarkGray);
     let mut rows = vec![blank()];
     match item.kind {
@@ -872,7 +872,14 @@ fn render(item: &Item, width: usize, tick: usize) -> Vec<Row> {
         Kind::Answer => rows.extend(markdown(item.text.trim_matches('\n'), width, "● ", Style::default())),
         Kind::Thinking => {
             let star = if item.done { "✻ ".to_string() } else { format!("{} ", SPINNER[tick % SPINNER.len()]) };
-            let head = if !item.done { "Thinking…".into() } else if item.took < Duration::from_secs(1) { "Thought".into() } else { format!("Thought for {}", elapsed(item.took)) };
+            // The same potato verbs the apps use while a reply is being worked out.
+            let head = if !item.done {
+                format!("{verb}…")
+            } else if item.took < Duration::from_secs(1) {
+                "Thought process".into()
+            } else {
+                format!("Thought process, {}", elapsed(item.took))
+            };
             let hint = if item.done && !item.open {
                 "  (click to show)"
             } else if item.open {
@@ -996,10 +1003,11 @@ fn draw(frame: &mut Frame, s: &mut State, tick: usize) {
     // The conversation.
     let width = transcript.width.saturating_sub(2).max(10) as usize;
     let mut flat: Vec<(usize, usize)> = Vec::new();
+    let verb = s.verb;
     for (i, item) in s.items.iter_mut().enumerate() {
         let animated = !item.done;
         if animated || item.cache.as_ref().map(|c| c.0) != Some(width as u16) {
-            item.cache = Some((width as u16, render(item, width, tick)));
+            item.cache = Some((width as u16, render(item, width, tick, verb)));
         }
         let n = item.cache.as_ref().map(|c| c.1.len()).unwrap_or(0);
         flat.extend((0..n).map(|r| (i, r)));

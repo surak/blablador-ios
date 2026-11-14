@@ -1092,6 +1092,62 @@ final class ChatStore: ObservableObject {
         return conversation.id
     }
 
+    /// A chat for a molecular job, so the work is in the history like everything else the app does. Returns the
+    /// chat and the reply the job keeps up to date.
+    func startMolecularChat(title: String, request: String) -> (chat: UUID, message: UUID) {
+        var conversation = Conversation(title: title, model: selectedModel)
+        let question = ChatMessage(role: .user, content: request)
+        var reply = ChatMessage(role: .assistant, content: "Sending the job…")
+        reply.status = "Queued on the GPUs"
+        conversation.messages = [question, reply]
+        conversations.insert(conversation, at: 0)
+        persist()
+        return (conversation.id, reply.id)
+    }
+
+    /// The job's own reply, rewritten as it moves. No streaming is involved: these jobs run for hours.
+    func updateMolecularChat(_ message: UUID, text: String, finished: Bool) {
+        updateMessage(message) {
+            $0.content = text
+            $0.status = finished ? nil : "Running on the GPUs"
+        }
+        persist()
+    }
+
+    /// A chat for work that isn't a conversation with a model (a 3D room, a decision), so it is in the history like
+    /// everything else the app does. Returns the chat and the reply that the work keeps up to date.
+    func startActivityChat(title: String, request: String, images: [String] = []) -> (chat: UUID, message: UUID) {
+        var conversation = Conversation(title: title, model: selectedModel)
+        var question = ChatMessage(role: .user, content: request)
+        question.images = images
+        var reply = ChatMessage(role: .assistant, content: "")
+        reply.status = "Working…"
+        conversation.messages = [question, reply]
+        conversations.insert(conversation, at: 0)
+        persist()
+        return (conversation.id, reply.id)
+    }
+
+    /// Rewrites the activity's reply; `images` replaces its pictures when given.
+    func updateActivityChat(_ message: UUID, text: String, images: [String]? = nil, documents: [DocumentAttachment]? = nil, finished: Bool, failed: Bool = false) {
+        updateMessage(message) {
+            $0.content = text
+            if let images { $0.images = images }
+            if let documents { $0.documents = documents }
+            $0.status = finished ? nil : "Working…"
+            $0.isError = failed
+        }
+        persist()
+    }
+
+    /// Adds pictures and files to what the user sent for an activity.
+    func addToActivityRequest(chat: UUID, images: [String] = [], documents: [DocumentAttachment] = []) {
+        guard let c = conversations.firstIndex(where: { $0.id == chat }), !conversations[c].messages.isEmpty else { return }
+        conversations[c].messages[0].images += images
+        conversations[c].messages[0].documents += documents
+        persist()
+    }
+
     /// What @mentions add to the system prompt for one message.
     static let toolHints = [
         "web": "web search (web_search, read_page)",

@@ -33,6 +33,10 @@ import de.fz_juelich.blablador.data.complete
 import de.fz_juelich.blablador.data.McpLibrary
 import de.fz_juelich.blablador.data.McpTool
 import de.fz_juelich.blablador.data.MemoryStore
+import de.fz_juelich.blablador.data.MolecularJob
+import de.fz_juelich.blablador.data.MolecularStore
+import de.fz_juelich.blablador.data.historyText
+import de.fz_juelich.blablador.data.requestText
 import de.fz_juelich.blablador.data.WebPage
 import de.fz_juelich.blablador.data.Skill
 import de.fz_juelich.blablador.data.SkillLibrary
@@ -104,6 +108,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val playback = AudioPlayback()
     val permissions = ToolPermissions(application, { mcp.servers.toList() }, { mcp.save(it) })
     val tasks = TaskStore(application)
+    /** Jobs on the five molecular models; they outlive the screen, so the store keeps moving them along. */
+    val proteins = MolecularStore(application, viewModelScope, ::recordProteinJob)
 
     val conversations = mutableStateListOf<Conversation>().apply { addAll(conversationStore.load().map(::markingInterrupted)) }
     var currentId by mutableStateOf<String?>(null)
@@ -811,6 +817,63 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         tasks.save(task.copy(lastRun = System.currentTimeMillis()))
         runTask(task)
     }
+
+    /**
+     * A protein job stands in the chat history like everything else the app does: a chat of its own, holding what
+     * was asked for and one reply that is rewritten as the job moves. The chat and that reply carry the job's id,
+     * so later changes land in the same place.
+     */
+    private fun recordProteinJob(job: MolecularJob) {
+        val index = conversations.indexOfFirst { it.id == job.id }
+        if (index < 0) {
+            val question = ChatMessage(role = ChatRole.user, content = job.requestText())
+            val reply = ChatMessage(id = job.id, role = ChatRole.assistant, content = job.historyText())
+            // An ordinary chat model: the molecular aliases are job APIs and can't answer a chat.
+            conversations.add(0, Conversation(id = job.id, title = job.title, model = selectedModel, messages = listOf(question, reply)))
+        } else {
+            conversations[index] = conversations[index].let { chat ->
+                chat.copy(messages = chat.messages.map { if (it.id == job.id) it.copy(content = job.historyText()) else it },
+                    updatedAt = System.currentTimeMillis())
+            }
+        }
+        persist()
+    }
+
+    /**
+     * A chat for work that isn't a conversation with a model (a 3D room, a decision), so it is in the history like
+     * everything else the app does. Returns the chat's id and the id of the reply the work keeps up to date.
+     */
+    fun startActivityChat(title: String, request: String): Pair<String, String> {
+        val question = ChatMessage(role = ChatRole.user, content = request)
+        val reply = ChatMessage(role = ChatRole.assistant, content = "", status = "Working…")
+        val conversation = Conversation(title = title, model = selectedModel, messages = listOf(question, reply))
+        conversations.add(0, conversation)
+        persist()
+        return conversation.id to reply.id
+    }
+
+    /** Rewrites the activity's reply; [images] and [documents] replace its own when given. */
+    fun updateActivityChat(replyId: String, text: String, images: List<String>? = null, documents: List<DocumentAttachment>? = null,
+                           failed: Boolean = false) {
+        updateMessage(replyId) { it.copy(content = text, images = images ?: it.images, documents = documents ?: it.documents, status = null, isError = failed) }
+        persist()
+    }
+
+    /** Adds pictures to what the user sent for an activity. */
+    fun addToActivityRequest(chatId: String, images: List<String>) {
+        val index = conversations.indexOfFirst { it.id == chatId }
+        if (index < 0) return
+        conversations[index] = conversations[index].let { c ->
+            c.copy(messages = c.messages.mapIndexed { i, m -> if (i == 0) m.copy(images = m.images + images) else m })
+        }
+        persist()
+    }
+
+    /** Keeps a file the app made (a 3D model) with a chat, encrypted like attached data files. */
+    fun storeMadeFile(name: String, bytes: ByteArray, description: String): DocumentAttachment =
+        DataFiles.store(getApplication(), name, bytes, description)
+
+    fun madeFile(document: DocumentAttachment): ByteArray? = document.dataFile?.let { DataFiles.data(getApplication(), it) }
 
     /** Runs a scheduled task in a new chat (not opened) and returns the chat's id. */
     private fun runTask(task: ScheduledTask): String {

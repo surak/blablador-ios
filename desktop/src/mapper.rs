@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-pub const MODEL: &str = "alias-visual-geometry";
+pub const MODEL: &str = blablador_models::VISUAL_GEOMETRY_MODEL;
 const BATCH: usize = 4;
 const MAX_SIDE: u32 = 1024;
 const MAX_POINTS: usize = 200_000;

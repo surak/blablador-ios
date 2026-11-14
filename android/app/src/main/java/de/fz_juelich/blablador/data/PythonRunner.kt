@@ -219,6 +219,14 @@ object DataFiles {
         return DocumentAttachment(name = clean, text = describe(clean, bytes), pageCount = 0, dataFile = stored)
     }
 
+    /** Keeps a file the app made with a chat (no size limit beyond memory; described by the caller). */
+    fun store(context: Context, name: String, bytes: ByteArray, description: String): DocumentAttachment {
+        val clean = name.replace("/", "_")
+        val stored = java.util.UUID.randomUUID().toString() + "." + clean.substringAfterLast('.', "dat").lowercase()
+        EncryptedStorage.writeBytes(context, java.io.File(directory(context), stored), bytes)
+        return DocumentAttachment(name = clean, text = description, pageCount = 0, dataFile = stored)
+    }
+
     fun data(context: Context, stored: String): ByteArray? =
         EncryptedStorage.readBytes(context, java.io.File(directory(context), stored)) { false }
 

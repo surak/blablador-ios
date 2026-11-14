@@ -9,6 +9,7 @@ mod extract;
 mod knowledge;
 mod mapper;
 mod model;
+mod proteins;
 mod storage;
 mod tools;
 

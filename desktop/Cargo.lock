@@ -419,16 +419,18 @@ dependencies = [
 
 [[package]]
 name = "blablador"
-version = "3.9.0"
+version = "3.10.0"
 dependencies = [
  "aes-gcm",
  "anyhow",
  "arboard",
  "base64 0.22.1",
+ "blablador-models",
  "chrono",
  "directories",
  "eframe",
  "egui_commonmark",
+ "flate2",
  "futures-util",
  "image",
  "keyring",
@@ -442,6 +444,15 @@ dependencies = [
  "tokio",
  "url",
  "uuid",
+]
+
+[[package]]
+name = "blablador-models"
+version = "3.10.0"
+dependencies = [
+ "base64 0.22.1",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

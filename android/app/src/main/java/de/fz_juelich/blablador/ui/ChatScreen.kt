@@ -163,6 +163,7 @@ private sealed interface Page {
     data class Knowledge(val baseId: String? = null) : Page
     data object Decision : Page
     data object RoomMapper : Page
+    data object Proteins : Page
     data object Voices : Page
     data object AddVoice : Page
     data object Memory : Page
@@ -299,6 +300,7 @@ fun ChatScreen(vm: ChatViewModel) {
         is Page.Knowledge -> { KnowledgeScreen(vm, page.baseId, onClose = ::close); return }
         Page.Decision -> { DecisionScreen(vm, onClose = ::close); return }
         Page.RoomMapper -> { RoomMapperScreen(vm, onClose = ::close); return }
+        Page.Proteins -> { ProteinsScreen(vm, onClose = ::close); return }
         Page.Voices -> { VoicesScreen(vm, onClone = { open(Page.AddVoice) }, onClose = ::close); return }
         Page.AddVoice -> { AddVoiceScreen(vm, onClose = ::close); return }
         Page.Memory -> {
@@ -649,6 +651,7 @@ private fun MessageList(conversation: Conversation, vm: ChatViewModel, speaker: 
         modifier = Modifier.fillMaxSize().nestedScroll(stopFollowing)) {
         items(conversation.messages, key = { it.id }) { message ->
             MessageItem(
+                madeFile = vm::madeFile,
                 message = message,
                 isLast = message.id == last?.id,
                 isStreaming = vm.isStreaming,
@@ -937,6 +940,7 @@ private fun Composer(
                 PanelAction.Voices -> onNavigate(Page.Voices)
                 PanelAction.Decide -> onNavigate(Page.Decision)
                 PanelAction.RoomMapper -> onNavigate(Page.RoomMapper)
+                PanelAction.Proteins -> onNavigate(Page.Proteins)
                 PanelAction.Knowledge -> onNavigate(Page.Knowledge())
                 PanelAction.NewKnowledge -> naming = true
                 PanelAction.Mcp -> onNavigate(Page.Mcp)

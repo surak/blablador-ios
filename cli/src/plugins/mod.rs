@@ -1,6 +1,7 @@
 //! The built-in plugins and the list a session starts with. Each can be turned off with
 //! `"plugins": {"disabled": [...]}` or `--no-plugin NAME`, the provider and the core tools included.
 
+pub mod blablador;
 pub mod checkpoints;
 pub mod compaction;
 pub mod context;
@@ -24,7 +25,8 @@ pub const BUILT_IN: &[(&str, &str)] = &[
     ("permissions", "Allow, ask and deny rules and the default, accept-edits, plan and yolo modes"),
     ("hooks", "Shell hooks at session start, prompt, tool calls and stop (Claude Code format)"),
     ("skills", "SKILL.md skills: listed in the prompt, loaded on demand, and written by the agent itself"),
-    ("memory", "MEMORY.md and USER.md, saved by the agent and frozen into each session's prompt"),
+    ("memory", "The long-term memory shared with the Blablador apps, frozen into each session's prompt"),
+    ("blablador", "Blablador's other models as tools: vision, OCR, image generation, transcription"),
     ("checkpoints", "Keeps files as they were before each turn; /undo restores them"),
     ("compaction", "Summarises long conversations so they fit the model's context"),
 ];
@@ -33,6 +35,8 @@ pub struct Options<'a> {
     pub settings: &'a Settings,
     pub cwd: &'a Path,
     pub api_key: String,
+    /// The chat's model, which look_at_image tries first.
+    pub model: String,
     pub mode: permissions::Mode,
     pub disabled: &'a [String],
 }
@@ -44,10 +48,13 @@ pub fn load(o: Options) -> (Vec<Arc<dyn Plugin>>, Vec<String>) {
     let mut warnings = Vec::new();
     let s = o.settings;
     if on("openai") {
-        match openai::OpenAi::new(&s.endpoint, o.api_key, s.allow_insecure_http) {
+        match openai::OpenAi::new(&s.endpoint, o.api_key.clone(), s.allow_insecure_http) {
             Ok(p) => plugins.push(Arc::new(openai::OpenAiPlugin::new(p))),
             Err(e) => warnings.push(e),
         }
+    }
+    if on("blablador") {
+        plugins.push(Arc::new(blablador::Blablador::new(&s.endpoint, o.api_key.clone(), &o.model)));
     }
     if on("permissions") {
         let p = &s.permissions;

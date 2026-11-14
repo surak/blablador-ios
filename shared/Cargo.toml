@@ -1,0 +1,12 @@
+[package]
+name = "blablador-models"
+version = "3.10.0"
+edition = "2021"
+rust-version = "1.80"
+description = "What each Blablador model is for, shared by the desktop app and the command line"
+license = "MIT"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"

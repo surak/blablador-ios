@@ -107,6 +107,9 @@ data class RemoteModel(val id: String) {
     /** Models that cannot be used for text chat. */
     val isChatCapable: Boolean
         get() {
+            // The five molecular models are asynchronous job APIs and fail as chat models. They are named one by
+            // one, not by their alias- prefix: alias-fast, alias-flux2 and the rest are ordinary chat models.
+            if (id.trim() in Molecular.ALIASES || displayName.trim() in Molecular.ALIASES) return false
             val lowered = id.lowercase()
             return listOf("embedding", "rerank", "whisper", "flux", "image", "video", "voice", "davinci", "anonymizer", "ocr", "clef")
                 .none { lowered.contains(it) }

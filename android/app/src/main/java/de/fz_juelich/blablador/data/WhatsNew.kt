@@ -15,6 +15,16 @@ data class WhatsNewItem(val icon: String, val title: String, val text: String, v
 
 object WhatsNew {
     val releases: List<Pair<String, List<WhatsNewItem>>> = listOf(
+        "3.10" to listOf(
+            WhatsNewItem("atom", "Proteins",
+                "Fold a sequence with ESMFold2, sample conformations with BioEmu2, design proteins with RFdiffusion3, or design " +
+                    "binders with BindCraft and Proteina-Complexa. The job runs on the Jülich GPUs for minutes to hours — close " +
+                    "the app and come back. In the + panel: Proteins.",
+                WhatsNewItem.TryIt.Panel),
+            WhatsNewItem("check", "Checks what came back",
+                "A folding job can finish, call itself a success and hand back a structure that no chemistry allows. Every result " +
+                    "is measured against the real bonds between residues, and told plainly when it doesn't hold up."),
+        ),
         "3.8" to listOf(
             WhatsNewItem("cube", "A place in 3D",
                 "Take photos all around a room and get a top-down map after every batch, then a 3D model you can turn with a finger. In the + panel: 3D room."),

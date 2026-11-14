@@ -161,6 +161,13 @@ struct MessageView: View {
                     ForEach(message.images, id: \.self) { name in
                         GeneratedImage(name: name)
                     }
+                    ForEach(message.documents) { document in
+                        if document.name.lowercased().hasSuffix(".ply") {
+                            SavedRoomModel(document: document)
+                        } else {
+                            DocumentChip(document: document)
+                        }
+                    }
                     ForEach(message.audio, id: \.self) { name in
                         SpeechClip(name: name)
                     }

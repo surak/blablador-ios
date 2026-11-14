@@ -182,6 +182,8 @@ struct RoomMapperView: View {
     @State private var cloud: RoomMapper.PointCloud?
     @State private var modelInfo = ""
     @State private var plyURL: URL?
+    /// The chat that keeps this room in the history.
+    @State private var activity: (chat: UUID, message: UUID)?
 
     private var api: BlabladorAPI { store.api }
     private var unsent: Int { photos.filter { !$0.sent }.count }
@@ -434,20 +436,29 @@ struct RoomMapperView: View {
         var note: String?
         do {
             let name = try checkedSession()
+            if activity == nil {
+                activity = store.startActivityChat(title: "3D room · \(name)", request: "3D room from photos (session \(name), camera at \(Int(height)) cm)")
+            }
             for start in stride(from: 0, to: todo.count, by: RoomMapper.batchSize) {
                 let ids = Array(todo[start..<min(start + RoomMapper.batchSize, todo.count)])
                 say("Sending photos \(start + 1)–\(start + ids.count) of \(todo.count)…")
                 let jpegs = photos.filter { ids.contains($0.id) }.map(\.jpeg)
                 let result = try await api.visualGeometry(RoomMapper.stepCommand(session: name, cameraHeight: height), photos: jpegs)
                 for i in photos.indices where ids.contains(photos[i].id) { photos[i].sent = true }
+                if let activity { store.addToActivityRequest(chat: activity.chat, images: jpegs.map(ImageStore.save)) }
                 sentCount = start + ids.count
                 show(result)
                 if let text = result["note"] as? String { note = text }
                 waited += RoomMapper.Queue(result["queue"] as? [String: Any]).waitedNote
             }
             if let note { say(note, error: true) } else { say("Sent. Add more photos, or build the 3D model." + waited) }
+            if let activity {
+                store.updateActivityChat(activity.message, text: "\(photos.filter(\.sent).count) photos sent; \(frames ?? 0) used so far. The map so far:"
+                    + (note.map { "\n\n\($0)" } ?? ""), images: map.map { [ImageStore.save($0)] }, finished: true)
+            }
         } catch {
             say(error.localizedDescription, error: true)
+            if let activity { store.updateActivityChat(activity.message, text: error.localizedDescription, finished: true, failed: true) }
         }
     }
 
@@ -482,13 +493,20 @@ struct RoomMapperView: View {
                 + ((result["units"] as? String) == "cm" ? ", in centimetres." : ". No floor found, so the size is not to scale.")
                 + " Drag to turn, pinch to zoom."
             say("Done!" + RoomMapper.Queue(result["queue"] as? [String: Any]).waitedNote)
+            if let activity {
+                let model = DataFiles.store(ply, name: "\(name).ply", description: "3D point cloud (PLY) of the room: \(modelInfo)")
+                store.updateActivityChat(activity.message, text: "The 3D model is ready: \(modelInfo.replacingOccurrences(of: " Drag to turn, pinch to zoom.", with: ""))\n\nTop-down map:",
+                                         images: map.map { [ImageStore.save($0)] }, documents: [model], finished: true)
+            }
         } catch {
             say(error.localizedDescription, error: true)
+            if let activity { store.updateActivityChat(activity.message, text: error.localizedDescription, finished: true, failed: true) }
         }
     }
 
     private func reset() {
         session = RoomMapper.newSessionName()
+        activity = nil
         photos = []
         frames = nil
         frontiers = nil
@@ -565,3 +583,30 @@ extension PointCloudView: NSViewRepresentable {
     func updateNSView(_ view: SCNView, context: Context) {}
 }
 #endif
+
+/// A 3D room kept in a chat: opens the point cloud again from the history.
+struct SavedRoomModel: View {
+    let document: DocumentAttachment
+    @State private var cloud: RoomMapper.PointCloud?
+    @State private var failed = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let cloud {
+                PointCloudView(cloud: cloud)
+                    .frame(height: 320)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+            } else {
+                Button {
+                    guard let stored = document.dataFile, let data = DataFiles.data(for: stored),
+                          let parsed = try? RoomMapper.PointCloud(ply: data) else { failed = true; return }
+                    cloud = parsed
+                } label: {
+                    Label(failed ? "The 3D model can't be opened" : "Open the 3D model (\(document.name))", systemImage: "cube.transparent")
+                }
+                .buttonStyle(.bordered)
+                .disabled(failed)
+            }
+        }
+    }
+}

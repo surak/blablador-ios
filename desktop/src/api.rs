@@ -7,12 +7,9 @@ use serde_json::{json, Map, Value};
 use std::time::Duration;
 
 pub const DEFAULT_ENDPOINT: &str = "https://api.blablador.fz-juelich.de/v1";
-pub const DEFAULT_MODEL: &str = "deepseek-v4.1-flash-at-hzdr";
-/// Blablador's quick model for small jobs such as chat titles.
-pub const FAST_MODEL: &str = "alias-fast";
-pub const EMBEDDING_MODEL: &str = "alias-qwen3-4b-embeddings";
+/// Which model is for what lives in the shared crate, so `bla` and the app always give the same answer.
+pub use blablador_models::{DEFAULT_MODEL, EMBEDDING_MODEL, RERANK_MODEL};
 pub const FALLBACK_EMBEDDING_MODEL: &str = "alias-embeddings";
-pub const RERANK_MODEL: &str = "alias-qwen3-4b-reranker";
 
 /// A failed request, with the server's status so callers can react to 400s and 500s.
 #[derive(Debug)]
@@ -83,7 +80,8 @@ impl Api {
 
     /// alias-fast on Blablador, the chat's own model on other endpoints.
     pub fn helper_model(&self, chat_model: &str) -> String {
-        if self.is_blablador() { FAST_MODEL.into() } else { chat_model.into() }
+        let endpoint = if self.is_blablador() { DEFAULT_ENDPOINT } else { &self.endpoint };
+        blablador_models::helper_model(endpoint, chat_model).to_string()
     }
 
     fn post(&self, path: &str, body: &Value, timeout: Duration) -> Result<reqwest::RequestBuilder> {
@@ -102,20 +100,20 @@ impl Api {
         Err(HttpError { status: status.as_u16(), body }.into())
     }
 
-    /// Chat model ids, sorted.
+    /// Chat model ids, sorted. `/models` lists embedders, image and video models and the molecular job APIs
+    /// (see proteins.rs) next to the chat models; the shared table is what tells them apart.
     pub async fn models(&self) -> Result<Vec<String>> {
         if self.key.is_empty() {
             return Err(anyhow!("No API key set. Add your Blablador API key in Settings."));
         }
         let response = self.client.get(self.url("models")).bearer_auth(&self.key).timeout(Duration::from_secs(30)).send().await?;
         let value: Value = Self::checked(response).await?.json().await?;
-        let excluded = ["embedding", "rerank", "whisper", "flux", "image", "video", "voice", "davinci", "anonymizer"];
         let mut ids: Vec<String> = value["data"]
             .as_array()
             .into_iter()
             .flatten()
             .filter_map(|m| m["id"].as_str().map(String::from))
-            .filter(|id| !excluded.iter().any(|word| id.to_lowercase().contains(word)))
+            .filter(|id| blablador_models::is_chat_capable(id))
             .collect();
         ids.sort_by_key(|id| id.to_lowercase());
         Ok(ids)
@@ -149,6 +147,14 @@ impl Api {
             .collect();
         results.sort_by(|a, b| b.1.total_cmp(&a.1));
         Ok(results.into_iter().map(|(index, _)| index).collect())
+    }
+
+    /// A POST that is never cached, whose answer comes back whole: the molecular job API (see proteins.rs)
+    /// reads its own errors out of the body, so nothing may be swallowed on the way.
+    pub async fn post_text(&self, path: &str, body: &Value, timeout: Duration) -> Result<(u16, String)> {
+        let response = self.post(path, body, timeout)?.header("Cache-Control", "no-store").send().await?;
+        let status = response.status().as_u16();
+        Ok((status, response.text().await.unwrap_or_default()))
     }
 
     /// A plain JSON POST, e.g. for the Room Mapper's chat/completions commands.

@@ -108,7 +108,12 @@ impl Tool for Read {
             Err(e) => return ToolOutput::err(format!("{given}: {e}")),
         };
         if bytes.iter().take(8000).any(|&b| b == 0) {
-            return ToolOutput::err(format!("{given} is a binary file."));
+            let image = bytes.starts_with(&[0x89, b'P', b'N', b'G']) || bytes.starts_with(&[0xff, 0xd8]) || bytes.starts_with(b"GIF8") || bytes.starts_with(b"RIFF");
+            return ToolOutput::err(if image {
+                format!("{given} is an image: use look_at_image to see it (or ocr_image for the exact text of a document).")
+            } else {
+                format!("{given} is a binary file.")
+            });
         }
         self.seen.record(&path);
         let text = String::from_utf8_lossy(&bytes);

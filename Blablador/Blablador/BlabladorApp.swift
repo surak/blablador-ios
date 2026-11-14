@@ -93,6 +93,11 @@ private struct ChatWindow: View {
             .focusedSceneObject(store)
             // Scheduled tasks run in the first window's chat list (shared by all windows).
             .onAppear { if TaskScheduler.shared.store == nil { TaskScheduler.shared.start(with: store) } }
+            // Molecular jobs run for hours: pick up anything still unfinished, and keep its chat up to date.
+            .onAppear {
+                MolecularStore.shared.chats = store
+                if MolecularStore.shared.hasUnfinished { MolecularStore.shared.start() }
+            }
 #if os(macOS)
             .environment(\.textScale, pow(1.1, CGFloat(textSizeStep)))
             .scaledFont(.body)

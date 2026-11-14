@@ -134,6 +134,29 @@ struct DecisionAnswer: Decodable {
     let legend: [String: String]?
 }
 
+extension DecisionAnswer {
+    /// The answers as text, for the decision's chat in the history.
+    static func summary(questions: [DecisionExample.Question], answers: [String: DecisionAnswer]) -> String {
+        questions.map { question in
+            guard let a = answers[question.id] else { return "**\(question.instructions)** — no answer" }
+            let percent = { (p: Double) in "\(Int((p * 100).rounded()))%" }
+            let text: String
+            switch a.type {
+            case "noul":
+                let yes = a.noul ?? 0
+                text = yes >= 0.5 ? "Yes (\(percent(yes)))" : "No (\(percent(1 - yes)) sure)"
+            case "choice":
+                let key = a.choice ?? ""
+                let name = question.options?.first { $0.key == key }?.text ?? a.legend?[key] ?? key
+                text = name + (a.probabilities?[key].map { " (\(percent($0)))" } ?? "")
+            default:
+                text = (a.score.map { String(format: "%.2f", $0) } ?? "?") + (question.levels.map { " on " + $0.joined(separator: " → ") } ?? "")
+            }
+            return "**\(question.instructions)** — \(text)"
+        }.joined(separator: "\n\n")
+    }
+}
+
 extension BlabladorAPI {
     static let decisionModel = "alias-clef"
 
@@ -374,10 +397,15 @@ struct DecisionView: View {
         defer { running = false }
         let questions = decision.questions.map { $0.cleaned() }
         decision.questions = questions
+        let title = decision.name.isEmpty ? String(decision.state.prefix(40)) : decision.name
+        let request = decision.state + "\n\n" + questions.map { "• " + $0.instructions }.joined(separator: "\n")
+        let activity = store.startActivityChat(title: "Decision · \(title)", request: request)
         do {
             answers = try await store.api.decide(state: decision.state, questions: questions)
+            store.updateActivityChat(activity.message, text: DecisionAnswer.summary(questions: questions, answers: answers), finished: true)
         } catch {
             self.error = error.localizedDescription
+            store.updateActivityChat(activity.message, text: error.localizedDescription, finished: true, failed: true)
         }
     }
 }
