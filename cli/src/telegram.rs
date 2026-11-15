@@ -344,8 +344,13 @@ pub(crate) fn split(text: &str, max: usize) -> Vec<String> {
     let mut out = Vec::new();
     let mut rest = text;
     while rest.len() > max {
-        let window = &rest[..max];
-        let at = window.rfind("\n\n").or_else(|| window.rfind('\n')).or_else(|| window.rfind(' ')).unwrap_or(max);
+        // `max` counts bytes, and the last of them can fall inside a character (ü, あ, an emoji).
+        let mut cut = max;
+        while !rest.is_char_boundary(cut) {
+            cut -= 1;
+        }
+        let window = &rest[..cut];
+        let at = window.rfind("\n\n").or_else(|| window.rfind('\n')).or_else(|| window.rfind(' ')).unwrap_or(cut);
         let at = rest[..at].char_indices().last().map(|(i, c)| i + c.len_utf8()).unwrap_or(at);
         out.push(rest[..at].trim_end().to_string());
         rest = rest[at..].trim_start();

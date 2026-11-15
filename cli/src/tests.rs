@@ -373,3 +373,13 @@ fn long_answers_are_split() {
     let pieces = crate::telegram::split(&long, 4000);
     assert_eq!(pieces.iter().map(|p| p.len()).sum::<usize>(), 9000);
 }
+
+/// The cut at 4000 bytes can fall inside a character: a German answer, Japanese, an emoji.
+#[test]
+fn splitting_never_cuts_a_character_in_two() {
+    for text in ["ü".repeat(5000), "あ".repeat(3000), "😀".repeat(2000), format!("a{}", "é".repeat(4000))] {
+        let pieces = crate::telegram::split(&text, 4000);
+        assert!(pieces.iter().all(|p| p.len() <= 4000));
+        assert_eq!(pieces.concat(), text);
+    }
+}
