@@ -21,7 +21,7 @@ itself. Its memory is the Blablador apps' memory: what you tell the app, bla kno
 
 - **Mac:** it comes with the Blablador app (`brew install --cask surak/tap/blablador` links it), or
   Settings → Command line in the app.
-- **Windows:** `powershell -ExecutionPolicy ByPass -c "irm https://surak.github.io/blablador-ios/install.ps1 | iex"`
+- **Windows:** `powershell -ExecutionPolicy ByPass -c "iex ((New-Object Net.WebClient).DownloadString('https://surak.github.io/blablador-ios/install.ps1'))"`
   (goes into `%LOCALAPPDATA%\Programs\bla` and onto your PATH; `-Dir C:\Tools\bla` for another folder)
 - **Linux, Raspberry Pi, Mac without the app:** `curl -fsSL https://surak.github.io/blablador-ios/install.sh | sh`
 - Or download `Blablador-<version>-bla-<platform>` from the
@@ -57,7 +57,7 @@ A key that is already known can be handed over without a browser or a prompt: `l
 a terminal. On Windows, install and sign in in one line, then open a new terminal so `bla` is on the PATH:
 
 ```powershell
-irm https://surak.github.io/blablador-ios/install.ps1 | iex; 'PASTE-KEY-HERE' | & "$env:LOCALAPPDATA\Programs\bla\bla.exe" login
+iex ((New-Object Net.WebClient).DownloadString('https://surak.github.io/blablador-ios/install.ps1')); 'PASTE-KEY-HERE' | & "$env:LOCALAPPDATA\Programs\bla\bla.exe" login
 ```
 
 The key then sits in the shell's command line and history; `Clear-History` after, or run `bla login` on its own and

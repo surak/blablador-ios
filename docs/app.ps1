@@ -2,8 +2,10 @@
 # checks it against SHA256SUMS.txt, puts Blablador.exe in %LOCALAPPDATA%\Programs\Blablador, adds Start menu and
 # Desktop shortcuts and starts it. The API key and chats are kept (they live in Credential Manager and AppData).
 #
-#   powershell -ExecutionPolicy ByPass -c "irm https://surak.github.io/blablador-ios/app.ps1 | iex"
-param([string]$Dir = "$env:LOCALAPPDATA\Programs\Blablador")
+#   powershell -ExecutionPolicy ByPass -c "iex ((New-Object Net.WebClient).DownloadString('https://surak.github.io/blablador-ios/app.ps1'))"
+#
+# Run through iex, where param() does nothing, so the folder comes from BLABLADOR_DIR.
+$Dir = if ($env:BLABLADOR_DIR) { $env:BLABLADOR_DIR } else { "$env:LOCALAPPDATA\Programs\Blablador" }
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'

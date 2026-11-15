@@ -263,7 +263,7 @@
       <div class="wrap">
         <h2>Install bla, the command line</h2>
         <ol class="steps">
-          <li><strong>Windows</strong> (PowerShell, no admin rights): <code>powershell -ExecutionPolicy ByPass -c "irm https://surak.github.io/blablador-ios/install.ps1 | iex"</code></li>
+          <li><strong>Windows</strong> (PowerShell, no admin rights): <code>powershell -ExecutionPolicy ByPass -c "iex ((New-Object Net.WebClient).DownloadString('https://surak.github.io/blablador-ios/install.ps1'))"</code></li>
           <li><strong>Linux, Raspberry Pi, Mac</strong>: <code>curl -fsSL https://surak.github.io/blablador-ios/install.sh | sh</code> &mdash; on the Mac it also comes with the app (Settings → Command line).</li>
           <li>Open a new terminal and type <code>bla</code>. The first time, it opens the page where you make your Blablador API key and asks you to paste it; then you are chatting. <code>bla login</code> changes the key later.</li>
         </ol>

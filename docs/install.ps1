@@ -1,19 +1,13 @@
 # Installs bla — Blablador on the command line — on Windows. Downloads the build from the latest release, checks it
 # against SHA256SUMS.txt and puts bla.exe in %LOCALAPPDATA%\Programs\bla, which it adds to your PATH.
 #
-#   powershell -ExecutionPolicy ByPass -c "irm https://surak.github.io/blablador-ios/install.ps1 | iex"
+#   powershell -ExecutionPolicy ByPass -c "iex ((New-Object Net.WebClient).DownloadString('https://surak.github.io/blablador-ios/install.ps1'))"
 #
-# With arguments, for a folder you choose:
-#
-#   powershell -ExecutionPolicy ByPass -File install.ps1 -Dir C:\Tools\bla
-#
-# Nothing needs to be installed first (no admin rights either). To remove bla again, delete the folder and its entry
-# in the PATH, and if you like %USERPROFILE%\.bla.
-param(
-    [string]$Dir = "$env:LOCALAPPDATA\Programs\bla",
-    [string]$Version = "",
-    [switch]$DryRun
-)
+# It runs through iex, where a param() block does nothing: BLA_DIR, BLA_VERSION and BLA_DRY_RUN=1 choose instead.
+
+$Dir = if ($env:BLA_DIR) { $env:BLA_DIR } else { "$env:LOCALAPPDATA\Programs\bla" }
+$Version = "$env:BLA_VERSION"
+$DryRun = $env:BLA_DRY_RUN -eq '1'
 
 $ErrorActionPreference = 'Stop'
 $repo = 'surak/blablador-ios'
@@ -43,16 +37,8 @@ $platform = 'windows-x86_64'
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
 if (-not $Version) {
-    # The releases/latest redirect's final URL ends in /tag/v3.12.1; no API token needed and no rate limit.
-    $response = [System.Net.HttpWebRequest]::Create("https://github.com/$repo/releases/latest")
-    $response.AllowAutoRedirect = $false
-    $response.Method = 'HEAD'
-    try { $null = $response.GetResponse() } catch { $null = $_.Exception.Response }
-    $location = $response.Address.AbsoluteUri
-    if ($location -notmatch '/tag/(v[0-9][^/]*)$') {
-        throw 'could not ask GitHub for the latest version; pass -Version v3.12.1'
-    }
-    $Version = $Matches[1]
+    try { $Version = (Invoke-RestMethod "https://api.github.com/repos/$repo/releases/latest" -UseBasicParsing).tag_name }
+    catch { throw 'could not ask GitHub for the latest version; set BLA_VERSION=v3.12.2 and try again' }
 }
 
 $number = $Version -replace '^v', ''
