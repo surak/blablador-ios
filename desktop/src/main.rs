@@ -38,7 +38,9 @@ fn main() {
                 .with_title("Blablador")
                 .with_app_id("de.fz-juelich.blablador")
                 .with_inner_size([1100.0, 760.0])
-                .with_min_inner_size([520.0, 400.0]),
+                .with_min_inner_size([520.0, 400.0])
+                // Blablador's icon on the window and in the taskbar, instead of eframe's "e".
+                .with_icon(eframe::icon_data::from_png_bytes(include_bytes!("../windows/icon-256.png")).unwrap_or_default()),
             renderer,
             ..Default::default()
         };
