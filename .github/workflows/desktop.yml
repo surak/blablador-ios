@@ -66,9 +66,6 @@ jobs:
           $shell = New-Object -ComObject WScript.Shell
           $null = $shell.AppActivate($p.Id)
           Start-Sleep 2
-          # Settings opens on its own without a key; close it, then click into the window and type.
-          $shell.SendKeys('{ESC}')
-          Start-Sleep 1
           $shell.SendKeys('hello ovo')
           Start-Sleep 3
           $typed = Get-Content $env:BLABLADOR_INPUT_PROBE -Raw -ErrorAction SilentlyContinue

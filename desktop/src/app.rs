@@ -71,7 +71,7 @@ impl App {
             runtime,
             events: Events { sender, context: cc.egui_ctx.clone() },
             receiver,
-            show_settings: api_key.is_empty(),
+            show_settings: api_key.is_empty() && std::env::var_os("BLABLADOR_INPUT_PROBE").is_none(),
             key_draft: api_key.clone(),
             api_key,
             settings,
