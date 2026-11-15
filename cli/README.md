@@ -22,6 +22,7 @@ itself. Its memory is the Blablador apps' memory: what you tell the app, bla kno
 - **Mac:** it comes with the Blablador app (`brew install --cask surak/tap/blablador` links it), or
   Settings → Command line in the app.
 - **Windows:** `powershell -ExecutionPolicy ByPass -c "irm https://surak.github.io/blablador-ios/install.ps1 | iex"`
+  (goes into `%LOCALAPPDATA%\Programs\bla` and onto your PATH; `-Dir C:\Tools\bla` for another folder)
 - **Linux, Raspberry Pi, Mac without the app:** `curl -fsSL https://surak.github.io/blablador-ios/install.sh | sh`
 - Or download `Blablador-<version>-bla-<platform>` from the
   [latest release](https://github.com/surak/blablador-ios/releases/latest) and put `bla` on your PATH.
@@ -29,7 +30,38 @@ itself. Its memory is the Blablador apps' memory: what you tell the app, bla kno
 
 The first `bla` (or `bla login`) opens your browser on the page where a [Blablador API key](https://sdlaml.pages.jsc.fz-juelich.de/ai/guides/blablador_api_access/) is made (a Codebase token with the `read_user` scope), and you paste the key there.
 It goes into the system keyring (the same entry the desktop app uses), or `~/.bla/.apikey` readable only by you
-where there is no keyring. `BLABLADOR_API_KEY` overrides it, and piping a key into `bla login` skips the browser.
+where there is no keyring. `BLABLADOR_API_KEY` overrides it, and piping a key into `bla login` skips the browser —
+see [below](#the-api-key-and-where-it-lives).
+
+### The API key and where it lives
+
+The key is looked up in this order, the first one that has it wins:
+
+1. `BLABLADOR_API_KEY` — set it for one shell, or `setx` it on Windows.
+2. The system keyring: macOS Keychain, GNOME Keyring/KWallet on Linux, Windows Credential Manager. The entry is
+   service `de.fz-juelich.blablador`, account `apiKey` — on Windows its target name is
+   `apiKey.de.fz-juelich.blablador`, visible under Control Panel → Credential Manager → Windows Credentials. The
+   desktop app writes the same entry, so the two share a key. `BLABLADOR_NO_KEYRING=1` skips it.
+3. The file `~/.bla/.apikey` (on Windows `%USERPROFILE%\.bla\.apikey`, and `BLA_HOME` moves `~/.bla`). On macOS
+   and Linux it is created `0600`, so it is never readable by others, even briefly. It is the fallback for a keyring
+   that rejects writes or silently drops them (the written key is read back to tell) — so a key can land here even
+   where a keyring exists, and `bla login` says which place it saved to. On Windows the mode is a no-op: the file is
+   protected only by the permissions it inherits in your profile.
+
+`bla login` tries the key against the configured endpoint before saving it and prints how many chat models it sees;
+if the endpoint is down it says so and saves the key anyway. `bla logout` deletes both the keyring entry and the
+file. The key is removed from the environment of everything bla starts — commands, hooks, plugins, sub-agents — so a
+`run_command` that echoes it gets nothing.
+
+A key that is already known can be handed over without a browser or a prompt: `login` reads stdin when stdin is not
+a terminal. On Windows, install and sign in in one line, then open a new terminal so `bla` is on the PATH:
+
+```powershell
+irm https://surak.github.io/blablador-ios/install.ps1 | iex; 'PASTE-KEY-HERE' | & "$env:LOCALAPPDATA\Programs\bla\bla.exe" login
+```
+
+The key then sits in the shell's command line and history; `Clear-History` after, or run `bla login` on its own and
+paste it at the hidden prompt.
 
 ## Using it
 
