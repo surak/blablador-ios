@@ -82,30 +82,31 @@ pub fn found_keys() -> Vec<Found> {
     }
     if let Ok(key) = std::env::var("OPENAI_API_KEY") {
         let key = key.trim().to_string();
-        // Named for what it is, not for the variable: a GitLab token in OPENAI_API_KEY is common on machines that talk
-        // to GitLab-hosted models, and calling it an OpenAI key would promise something it cannot do.
-        if let Some(label) = env_key_label(&key) {
-            found.push(Found { label, base_url: "https://api.openai.com/v1".into(), key });
+        // Tried where it will be used, not where the variable name says: `OPENAI_API_KEY` often holds a Helmholtz
+        // Codebase token (the Blablador key is one), and on this machine it does. A `glpat-` token is that shape, so
+        // Blablador is where it is worth trying first; the caller still confirms before anything is saved.
+        if let Some((label, base_url)) = env_key(&key, crate::config::DEFAULT_ENDPOINT) {
+            found.push(Found { label, base_url, key });
         }
     }
     found
 }
 
-/// What a value in `OPENAI_API_KEY` actually looks like, or nothing when it looks like no API key at all.
-fn env_key_label(key: &str) -> Option<String> {
+/// What a value in `OPENAI_API_KEY` looks like and where it should be tried, or nothing when it is no key at all.
+fn env_key(key: &str, blablador: &str) -> Option<(String, String)> {
     if key.is_empty() {
         return None;
     }
     if key.starts_with("glpat-") {
-        return Some("GitLab token in OPENAI_API_KEY".into());
+        return Some(("Helmholtz token in OPENAI_API_KEY".into(), blablador.to_string()));
     }
     if key.starts_with("sk-") {
-        return Some("OpenAI key in OPENAI_API_KEY".into());
+        return Some(("OpenAI key in OPENAI_API_KEY".into(), "https://api.openai.com/v1".into()));
     }
     if key.len() < 8 {
         return None;
     }
-    Some("Key in OPENAI_API_KEY".into())
+    Some(("Key in OPENAI_API_KEY".into(), "https://api.openai.com/v1".into()))
 }
 
 /// The providers in Hermes' YAML, without a YAML parser: the file is a flat `providers:` map of `name:` blocks with
@@ -211,12 +212,14 @@ other:
     }
 
     #[test]
-    fn a_gitlab_token_is_not_called_an_openai_key() {
-        assert_eq!(env_key_label("glpat-Gu3xYz").as_deref(), Some("GitLab token in OPENAI_API_KEY"));
-        assert_eq!(env_key_label("sk-proj-abc").as_deref(), Some("OpenAI key in OPENAI_API_KEY"));
-        assert_eq!(env_key_label("some-other-long-token").as_deref(), Some("Key in OPENAI_API_KEY"));
-        assert!(env_key_label("").is_none());
-        assert!(env_key_label("short").is_none(), "a short value is not a key");
+    fn a_helmholtz_token_is_offered_to_blablador() {
+        let blablador = "https://api.blablador.fz-juelich.de/v1";
+        let (label, url) = env_key("glpat-Gu3xYz", blablador).unwrap();
+        assert_eq!(label, "Helmholtz token in OPENAI_API_KEY");
+        assert_eq!(url, blablador, "a glpat- token is the shape of a Blablador key, not an OpenAI one");
+        assert_eq!(env_key("sk-proj-abc", blablador).unwrap().1, "https://api.openai.com/v1");
+        assert!(env_key("", blablador).is_none());
+        assert!(env_key("short", blablador).is_none(), "a short value is not a key");
     }
 
     #[test]

@@ -119,16 +119,14 @@ fn parse(argv: Vec<String>) -> Result<Args, String> {
             // not hold up `bla -v`, which is used in scripts: once the cached tag says the answer, don't ask again.
             "-v" | "--version" => return Err(match update::latest_if_stale() {
                 Some(latest) if update::is_newer(&latest, update::current()) => format!(
-                    "bla {} ({} is out; `bla update` for how to get it)",
+                    "bla {} ({} is out{})",
                     update::current(),
-                    latest
+                    latest,
+                    if update::can_install() { "; `bla update` installs it" } else { "; `bla update` for how to get it" }
                 ),
                 _ => format!("bla {}", update::current()),
             }),
-            "--update" => {
-                return Err(update::report()
-                    .unwrap_or_else(|| format!("could not reach GitHub to look for a newer bla; see {}/latest", update::RELEASES)))
-            }
+            "--update" => return Err(update::update()),
             "--" => a.words.extend(it.by_ref()),
             _ if arg.starts_with('-') && arg.len() > 1 => return Err(format!("Unknown option {arg}.\n\n{USAGE}")),
             _ => a.words.push(arg),
@@ -150,6 +148,18 @@ fn main() {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let cwd = cwd.canonicalize().unwrap_or(cwd);
 
+    // `bla update` and its `--check`, with a word after it for the one that only looks.
+    if argv.first().is_some_and(|a| a == "update")
+        && (argv.len() == 1 || (argv.len() == 2 && matches!(argv[1].as_str(), "--check" | "--dry-run" | "-n")))
+    {
+        if argv.len() == 1 {
+            println!("{}", update::update());
+        } else {
+            println!("{}", update::report().unwrap_or_else(|| format!("Could not reach GitHub; read {}/latest.", update::RELEASES)));
+        }
+        return;
+    }
+
     if argv.len() == 1 {
         match argv[0].as_str() {
             "login" => return login(),
@@ -165,13 +175,6 @@ fn main() {
                 match Settings::trust(&root) {
                     Ok(()) => println!("Trusted {}: its .bla/settings.json, hooks, plugins and skills are used.", root.display()),
                     Err(e) => fail(&e),
-                }
-                return;
-            }
-            "update" => {
-                match update::report() {
-                    Some(text) => println!("{text}"),
-                    None => fail("could not reach GitHub to look for a newer bla"),
                 }
                 return;
             }
@@ -295,12 +298,10 @@ fn main() {
         }
         agent.finish();
     } else if chat {
-        // A chat is where a word about a newer bla does not get in the way: not in a pipe, not in JSON, and hidden
-        // by --quiet. The check is remembered, so opening chats all day asks GitHub once.
+        // A chat is where a newer bla may install itself: not in a pipe, not in JSON, and hidden by --quiet. The check
+        // is remembered, so opening chats all day asks GitHub once.
         if !args.quiet {
-            if let Some(line) = update::notice() {
-                eprintln!("{}", style.yellow(&format!("bla: {line}")));
-            }
+            update::auto(&style);
         }
         run_chat(&mut agent, &settings, &busy, args.thinking);
     } else {
@@ -331,6 +332,9 @@ fn login() {
     // Keys other programs on this machine already have, offered before asking for a new one: the point of onboarding
     // is that most people do have a key somewhere, and hunting for it is what stops them.
     let found = onboard::found_keys();
+    // The address a picked key belongs to, so a key from another machine's config is tried where it belongs rather
+    // than against whatever endpoint this one has configured.
+    let mut picked_url: Option<String> = None;
     let key = if interactive {
         let mut picked = None;
         if !found.is_empty() {
@@ -357,6 +361,7 @@ fn login() {
         if let Ok(n) = typed.parse::<usize>() {
             if let Some(f) = found.get(n.wrapping_sub(1)) {
                 picked = Some(f.key.clone());
+                picked_url = Some(f.base_url.clone());
             }
         }
         picked.unwrap_or(typed)
@@ -370,7 +375,8 @@ fn login() {
     }
 
     // Tried before it is trusted: a mistyped or expired token says so now, not on the first question.
-    match onboard::probe(&endpoint, &key, std::time::Duration::from_secs(30)) {
+    let endpoint = picked_url.as_deref().unwrap_or(&endpoint);
+    match onboard::probe(endpoint, &key, std::time::Duration::from_secs(30)) {
         Ok(probe) => {
             let models = match probe.first_model.as_deref() {
                 Some(model) => format!("{} chat models, e.g. {model}", probe.chat_models),
