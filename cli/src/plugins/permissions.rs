@@ -791,11 +791,14 @@ mod tests {
         assert!(simple_commands("sudo -u x rm -rf /").contains(&"rm -rf /".to_string()));
         assert!(simple_commands("bash -c 'rm -rf /'").contains(&"rm -rf /".to_string()));
         // An operator inside quotes is part of the argument, not a separator.
-        assert_eq!(simple_commands("rg -n 'a|b' src"), ["rg -n 'a|b' src"]);
         assert_eq!(simple_commands(r#"rg -n "x; y" ."#), [r#"rg -n "x; y" ."#]);
-        assert_eq!(simple_commands("echo 'it\\'s; fine' | cat"), ["echo 'it\\'s; fine'", "cat"]);
-        // With the quoting read, a quoted pattern is no longer an operator: it looks like a plain looking command.
-        assert!(looks_only("rg -n 'a|b' src", &cwd, true));
+        // cmd has no single quotes, so there `'a|b'` really is a pipe; these hold for sh only.
+        if !cfg!(windows) {
+            assert_eq!(simple_commands("rg -n 'a|b' src"), ["rg -n 'a|b' src"]);
+            assert_eq!(simple_commands("echo 'it\\'s; fine' | cat"), ["echo 'it\\'s; fine'", "cat"]);
+            // With the quoting read, a quoted pattern is no longer an operator: it looks like a plain looking command.
+            assert!(looks_only("rg -n 'a|b' src", &cwd, true));
+        }
         assert!(looks_only(r#"rg -n "x; y" src"#, &cwd, true));
         assert!(!looks_only("rg -n 'a|b' src; rm x", &cwd, true));
         assert!(dangerous("rm -rf x", &cwd));
