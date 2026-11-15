@@ -560,7 +560,8 @@ mod tests {
         let junk = staging_path(&target);
         write_program(&junk, b"not a program at all\n", &target).unwrap();
         let refused = prove(&junk, "3.12.2").unwrap_err();
-        assert!(refused.contains("does not run here"), "{refused}");
+        // Linux and Windows refuse to start it at all; macOS starts it through the shell, which then fails.
+        assert!(refused.contains("does not run here") || refused.contains("does not start here"), "{refused}");
         assert!(refused.contains("nothing was changed"), "{refused}");
         assert_eq!(std::fs::read(&target).unwrap(), b"the working one");
 
