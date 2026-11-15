@@ -856,6 +856,11 @@ fn assistant_message(ui: &mut egui::Ui, message: &Message, cache: &mut CommonMar
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.handle_events();
+        // CI types into the window and reads back what reached the composer.
+        if let Some(path) = std::env::var_os("BLABLADOR_INPUT_PROBE") {
+            let _ = std::fs::write(path, &self.input);
+            ctx.request_repaint_after(std::time::Duration::from_millis(200));
+        }
 
         let dropped: Vec<PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().filter_map(|f| f.path.clone()).collect());
         if !dropped.is_empty() {

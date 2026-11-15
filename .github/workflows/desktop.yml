@@ -55,6 +55,26 @@ jobs:
           Start-Sleep 15
           if ($p.HasExited) { Get-ChildItem $env:APPDATA -Recurse -Filter blablador-error.log | Get-Content; throw "the app quit at start (exit $($p.ExitCode))" }
           Stop-Process $p
+      - name: Typing reaches the message box
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:BLABLADOR_NO_DIALOG = '1'
+          $env:BLABLADOR_INPUT_PROBE = "$env:RUNNER_TEMP\typed.txt"
+          $p = Start-Process target/${{ matrix.target }}/release/blablador.exe -PassThru
+          Start-Sleep 15
+          $shell = New-Object -ComObject WScript.Shell
+          $null = $shell.AppActivate($p.Id)
+          Start-Sleep 2
+          # Settings opens on its own without a key; close it, then click into the window and type.
+          $shell.SendKeys('{ESC}')
+          Start-Sleep 1
+          $shell.SendKeys('hello ovo')
+          Start-Sleep 3
+          $typed = Get-Content $env:BLABLADOR_INPUT_PROBE -Raw -ErrorAction SilentlyContinue
+          Stop-Process $p -ErrorAction SilentlyContinue
+          Write-Host "composer holds: [$typed]"
+          if ($typed -notmatch 'hello ovo') { throw "typing did not reach the message box" }
       - name: Package
         id: package
         run: |
