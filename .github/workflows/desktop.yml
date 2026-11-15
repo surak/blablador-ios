@@ -69,9 +69,8 @@ jobs:
             $shell = New-Object -ComObject WScript.Shell
             $null = $shell.AppActivate($p.Id)
             Start-Sleep 2
-            $shell.SendKeys('hello ovo')
-            Start-Sleep 1
-            $shell.SendKeys('{BS}{BS}x')
+            # One key at a time, as a person types.
+            foreach ($k in 'h','e','l','l','o',' ','o','v','o','{BS}','{BS}','x') { $shell.SendKeys($k); Start-Sleep -Milliseconds 150 }
             Start-Sleep 3
             $typed = Get-Content $env:BLABLADOR_INPUT_PROBE -Raw -ErrorAction SilentlyContinue
             Stop-Process $p -ErrorAction SilentlyContinue
