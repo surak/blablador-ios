@@ -162,6 +162,25 @@ impl Api {
         Ok(Self::checked(self.post(path, body, timeout)?.send().await?).await?.json().await?)
     }
 
+    /// What a vision model sees in a picture (a data URL), as text.
+    pub async fn look_at(&self, model: &str, prompt: &str, picture: &str) -> Result<String> {
+        let body = json!({
+            "model": model,
+            "messages": [{ "role": "user", "content": [
+                { "type": "text", "text": prompt },
+                { "type": "image_url", "image_url": { "url": picture } },
+            ]}],
+            "max_tokens": 4096,
+            "temperature": 0,
+        });
+        let answer = self.post_json("chat/completions", &body, Duration::from_secs(300)).await?;
+        let text = answer["choices"][0]["message"]["content"].as_str().unwrap_or_default().trim().to_string();
+        if text.is_empty() {
+            return Err(anyhow::anyhow!("{model} said nothing about the picture"));
+        }
+        Ok(text)
+    }
+
     /// One reply without tools, as text.
     pub async fn complete(&self, model: &str, system: &str, user: &str) -> Result<String> {
         let messages = [json!({ "role": "system", "content": system }), json!({ "role": "user", "content": user })];

@@ -202,6 +202,17 @@ impl App {
                     }
                     knowledge::save_bases(&self.bases);
                 }
+                Event::PictureRead { name, result } => {
+                    let index = self.attachments.iter().position(|a| a.name == name && a.text == PICTURE_PENDING);
+                    match (index, result) {
+                        (Some(i), Ok(text)) => self.attachments[i].text = format!("[A picture, described by a vision model]\n{text}"),
+                        (Some(i), Err(error)) => {
+                            self.attachments.remove(i);
+                            self.error = Some(error);
+                        }
+                        (None, _) => {}
+                    }
+                }
                 Event::Error(error) => self.error = Some(error),
             }
         }
@@ -223,6 +234,10 @@ impl App {
         }
         let id = self.current.unwrap();
         if self.running.contains_key(&id) {
+            return;
+        }
+        if self.attachments.iter().any(|a| a.text == PICTURE_PENDING) {
+            self.error = Some("Still looking at the picture; send again in a moment.".into());
             return;
         }
         let mut question = Message::new(Role::User, text);
@@ -301,6 +316,13 @@ impl App {
 
     fn attach(&mut self, paths: Vec<PathBuf>) {
         for path in paths {
+            let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+            if let Ok(bytes) = std::fs::read(&path) {
+                if extract::is_picture(&bytes) {
+                    self.read_picture(name, bytes);
+                    continue;
+                }
+            }
             match extract::text_of(&path) {
                 Ok(text) => self.attachments.push(Attachment {
                     name: path.file_name().unwrap_or_default().to_string_lossy().into(),
@@ -309,6 +331,30 @@ impl App {
                 Err(error) => self.error = Some(format!("{error:#}")),
             }
         }
+    }
+
+    /// A picture becomes text the chat model can read: a vision model describes it and copies out any text in it.
+    /// The chat's own model is asked first, then Blablador's default, which can see.
+    fn read_picture(&mut self, name: String, bytes: Vec<u8>) {
+        self.attachments.push(Attachment { name: name.clone(), text: PICTURE_PENDING.into() });
+        let api = self.api();
+        let events = self.events.clone();
+        let model = self.settings.model.clone();
+        self.runtime.spawn(async move {
+            let result = async {
+                let picture = extract::picture_data_url(&bytes).map_err(|e| e.to_string())?;
+                let prompt = "Describe this picture in detail for someone who can't see it: what and who is in it, the setting, \
+                    and anything notable. Copy out every piece of text in it exactly, in its language.";
+                let first = api.look_at(&model, prompt, &picture).await;
+                let answer = match first {
+                    Err(_) if model != blablador_models::DEFAULT_MODEL => api.look_at(blablador_models::DEFAULT_MODEL, prompt, &picture).await,
+                    other => other,
+                };
+                answer.map_err(|e| format!("Couldn't read the picture: {e:#}"))
+            }
+            .await;
+            events.send(Event::PictureRead { name, result });
+        });
     }
 
     fn add_to_knowledge(&mut self, base: KnowledgeBase, files: Vec<PathBuf>) {
@@ -514,7 +560,7 @@ impl App {
             ui.horizontal_wrapped(|ui| {
                 let mut remove = None;
                 for (index, file) in self.attachments.iter().enumerate() {
-                    if ui.button(format!("📄 {}  ✕", file.name)).on_hover_text("Remove").clicked() {
+                    if ui.button(if file.text == PICTURE_PENDING { format!("🖼 {} · reading…  ✕", file.name) } else { format!("📄 {}  ✕", file.name) }).on_hover_text("Remove").clicked() {
                         remove = Some(index);
                     }
                 }
@@ -552,7 +598,7 @@ impl App {
             }
         }
         ui.horizontal(|ui| {
-            if ui.button("Attach").on_hover_text("Add PDFs or text files").clicked() {
+            if ui.button("Attach").on_hover_text("Add PDFs, text files or pictures").clicked() {
                 if let Some(paths) = rfd::FileDialog::new().pick_files() {
                     self.attach(paths);
                 }
@@ -972,6 +1018,9 @@ impl eframe::App for App {
         }
     }
 }
+
+/// An attached picture's text until the vision model has described it.
+const PICTURE_PENDING: &str = "(looking at the picture…)";
 
 /// The system's own fonts behind egui's, for what egui's lack: answers are full of ⁻¹, ≈, α, → and the like, which
 /// showed as boxes. Only fallbacks, so the look stays the same; a font that isn't there is skipped.

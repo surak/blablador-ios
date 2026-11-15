@@ -55,6 +55,8 @@ pub enum Event {
     MemoriesChanged,
     KnowledgeProgress { base: Uuid, text: Option<String> },
     KnowledgeAdded { base: Uuid, document: knowledge::Document, model: String },
+    /// A picture attached to the next question has been looked at.
+    PictureRead { name: String, result: Result<String, String> },
     Error(String),
 }
 
