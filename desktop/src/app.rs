@@ -66,6 +66,7 @@ impl App {
         let (sender, receiver) = std::sync::mpsc::channel();
         let settings = Settings::load();
         cc.egui_ctx.set_visuals(if settings.dark { egui::Visuals::dark() } else { egui::Visuals::light() });
+        add_system_fonts(&cc.egui_ctx);
         let api_key = storage::api_key();
         let mut app = App {
             runtime,
@@ -970,4 +971,27 @@ impl eframe::App for App {
             }
         }
     }
+}
+
+/// The system's own fonts behind egui's, for what egui's lack: answers are full of ⁻¹, ≈, α, → and the like, which
+/// showed as boxes. Only fallbacks, so the look stays the same; a font that isn't there is skipped.
+fn add_system_fonts(ctx: &egui::Context) {
+    let candidates: &[&str] = if cfg!(windows) {
+        &["C:\\Windows\\Fonts\\segoeui.ttf", "C:\\Windows\\Fonts\\seguisym.ttf", "C:\\Windows\\Fonts\\cambria.ttc"]
+    } else if cfg!(target_os = "macos") {
+        &["/System/Library/Fonts/Supplemental/Arial Unicode.ttf", "/System/Library/Fonts/Apple Symbols.ttf"]
+    } else {
+        &["/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+          "/usr/share/fonts/noto/NotoSans-Regular.ttf", "/usr/share/fonts/TTF/DejaVuSans.ttf"]
+    };
+    let mut fonts = egui::FontDefinitions::default();
+    for (index, path) in candidates.iter().enumerate() {
+        let Ok(bytes) = std::fs::read(path) else { continue };
+        let name = format!("system-{index}");
+        fonts.font_data.insert(name.clone(), std::sync::Arc::new(egui::FontData::from_owned(bytes)));
+        for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
+            fonts.families.entry(family).or_default().push(name.clone());
+        }
+    }
+    ctx.set_fonts(fonts);
 }
