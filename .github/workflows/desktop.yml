@@ -1,5 +1,5 @@
 # Builds the Rust desktop app (desktop/) and the bla command line (cli/) for Windows, Linux (x86-64 and 64-bit ARM,
-# e.g. Raspberry Pi) and macOS and attaches them to the release, adding their checksums to SHA256SUMS.txt.
+# e.g. Raspberry Pi) and macOS, plus a Windows installer with both, and attaches them to the release, adding their checksums to SHA256SUMS.txt.
 name: Desktop
 
 on:
@@ -123,8 +123,37 @@ jobs:
           name: bla-${{ matrix.platform }}
           path: cli/${{ steps.package.outputs.file }}
 
-  release:
+  windows-setup:
+    # The installer Windows users download: the app and bla in one setup.exe (desktop/windows/blablador.iss).
     needs: [build, cli]
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: parts
+          merge-multiple: true
+          pattern: '*windows-x86_64'
+      - name: Build the installer
+        run: |
+          version=$(grep -m1 '^version' desktop/Cargo.toml | cut -d'"' -f2)
+          mkdir files
+          7z e -y parts/Blablador-$version-windows-x86_64.zip -ofiles Blablador.exe -r >/dev/null
+          7z e -y parts/Blablador-$version-bla-windows-x86_64.zip -ofiles bla.exe -r >/dev/null
+          ls files
+          choco install innosetup -y --no-progress >/dev/null
+          "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" -Q "-DVersion=$version" "-DSource=$(cygpath -w "$PWD/files")" "-O$(cygpath -w "$PWD")" desktop/windows/blablador.iss
+          ls Blablador-*-windows-setup.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-setup
+          path: Blablador-*-windows-setup.exe
+
+  release:
+    needs: [build, cli, windows-setup]
     if: github.event_name == 'release' || inputs.tag != ''
     runs-on: ubuntu-latest
     env:
