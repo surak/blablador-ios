@@ -146,11 +146,12 @@ jobs:
           ls files
           choco install innosetup -y --no-progress >/dev/null
           "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" -Q "-DVersion=$version" "-DSource=$(cygpath -w "$PWD/files")" "-O$(cygpath -w "$PWD")" desktop/windows/blablador.iss
-          ls Blablador-*-windows-setup.exe
+          # Also under a name without the version, so releases/latest/download/Blablador-windows-setup.exe always works.
+          cp Blablador-$version-windows-setup.exe Blablador-windows-setup.exe
       - uses: actions/upload-artifact@v4
         with:
           name: windows-setup
-          path: Blablador-*-windows-setup.exe
+          path: Blablador-*windows-setup.exe
 
   release:
     needs: [build, cli, windows-setup]

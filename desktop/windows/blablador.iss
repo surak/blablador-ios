@@ -22,6 +22,7 @@ DefaultDirName={localappdata}\Programs\Blablador
 DisableDirPage=yes
 DisableProgramGroupPage=yes
 DisableReadyPage=yes
+DisableWelcomePage=yes
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
@@ -54,6 +55,41 @@ Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; Value
 Filename: "{app}\Blablador.exe"; Description: "Start Blablador"; Flags: nowait postinstall
 
 [Code]
+var
+  KeyPage: TInputQueryWizardPage;
+
+// The first page asks for the API key, so Blablador starts signed in. Empty is fine when updating: the saved key stays.
+procedure InitializeWizard;
+begin
+  KeyPage := CreateInputQueryPage(wpWelcome, 'Your Blablador API key',
+    'Paste your key, then click Next.',
+    'No key yet? Make one at codebase.helmholtz.cloud: Preferences, Access tokens, Add new token, tick read_user, ' +
+    'Create, and copy it. Updating Blablador? Leave this empty to keep the key you have.');
+  KeyPage.Add('API key:', True);
+end;
+
+// Saved by `bla login`, into the Credential Manager entry the app reads; through a file, so it is never in a command line.
+procedure SaveKey;
+var
+  Key, KeyFile: string;
+  Code: Integer;
+begin
+  Key := Trim(KeyPage.Values[0]);
+  if Key = '' then
+    exit;
+  KeyFile := ExpandConstant('{tmp}\key.txt');
+  SaveStringToFile(KeyFile, Key, False);
+  Exec(ExpandConstant('{cmd}'), '/c ""' + ExpandConstant('{app}\bla.exe') + '" login < "' + KeyFile + '""', '',
+    SW_HIDE, ewWaitUntilTerminated, Code);
+  DeleteFile(KeyFile);
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+    SaveKey;
+end;
+
 function NotOnPath(Dir: string): Boolean;
 var
   Path: string;
