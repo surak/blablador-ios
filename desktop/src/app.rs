@@ -557,20 +557,21 @@ impl App {
                 }
             }
             let button_width = 70.0;
+            // Focus the composer whenever nothing else has focus and the window itself is focused, and before it
+            // reads this frame's keys: taking focus every frame stole it from other fields, focusing before Windows
+            // gives the window focus left text input (IME) off, and on Windows the focus also goes away by itself,
+            // so taking it back only while the box was empty lost every key after the first letter.
+            let window_focused = ui.input(|i| i.viewport().focused.unwrap_or(false));
+            let nothing_focused = ui.memory(|m| m.focused().is_none());
+            if window_focused && nothing_focused && self.approvals.is_empty() && !self.show_settings {
+                ui.memory_mut(|m| m.request_focus(editor_id));
+            }
             let editor = egui::TextEdit::multiline(&mut self.input)
                 .id(editor_id)
                 .hint_text("Message Blablador")
                 .desired_rows(2)
                 .desired_width(ui.available_width() - button_width - 8.0);
-            let response = ui.add(editor);
-            // Focus the composer only when nothing else has focus and the window itself is focused: taking focus
-            // every frame stole it from other fields, and focusing before Windows gives the window focus left
-            // text input (IME) off, so nothing could be typed.
-            let window_focused = ui.input(|i| i.viewport().focused.unwrap_or(false));
-            let nothing_focused = ui.memory(|m| m.focused().is_none());
-            if self.input.is_empty() && window_focused && nothing_focused && self.approvals.is_empty() && !self.show_settings {
-                response.request_focus();
-            }
+            ui.add(editor);
             if busy {
                 if ui.add_sized([button_width, 32.0], egui::Button::new("Stop")).clicked() {
                     if let Some(id) = self.current {
