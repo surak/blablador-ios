@@ -527,6 +527,29 @@ impl App {
         // Enter sends, Shift+Enter starts a new line.
         let focused = ui.memory(|m| m.has_focus(editor_id));
         let enter = focused && !busy && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::Enter));
+        // Typing while no text field has the keyboard goes into the composer: on Windows the window can be focused
+        // with nothing inside it focused, and then every key fell on the floor.
+        let stray = !ui.ctx().wants_keyboard_input()
+            && !self.show_settings
+            && self.approvals.is_empty()
+            && ui.input(|i| i.viewport().focused.unwrap_or(false));
+        if stray {
+            // Taken out of the events, or the composer, focused below, would read them again this frame.
+            let typed: String = ui.input_mut(|i| {
+                let typed = i.events.iter().filter_map(|e| if let egui::Event::Text(t) = e { Some(t.as_str()) } else { None }).collect();
+                i.events.retain(|e| !matches!(e, egui::Event::Text(_)));
+                typed
+            });
+            if !typed.is_empty() {
+                self.input.push_str(&typed);
+                ui.memory_mut(|m| m.request_focus(editor_id));
+                if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), editor_id) {
+                    let end = egui::text::CCursor::new(self.input.chars().count());
+                    state.cursor.set_char_range(Some(egui::text::CCursorRange::one(end)));
+                    state.store(ui.ctx(), editor_id);
+                }
+            }
+        }
         ui.horizontal(|ui| {
             if ui.button("Attach").on_hover_text("Add PDFs or text files").clicked() {
                 if let Some(paths) = rfd::FileDialog::new().pick_files() {
