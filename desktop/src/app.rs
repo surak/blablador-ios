@@ -896,6 +896,7 @@ impl eframe::App for App {
             });
             let focused = ctx.memory(|m| m.has_focus(egui::Id::new("composer")));
             let window = ctx.input(|i| i.viewport().focused);
+            let focused = format!("{focused} focus={:?} composer_id={:?}", ctx.memory(|m| m.focused()), egui::Id::new("composer"));
             let _ = std::fs::write(path, format!("{}\nkeys={} text={} ime={} composer_focused={focused} window_focused={window:?}",
                 self.input, counts.0, counts.1, counts.2));
             ctx.request_repaint_after(std::time::Duration::from_millis(200));

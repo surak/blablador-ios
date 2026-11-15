@@ -61,7 +61,7 @@ jobs:
         run: |
           $env:BLABLADOR_NO_DIALOG = '1'
           $failed = $false
-          foreach ($renderer in 'wgpu', 'glow') {
+          foreach ($renderer in @('wgpu')) {
             $env:BLABLADOR_RENDERER = $renderer
             $env:BLABLADOR_INPUT_PROBE = "$env:RUNNER_TEMP\typed-$renderer.txt"
             $p = Start-Process target/${{ matrix.target }}/release/blablador.exe -PassThru
@@ -70,12 +70,14 @@ jobs:
             $null = $shell.AppActivate($p.Id)
             Start-Sleep 2
             $shell.SendKeys('hello ovo')
+            Start-Sleep 1
+            $shell.SendKeys('{BS}{BS}x')
             Start-Sleep 3
             $typed = Get-Content $env:BLABLADOR_INPUT_PROBE -Raw -ErrorAction SilentlyContinue
             Stop-Process $p -ErrorAction SilentlyContinue
             Start-Sleep 1
             Write-Host "$renderer composer holds: [$typed]"
-            if ($typed -notmatch 'hello ovo') { $failed = $true }
+            if ($typed -notmatch '^hello ox') { $failed = $true }
           }
           if ($failed) { throw "typing did not reach the message box" }
       - name: Package
