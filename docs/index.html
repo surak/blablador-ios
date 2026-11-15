@@ -178,6 +178,7 @@
     <section id="features">
       <div class="wrap">
         <h2>Everything Blablador can do</h2>
+        <div class="note">Everything below is in the Mac app and, apart from agent mode, on iPhone and iPad. The Android app has the same features without agent mode; the Windows, Linux and Raspberry Pi app is a smaller client.</div>
         <div class="grid">
           <div class="card"><div class="icon">💬</div><h3>All Blablador models</h3><p>Streaming replies from every chat model on the server. DeepSeek-V4.1-Flash by default, switch any time.</p></div>
           <div class="card"><div class="icon">💡</div><h3>Long-term memory</h3><p>Blablador learns from every chat: facts about you, your projects, decisions and conclusions, and uses them in later chats. Related memories are linked, so asking about one person or project brings back the facts connected to it. It also finds earlier conversations when you refer to them. See, edit or delete every memory in Settings.</p></div>
@@ -258,6 +259,18 @@
       </div>
     </section>
 
+    <section id="cli">
+      <div class="wrap">
+        <h2>Install bla, the command line</h2>
+        <ol class="steps">
+          <li><strong>Windows</strong> (PowerShell, no admin rights): <code>powershell -ExecutionPolicy ByPass -c "irm https://surak.github.io/blablador-ios/install.ps1 | iex"</code></li>
+          <li><strong>Linux, Raspberry Pi, Mac</strong>: <code>curl -fsSL https://surak.github.io/blablador-ios/install.sh | sh</code> &mdash; on the Mac it also comes with the app (Settings → Command line).</li>
+          <li>Open a new terminal and type <code>bla</code>. The first time, it opens the page where you make your Blablador API key and asks you to paste it; then you are chatting. <code>bla login</code> changes the key later.</li>
+        </ol>
+        <div class="note">The installers download the build for your machine from the <a href="https://github.com/surak/blablador-ios/releases/latest">latest release</a>, check it against SHA256SUMS.txt and put it on your PATH. <code>bla update</code> tells you when there is a newer one.</div>
+      </div>
+    </section>
+
     <section>
       <div class="wrap">
         <h2>Platforms</h2>
@@ -283,7 +296,8 @@
     .then(r => r.ok ? r.json() : Promise.reject())
     .then(release => {
       document.querySelectorAll("[data-asset]").forEach(link => {
-        const asset = release.assets.find(a => a.name.endsWith(link.dataset.asset));
+        // The command line's builds (-bla-windows-x86_64.zip…) end the same way and sort first; the buttons are the apps.
+        const asset = release.assets.find(a => a.name.endsWith(link.dataset.asset) && !a.name.includes("-bla-"));
         if (!asset) return;
         link.href = asset.browser_download_url;
         link.title = asset.name;

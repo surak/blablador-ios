@@ -926,8 +926,8 @@ private struct ComposerView: View {
                         .foregroundStyle(.primary)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Add and tools")
-                .help("Attach files, choose tools and more")
+                .accessibilityLabel("Attach and tools")
+                .help("Attach and tools")
 
                 // The field grows with the text up to `maxFieldHeight`, then scrolls (the end stays in view).
                 ScrollView(.vertical) {

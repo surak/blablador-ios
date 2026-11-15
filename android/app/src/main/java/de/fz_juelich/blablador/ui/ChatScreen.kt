@@ -875,7 +875,7 @@ private fun Composer(
             }
         }
         Row(verticalAlignment = Alignment.Bottom) {
-            IconButton(onClick = { menu = true }) { Icon(Icons.Outlined.Add, "Add and tools") }
+            IconButton(onClick = { menu = true }) { Icon(Icons.Outlined.Add, "Attach and tools") }
             TextField(
                 value = draft, onValueChange = onDraft,
                 modifier = Modifier.weight(1f).focusRequester(focus),
@@ -1126,7 +1126,8 @@ private fun UpdateBanner() {
     val context = LocalContext.current
     var release by remember { mutableStateOf<Updates.Release?>(null) }
     LaunchedEffect(Unit) {
-        release = Updates.latest(context)?.takeIf { it.version != Updates.dismissed(context) }
+        release = (Updates.latest(context) as? Updates.Answer.Newer)?.release
+            ?.takeIf { it.version != Updates.dismissed(context) }
     }
     val current = release ?: return
     Row(

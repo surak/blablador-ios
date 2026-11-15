@@ -1,7 +1,7 @@
 //! The chat screen. A full-screen view with the Blablador logo pinned in the top right corner, over a conversation
 //! which scrolls with the mouse wheel, the scroll bar or Page Up/Down; dragging selects text and copies it; a click on
-//! a tool call or on the thinking opens or closes it. Below: what is running, questions with buttons, messages
-//! waiting their turn, the input box (history, / completion, @path completion) and a status line.
+//! a tool call or on the thinking opens or closes it. It blinks now and then. Below: what is running, questions with
+//! buttons, messages waiting their turn, the input box (history, / completion, @path completion) and a status line.
 //!
 //! The agent stays on the main thread and talks to the screen through `Screen` (which is a `Ui`); the screen
 //! draws and reads the keyboard and mouse on its own thread, so typing, scrolling and Esc work while the
@@ -60,6 +60,47 @@ const VERBS: &[&str] = &[
     "Smashing",
     "Crisping",
     "Fermenting",
+    "Couch-potatoing",
+    "Hot-potatoing",
+    "Sofa-spudding",
+    "Deep-frying",
+    "Air-frying",
+    "Blanching",
+    "Parboiling",
+    "Hasselbacking",
+    "Fondant-ing",
+    "Boulangère-ing",
+    "Duchess-ing",
+    "Ricing",
+    "Pommes-friting",
+    "Curly-frying",
+    "Tornado-potatoing",
+    "Knödel-ing",
+    "Kartoffelsalat-ing",
+    "Stamppotting",
+    "Colcannoning",
+    "Bubble-and-squeaking",
+    "Aloo-ing",
+    "Papas-ing",
+    "Peruna-ing",
+    "Kartoffeling",
+    "Aardappeling",
+    "Maris-Pipering",
+    "King-Edwarding",
+    "Yukon-Golding",
+    "Bintje-ing",
+    "Russet-ing",
+    "Chitting",
+    "Hilling up",
+    "Trenching",
+    "Lifting",
+    "Curing",
+    "Sacking",
+    "Grating",
+    "Chive-snipping",
+    "Sour-creaming",
+    "Spud-gunning",
+    "Mr-Potato-Head-ing",
 ];
 const SPINNER: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const ACCENT: Color = Color::Rgb(0xf2, 0xb1, 0x34);
@@ -857,24 +898,31 @@ fn welcome(text: &str, width: usize) -> Vec<Row> {
 
 /// The pinned logo, 14 × 6 characters: blablador-ng-notext.svg (28 × 30 pixels) an eighth of its height, drawn in
 /// the terminal's own colour so it is dark on light terminals and light on dark ones, like the SVG's dark mode.
-const SMALL_LOGO: [&str; 6] = [
-    "▄▀▀▀▀▀▀▀▀▀▀▀▀▄",
-    "█ ▄█▄  ▄█    █",
-    "█   ▄▄▄   ██ █",
-    "█    ▀    ██ █",
-    "▀▄▄▄▄▄▄▄▄▄██ █",
-    "            ▀█",
-];
+const SMALL_LOGO: [&str; 6] = ["▄▀▀▀▀▀▀▀▀▀▀▀▀▄", "█ ▄█▄  ▄█    █", "█   ▄▄▄   ██ █", "█    ▀    ██ █", "▀▄▄▄▄▄▄▄▄▄██ █", "            ▀█"];
+
+/// The same logo with the eyes shut — a lid where each pupil was, the usual way block art blinks. Same width, so it
+/// covers the logo exactly.
+const BLINKING_LOGO: [&str; 6] = [SMALL_LOGO[0], "█ ▄▄▄  ▄▄    █", SMALL_LOGO[2], SMALL_LOGO[3], SMALL_LOGO[4], SMALL_LOGO[5]];
+
+/// The eyes are shut for `BLINK_TICKS` ticks (90 ms each) out of every `BLINK_EVERY`: 180 ms about every 4 seconds,
+/// which reads as a blink rather than a flicker.
+const BLINK_TICKS: usize = 2;
+const BLINK_EVERY: usize = 47;
+
+fn blinking(tick: usize) -> bool {
+    tick % BLINK_EVERY < BLINK_TICKS
+}
 
 /// Draws the logo in the top right corner over what is there, when the terminal is wide enough for it and for the
-/// text beside it.
-fn draw_logo(frame: &mut Frame, transcript: Rect) {
+/// text beside it. At the tick of a blink the eyes are shut.
+fn draw_logo(frame: &mut Frame, transcript: Rect, tick: usize) {
+    let logo = if blinking(tick) { &BLINKING_LOGO } else { &SMALL_LOGO };
     let w = SMALL_LOGO[0].chars().count() as u16;
     if transcript.width < w + 40 || transcript.height < SMALL_LOGO.len() as u16 {
         return;
     }
     let x = transcript.x + transcript.width.saturating_sub(w + 2);
-    for (i, line) in SMALL_LOGO.iter().enumerate() {
+    for (i, line) in logo.iter().enumerate() {
         frame.buffer_mut().set_string(x, transcript.y + i as u16, line, Style::default());
     }
 }
@@ -1085,7 +1133,7 @@ fn draw(frame: &mut Frame, s: &mut State, tick: usize) {
     hits.total = total;
     hits.top = top;
     // The small logo sits in the corner over the first rows, so it doesn't scroll away with the chat.
-    draw_logo(frame, transcript);
+    draw_logo(frame, transcript, tick);
 
     // What is running, or a short message.
     if status_h > 0 {
@@ -1144,8 +1192,7 @@ fn draw(frame: &mut Frame, s: &mut State, tick: usize) {
             Rect { y: inner.y + 1, height: 1, ..inner },
         );
         let mut x = inner.x;
-        for (i, (label, answer)) in
-            [(" Yes (y) ", Approval::Once), (" Always here (a) ", Approval::Always), (" No (n) ", Approval::No)].into_iter().enumerate()
+        for (i, (label, answer)) in [(" Yes (y) ", Approval::Once), (" Always here (a) ", Approval::Always), (" No (n) ", Approval::No)].into_iter().enumerate()
         {
             let w = label.width() as u16;
             let style = if i == s.selected_button {
@@ -1786,6 +1833,7 @@ fn run(state: Arc<Mutex<State>>, lines: Sender<Option<String>>, cancel: Arc<Atom
     let _ = terminal.clear();
     let started = Instant::now();
     let mut last_tick = usize::MAX;
+    let mut was_blinking = false;
     loop {
         let tick = (started.elapsed().as_millis() / 90) as usize;
         {
@@ -1798,9 +1846,12 @@ fn run(state: Arc<Mutex<State>>, lines: Sender<Option<String>>, cancel: Arc<Atom
                 s.dirty = true;
             }
             let animating = s.busy || s.items.iter().any(|i| !i.done);
-            if s.dirty || (animating && tick != last_tick) {
+            // The logo blinks even while nothing else on the screen changes.
+            let blink = blinking(tick);
+            if s.dirty || blink != was_blinking || (animating && tick != last_tick) {
                 s.dirty = false;
                 last_tick = tick;
+                was_blinking = blink;
                 let _ = terminal.draw(|f| draw(f, &mut s, tick));
             }
         }
@@ -1872,6 +1923,25 @@ mod tests {
         let all: Vec<char> = SMALL_LOGO.concat().chars().collect();
         assert!(all.iter().any(|c| *c == '█' || *c == '▀' || *c == '▄'));
         assert!(SMALL_LOGO.iter().all(|l| l.chars().count() == 14));
+    }
+
+    #[test]
+    fn the_logo_blinks() {
+        // Shut only at the start of a cycle, and only for two ticks: a blink, not a flicker.
+        assert!(blinking(0) && blinking(1));
+        assert!(!blinking(2));
+        assert!(blinking(BLINK_EVERY));
+        let shut: Vec<usize> = (0..BLINK_EVERY * 3).filter(|t| blinking(*t)).collect();
+        assert_eq!(shut.len(), 6);
+        // The shut logo differs only in the row of the eyes, so it covers the open one exactly.
+        assert_eq!(BLINKING_LOGO.len(), SMALL_LOGO.len());
+        assert!(BLINKING_LOGO.iter().all(|l| l.chars().count() == 14));
+        let differ: Vec<usize> = (0..6).filter(|i| BLINKING_LOGO[*i] != SMALL_LOGO[*i]).collect();
+        assert_eq!(differ, vec![1], "only the eyes change");
+        let walls = |l: &str| (l.chars().next(), l.chars().last());
+        assert_eq!(walls(BLINKING_LOGO[1]), walls(SMALL_LOGO[1]));
+        // The two eyes were solid blocks and are lids now, so that row has two blocks fewer.
+        assert_eq!(SMALL_LOGO[1].matches('█').count(), BLINKING_LOGO[1].matches('█').count() + 2);
     }
 
     #[test]

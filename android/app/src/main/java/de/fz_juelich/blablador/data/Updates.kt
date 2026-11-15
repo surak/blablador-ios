@@ -18,7 +18,14 @@ object Updates {
     fun currentVersion(context: Context): String =
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "0"
 
-    suspend fun latest(context: Context): Release? = withContext(Dispatchers.IO) {
+    /** The answer to "is there a newer one?": either a release, the version when this one is already the latest, or
+     *  null when GitHub could not be asked. Saying "you are current" is the point: silence answers nothing. */
+    sealed interface Answer {
+        data class Newer(val release: Release) : Answer
+        data class Current(val version: String) : Answer
+    }
+
+    suspend fun latest(context: Context): Answer? = withContext(Dispatchers.IO) {
         runCatching {
             val request = Request.Builder().url(LATEST).header("Accept", "application/vnd.github+json").build()
             BlabladorApi.client.newCall(request).await().use { response ->
@@ -26,13 +33,16 @@ object Updates {
                 val json = BlabladorApi.json.parseToJsonElement(response.body!!.string()).jsonObject
                 val tag = jsonString(json["tag_name"]) ?: return@use null
                 val version = tag.removePrefix("v")
-                if (!isNewer(version, currentVersion(context))) return@use null
+                val current = currentVersion(context)
+                // A build ahead of the release (a local build, say) is current too, not out of date.
+                if (!isNewer(version, current)) return@use Answer.Current(current)
                 val apk = json["assets"]?.jsonArray?.map { it.jsonObject }
                     ?.firstOrNull { jsonString(it["name"])?.endsWith("-android.apk") == true }
                     ?.let { jsonString(it["browser_download_url"]) }
                     ?.takeIf { it.startsWith(RELEASES) }
                 // Only ever open this project's releases on GitHub.
-                Release(version, jsonString(json["html_url"])?.takeIf { it.startsWith(RELEASES) } ?: "${RELEASES}latest", apk)
+                val page = jsonString(json["html_url"])?.takeIf { it.startsWith(RELEASES) } ?: "${RELEASES}latest"
+                Answer.Newer(Release(version, page, apk))
             }
         }.getOrNull()
     }

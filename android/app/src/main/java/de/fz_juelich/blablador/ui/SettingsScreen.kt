@@ -37,6 +37,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -146,8 +148,17 @@ fun SettingsScreen(vm: ChatViewModel, onOpenKnowledge: () -> Unit, onOpenVoices:
             }
 
             Section("Custom instructions", footer = "Sent as a system prompt with every chat.") {
-                OutlinedTextField(vm.systemPrompt, vm::updateSystemPrompt, Modifier.fillMaxWidth(),
-                    placeholder = { Text("e.g. Answer concisely.") }, minLines = 2, maxLines = 6)
+                // The hint sat inside the box, where grey text reads as something already typed, and only the text
+                // line took a tap. Above the box, and the box itself focuses on any tap.
+                val focus = remember { FocusRequester() }
+                Text("e.g. Answer concisely.", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth().clickable { focus.requestFocus() })
+                // clickable on the field itself would swallow the tap and lose the cursor position, so the field
+                // keeps its own handling and the hint focuses it.
+                OutlinedTextField(vm.systemPrompt, vm::updateSystemPrompt,
+                    Modifier.fillMaxWidth().focusRequester(focus),
+                    placeholder = null, minLines = 3, maxLines = 8)
             }
 
             TextButton(onClick = { confirmDelete = true }) { Text("Delete all chats", color = MaterialTheme.colorScheme.error) }

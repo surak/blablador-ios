@@ -135,7 +135,7 @@ struct ToolsPanel: View {
                     .padding()
             }
             .background(Theme.background)
-            .navigationTitle("Add and tools")
+            .navigationTitle("Attach and tools")
 #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
 #endif

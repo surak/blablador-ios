@@ -30,6 +30,9 @@ final class AppUpdater: ObservableObject {
 
     @Published private(set) var available: Release?
     @Published private(set) var state: State = .idle
+    /// What the last check found when there was nothing to install: "You have 3.12.1, the latest version." Kept so
+    /// that asking is answered rather than silently ignored.
+    @Published private(set) var status: String?
     @AppStorage("dismissedUpdateVersion") private var dismissedVersion = ""
 
     private var lastCheck: Date?
@@ -46,9 +49,20 @@ final class AppUpdater: ObservableObject {
     func dismiss() {
         if let available { dismissedVersion = available.version }
         state = .idle
+        status = nil
     }
 
-    /// Checks at most every few hours unless forced.
+    /// Forgets what the last check said, after a few seconds: an answer on screen should not become furniture.
+    private func clearStatusSoon() {
+        let said = status
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 8 * 1_000_000_000)
+            if status == said { status = nil }
+        }
+    }
+
+    /// Checks at most every few hours unless forced. A forced check always answers: a newer version in `available`,
+    /// and otherwise a word in `status`, since a person who asked "am I up to date?" deserves an answer either way.
     func check(force: Bool = false) async {
         if !force, let lastCheck, Date().timeIntervalSince(lastCheck) < Self.checkInterval { return }
         var request = URLRequest(url: Self.latestAPI)
@@ -57,13 +71,22 @@ final class AppUpdater: ObservableObject {
               (response as? HTTPURLResponse)?.statusCode == 200,
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let tag = json["tag_name"] as? String,
-              let page = (json["html_url"] as? String).flatMap(URL.init(string:)) else { return }
+              let page = (json["html_url"] as? String).flatMap(URL.init(string:)) else {
+            if force { status = "Couldn't reach GitHub to check for updates."; clearStatusSoon() }
+            return
+        }
         lastCheck = Date()
         let version = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
         guard Self.isNewer(version, than: Self.currentVersion) else {
             available = nil
+            let current = Self.currentVersion
+            status = Self.isNewer(Self.currentVersion, than: version)
+                ? "You have \(current), which is ahead of the latest release, \(version)."
+                : "You have \(current), the latest version."
+            if force { clearStatusSoon() }
             return
         }
+        status = nil
         let assets = (json["assets"] as? [[String: Any]] ?? []).compactMap { asset -> (String, URL)? in
             guard let name = asset["name"] as? String,
                   let url = (asset["browser_download_url"] as? String).flatMap(URL.init(string:)) else { return nil }
@@ -220,6 +243,22 @@ struct UpdateBanner: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
             .background(.tint.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+            .padding(.horizontal)
+            .padding(.top, 8)
+        } else if let status = updater.status {
+            // Nothing to install, but someone asked: say they are current instead of leaving them to wonder.
+            HStack(spacing: 10) {
+                Image(systemName: "checkmark.circle.fill")
+                    .scaledFont(.title3)
+                    .foregroundStyle(.green)
+                Text(status).scaledFont(.subheadline).foregroundStyle(.secondary)
+                Spacer()
+                Button { updater.dismiss() } label: { Image(systemName: "xmark") }
+                    .buttonStyle(.borderless)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(.green.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
             .padding(.horizontal)
             .padding(.top, 8)
         }

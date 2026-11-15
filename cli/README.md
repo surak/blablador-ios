@@ -21,13 +21,15 @@ itself. Its memory is the Blablador apps' memory: what you tell the app, bla kno
 
 - **Mac:** it comes with the Blablador app (`brew install --cask surak/tap/blablador` links it), or
   Settings → Command line in the app.
-- **Linux, Windows, Raspberry Pi, Mac without the app:** download `Blablador-<version>-bla-<platform>` from the
+- **Windows:** `powershell -ExecutionPolicy ByPass -c "irm https://surak.github.io/blablador-ios/install.ps1 | iex"`
+- **Linux, Raspberry Pi, Mac without the app:** `curl -fsSL https://surak.github.io/blablador-ios/install.sh | sh`
+- Or download `Blablador-<version>-bla-<platform>` from the
   [latest release](https://github.com/surak/blablador-ios/releases/latest) and put `bla` on your PATH.
 - **From source:** `cargo install --path cli`.
 
-Then `bla login` and paste your [Blablador API key](https://sdlaml.pages.jsc.fz-juelich.de/ai/guides/blablador_api_access/).
+The first `bla` (or `bla login`) opens your browser on the page where a [Blablador API key](https://sdlaml.pages.jsc.fz-juelich.de/ai/guides/blablador_api_access/) is made (a Codebase token with the `read_user` scope), and you paste the key there.
 It goes into the system keyring (the same entry the desktop app uses), or `~/.bla/.apikey` readable only by you
-where there is no keyring. `BLABLADOR_API_KEY` overrides it.
+where there is no keyring. `BLABLADOR_API_KEY` overrides it, and piping a key into `bla login` skips the browser.
 
 ## Using it
 

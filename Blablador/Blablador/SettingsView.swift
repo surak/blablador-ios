@@ -7,6 +7,8 @@ struct SettingsView: View {
     @State private var apiKey = ""
     @State private var endpoint = BlabladorAPI.endpoint
     @State private var confirmDelete = false
+    /// So a tap anywhere in the instructions box starts typing there, not only on the line of the text.
+    @FocusState private var writingInstructions: Bool
 #if os(macOS)
     @State private var blaInstalled = BlaCommand.installed?.path
     @State private var blaMessage: String?
@@ -173,11 +175,23 @@ struct SettingsView: View {
                     Text("After a task with a plan, a goal or several tools, Blablador looks over its answer once more and fixes what's wrong before showing it. Type /goal and what you want to have it keep working until it's done.")
                 }
                 Section {
-                    TextField("e.g. Answer concisely.", text: Binding(
+                    // The placeholder went inside the field, where grey text reads as something already typed, and
+                    // only its first line took a tap. The hint sits above and the field is tall enough to hit.
+                    Text("e.g. Answer concisely.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                        .onTapGesture { writingInstructions = true }
+                    TextField("", text: Binding(
                         get: { store.systemPrompt },
                         set: { store.systemPrompt = $0 }
                     ), axis: .vertical)
-                    .lineLimit(2...6)
+                    .lineLimit(3...8)
+                    .labelsHidden()
+                    .focused($writingInstructions)
+                    // The whole box takes the cursor, not just the line the text is on.
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .topLeading)
                 } header: {
                     Text("Custom instructions")
                 } footer: {
@@ -208,6 +222,11 @@ struct SettingsView: View {
 
                 Section("About") {
                     LabeledContent("Version", value: AppUpdater.currentVersion)
+                    // The answer to "Check for updates": a newer version has a banner of its own, but being current
+                    // must be said here, since that is what was asked.
+                    if let status = AppUpdater.shared.status {
+                        Text(status).font(.callout).foregroundStyle(.secondary)
+                    }
                     if let release = WhatsNew.releases.first {
                         NavigationLink("What's new in \(release.version)") {
                             WhatsNewView(version: release.version, items: release.items.map { item in

@@ -290,6 +290,31 @@ pub fn kill_group(pid: u32) {
     let _ = pid;
 }
 
+/// Opens `url` in the user's browser. Best effort, and never fatal: a machine with no browser, a headless server or
+/// a locked-down session must still be able to paste a key, so the caller prints the address either way.
+/// Windows goes through ShellExecute via `start`, which needs `cmd /C` to exist as a built-in.
+pub fn open_url(url: &str) -> bool {
+    let (program, args): (&str, &[&str]) = if cfg!(target_os = "macos") {
+        ("open", &[])
+    } else if cfg!(windows) {
+        ("cmd", &["/C", "start", ""])
+    } else {
+        ("xdg-open", &[])
+    };
+    let mut command = Command::new(program);
+    command.args(args).arg(url);
+    // The browser has no use for the key, and it must not leak into a page's process.
+    for name in SECRET_ENV {
+        command.env_remove(name);
+    }
+    command
+        // A browser can print warnings of its own; they are not bla's to show.
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
+}
+
 /// ANSI styling, off when the stream isn't a terminal or NO_COLOR is set.
 pub struct Style {
     pub on: bool,

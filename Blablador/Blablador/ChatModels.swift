@@ -143,6 +143,14 @@ enum PotatoVerbs {
     static let all = ["Potatoing", "Spudding", "Mashing", "Tuberising", "Peeling", "Sprouting", "Roasting", "Baking",
                       "Frying", "Boiling", "Chipping", "Hash-browning", "Rösti-ing", "Gratinating", "Scalloping",
                       "Wedging", "Tater-totting", "Jacketing", "Eye-sprouting", "Earthing up", "Harvesting", "Digging",
-                      "Gnocchi-ing", "Croquetting", "Latke-ing", "Dauphinoising", "Smashing", "Crisping", "Fermenting"]
+                      "Gnocchi-ing", "Croquetting", "Latke-ing", "Dauphinoising", "Smashing", "Crisping", "Fermenting",
+                      "Couch-potatoing", "Hot-potatoing", "Sofa-spudding", "Deep-frying", "Air-frying",
+                      "Blanching", "Parboiling", "Hasselbacking", "Fondant-ing", "Boulangère-ing", "Duchess-ing",
+                      "Ricing", "Pommes-friting", "Curly-frying", "Tornado-potatoing", "Knödel-ing",
+                      "Kartoffelsalat-ing", "Stamppotting", "Colcannoning", "Bubble-and-squeaking", "Aloo-ing",
+                      "Papas-ing", "Peruna-ing", "Kartoffeling", "Aardappeling", "Maris-Pipering",
+                      "King-Edwarding", "Yukon-Golding", "Bintje-ing", "Russet-ing", "Chitting", "Hilling up",
+                      "Trenching", "Lifting", "Curing", "Sacking", "Grating", "Chive-snipping", "Sour-creaming",
+                      "Spud-gunning", "Mr-Potato-Head-ing"]
     static var random: String { (all.randomElement() ?? "Potatoing") + "…" }
 }

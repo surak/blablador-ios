@@ -5,19 +5,21 @@ Blablador API. Ordered from least to most work. Each step ships in both apps.
 
 ## 1. Long-term memory (done)
 
-- `remember` / `forget` tools; facts stored on the device (`MemoryStore`, `memories.json`), at most 100.
+- `remember` / `forget` tools; facts stored on the device (`MemoryStore`, `memories.json`), up to 500.
 - Numbered list sent in the system prompt of every chat; replies show "Remembered: …" / "Forgot: …".
 - Settings → Memory: on/off, view, edit, add, delete, forget everything.
 
-## 2. Long-term memory, better recall (done, keyword version)
+## 2. Long-term memory, better recall (done, embeddings)
 
 - `search_chats` tool: keyword search over earlier chats, returning excerpts with chat title and date (`ChatSearch`).
   Counts as outside content, so memory can't be changed in the same reply.
 - After every reply, `alias-fast` picks out facts worth keeping from the exchange (about the user and about the topics
   discussed) and saves them; only the user's own text when the reply read outside content. Can be turned off.
-- Over 30 memories, only the ones sharing words with the question plus the 10 newest are sent, keeping their numbers.
-- Later: embeddings (`alias-qwen3-4b-embeddings`, reusing `KnowledgeLibrary`'s vector code) instead of keywords;
-  optional summary of each finished chat saved as a memory.
+- Over 30 memories, only the relevant ones are sent plus the 10 newest, keeping their numbers (`MemoryStore.alwaysSent`).
+- Done (`Recall.swift`): memories and chats are embedded with `alias-qwen3-4b-embeddings` (to 512 dimensions), so
+  recall is by meaning first and keywords second; a memory is relevant within 0.2 of the best match (at least 0.5).
+  Memory entries carry `entities` and `sourceChat`, and linked entities bring related memories back with them.
+- Open: a summary of each finished chat saved as a memory.
 
 ## 3. Skills (done)
 
@@ -28,19 +30,22 @@ Blablador API. Ordered from least to most work. Each step ships in both apps.
 - `suggest_skill`: the assistant offers a skill under its reply; nothing is saved until the user presses Save.
 - Later: skills that bundle knowledge bases and a preferred model.
 
-## 4. Automation: scheduled tasks
+## 4. Automation: scheduled tasks (done)
 
-- "Every morning at 8, summarise the news about X": tasks with a prompt, a schedule and a model, stored on the device.
-- Runs produce a chat and a notification. iOS: `BGAppRefreshTask` gives no exact times, so exact schedules need local
-  notifications that run on tap, or a server; macOS: a timer while the app runs plus a login item; Android: WorkManager.
+- "Every morning at 8, summarise the news about X": tasks with a prompt, a schedule and a model, stored on the device
+  (`Tasks.swift`: `ScheduledTask`, `TaskScheduler`, encrypted `tasks.json`, Settings → Scheduled tasks).
+- Runs produce a chat and a notification. iOS gives no exact background times, so the app runs due tasks while it is
+  open (a 30 s timer, and when it comes to the front, for anything missed) and a local notification fires at each time
+  as a reminder to open the app. Android: WorkManager.
 - `schedule_task` tool so the assistant can create tasks from chat.
 
-## 5. Automation: browser
+## 5. Automation: browser (not started)
 
-- A `browse` tool that loads a page in an off-screen WKWebView / Android WebView and returns readable text
-  (follow-up to the existing `web_search` snippets).
-- Then interactive steps (click, fill, scroll) with screenshots read by a vision model, every action approved by the
-  user like `run_command` in agent mode. Confined to http(s); no saved passwords.
+- `read_page` (`WebSearch.swift`, `WebPage`) is the read-only part and ships: a plain HTTP fetch of public http(s) pages
+  and PDFs, reduced to 24,000 characters of readable text.
+- Still open: a web view for pages that need JavaScript, and interactive steps (click, fill, scroll) with screenshots
+  read by a vision model, every action approved by the user like `run_command` in agent mode. Confined to http(s); no
+  saved passwords.
 - Hardest part: reliable element targeting and keeping the user in control; start read-only.
 
 ## 6. Knowledge graphs (tried October 2026)

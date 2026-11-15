@@ -419,7 +419,7 @@ dependencies = [
 
 [[package]]
 name = "blablador"
-version = "3.12.1"
+version = "3.12.2"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -448,7 +448,7 @@ dependencies = [
 
 [[package]]
 name = "blablador-models"
-version = "3.12.1"
+version = "3.12.2"
 dependencies = [
  "base64 0.22.1",
  "serde",

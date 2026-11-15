@@ -39,7 +39,7 @@ Blablador is a SwiftUI app for macOS, iOS and iPadOS that chats with every Blabl
 
 ## Requirements
 
-- macOS 14.0+
+- iOS and iPadOS 17.0+, macOS 14.0+
 - Xcode 15.0+
 - Swift 5.9+
 
@@ -57,54 +57,64 @@ Installs Blablador.app and the `bla` command line from the latest release ([sura
 
 1. Clone the repository
 2. Open `Blablador/Blablador.xcodeproj` in Xcode
-3. Select the My Mac run destination
+3. Select the My Mac (or an iPhone simulator) run destination
 4. Build and run (⌘R)
+
+The project is generated with xcodegen from `Blablador/project.yml`, so run `xcodegen` there after adding a source file.
+Unit tests run without Xcode: `swift test` in the repository root builds the app's sources as `BlabladorCore` and tests them.
 
 ## Project Structure
 
 ```
-Blablador/
-├── Blablador/
-│   ├── BlabladorApp.swift     # App entry point
-│   ├── BlabladorAPI.swift     # /models and streaming /chat/completions client
-│   ├── ChatStore.swift        # Conversations, persistence, sending/streaming
-│   ├── ChatModels.swift       # Messages, conversations, models
-│   ├── PDFExtractor.swift     # PDF text extraction (PDFKit + Vision OCR)
-│   ├── AgentTools.swift       # Agent mode: file and shell tools confined to a folder
-│   ├── AgentViews.swift       # Agent steps, folder chip, command approval
-│   ├── DecisionView.swift     # Clef decision model screen and API call
-│   ├── DecisionExamples.swift # Examples generated from decision-model-frontend
-│   ├── KnowledgeBase.swift    # Knowledge bases: chunking, embeddings, retrieval
-│   ├── KnowledgeViews.swift   # Knowledge management, citations
-│   ├── SpeechRecognizer.swift # Dictation and read-aloud
-│   ├── VoiceLibrary.swift     # Drama 3 voices, cloning samples, speech settings
-│   ├── VoiceViews.swift       # Speech player, voice settings and cloning UI
-│   ├── *View.swift            # SwiftUI views
-│   └── Info.plist             # App configuration
-└── Blablador.xcodeproj/      # Xcode project files
+Blablador/                    # an Xcode project: iOS, iPadOS and macOS
+├── Blablador/                # the app, SwiftUI (AGENTS.md describes every file)
+│   ├── BlabladorApp.swift    # App entry point, owns the ChatStore
+│   ├── BlabladorAPI.swift    # /models and streaming /chat/completions client
+│   ├── ChatStore.swift       # Conversations, persistence, sending/streaming
+│   ├── ChatModels.swift      # Messages, conversations, models
+│   ├── *View.swift           # SwiftUI views (chat, history, settings…)
+│   ├── AgentTools.swift      # Agent mode: file and shell tools in a folder (Mac)
+│   ├── KnowledgeBase.swift   # Knowledge bases: chunking, embeddings, retrieval
+│   ├── Memory.swift, Recall.swift, Skills.swift, Goals.swift, Tasks.swift
+│   ├── VoiceLibrary.swift, VoiceConversation.swift, SpeechRecognizer.swift
+│   ├── DecisionView.swift, Proteins.swift, RoomMapper.swift
+│   └── Info.plist            # App configuration
+├── BlabladorShare/           # Share extension for iOS and macOS
+└── Blablador.xcodeproj/      # Xcode project (project.yml for xcodegen)
+
+android/                      # Kotlin, Jetpack Compose — same features, no agent mode
+desktop/                      # Rust, egui — a smaller client
+cli/                          # bla, the coding agent, in Rust
+shared/                       # the model table bla and the desktop app read
+docs/                         # the website
+Tests/BlabladorTests/         # swift test from the repository root
+Package.swift                 # builds the app's sources as BlabladorCore, without BlabladorApp.swift
 ```
 
 ## Architecture
 
-The app uses SwiftUI with a MVVM-inspired approach:
+The app is SwiftUI with MVVM-ish separation: an `ObservableObject` store holds the state and the work, views draw it.
 
-- **BlabladorApp.swift**: The main app entry point that configures the root view
-- **WebView.swift**: Contains three main components:
-  - `WebViewStore`: ObservableObject that manages WKWebView state and navigation
-  - `WebView`: UIViewRepresentable wrapper for WKWebView
-  - `WebContainerView`: Main view with toolbar and navigation controls
+- **BlabladorApp.swift** creates the `ChatStore` and the root `ChatView`, plus `Launcher`, which runs `bla` when the
+  binary is started with `--cli`
+- **ChatStore** owns conversations, persistence, the selected model, sending and streaming; a reply runs per conversation
+  (`ChatStore.running`) and keeps going when the user switches chats. `runTurn` streams into the open message, records the
+  tool calls as steps and the timings, tokens and model as a `Trace`
+- **BlabladorAPI** talks to the OpenAI-compatible endpoint: `/models`, streaming `/chat/completions` with tools,
+  `/embeddings`, `/rerank`, `/audio/speech`, `/videos/sync` and `/systemone`; helper calls (chat titles, memory
+  learning) go to `helperModel`. The Room Mapper is a plain chat completion with a model that answers in commands and
+  JSON (`visualGeometry`), the molecular jobs go through `POST /responses` (`Proteins.swift`)
+- Views are `ChatView`, `MessageView`, `HistoryView`, `SettingsView` and the panels under the + button. `MarkdownText`
+  draws a reply, and `RichContent` renders maths with KaTeX and Mermaid diagrams in a `WKWebView` fed by JavaScript;
+  no web view wraps the chat itself
+- Everything the app saves goes through `EncryptedStorage` (AES-GCM, key in the Keychain)
 
 ## Configuration
 
-The default URL is configured in `WebView.swift`:
-
-```swift
-private enum WebConstants {
-    static let startURL = URL(string: "https://staging.helmholtz-blablador.fz-juelich.de")
-}
-```
-
-To change the target URL, modify the `startURL` value to point to your desired environment.
+The endpoint and the models are constants in `BlabladorAPI.swift`: `defaultEndpoint` (Blablador), `defaultModel`
+(`deepseek-v4.1-flash-at-hzdr`) and the aliases for the image, OCR, embedding, reranker and speech models. The endpoint
+can be changed at runtime in Settings (UserDefaults `apiEndpoint`), and the API key is a Helmholtz Codebase token the
+user enters, kept in the Keychain.
 
 ## Building
 
