@@ -46,6 +46,15 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libgtk-3-dev libdbus-1-dev
       - run: cargo test --release
       - run: cargo build --release --target ${{ matrix.target }}
+      - name: The app opens its window (no GPU here, as on many office PCs)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:BLABLADOR_NO_DIALOG = '1'
+          $p = Start-Process target/${{ matrix.target }}/release/blablador.exe -PassThru
+          Start-Sleep 15
+          if ($p.HasExited) { Get-ChildItem $env:APPDATA -Recurse -Filter blablador-error.log | Get-Content; throw "the app quit at start (exit $($p.ExitCode))" }
+          Stop-Process $p
       - name: Package
         id: package
         run: |
@@ -109,19 +118,28 @@ jobs:
           name="Blablador-$version-bla-${{ matrix.platform }}"
           mkdir "$name"
           cp README.md PLUGINS.md "$name/"
+          # The bare program is released next to the archive: `bla update` downloads it, checks it against
+          # SHA256SUMS.txt and writes it over itself, without needing a tar or zip library to unpack it.
           if [ "$RUNNER_OS" = Windows ]; then
+            bare="bla-$version-${{ matrix.platform }}.exe"
             cp target/${{ matrix.target }}/release/bla.exe "$name/bla.exe"
+            cp target/${{ matrix.target }}/release/bla.exe "$bare"
             7z a "$name.zip" "$name" >/dev/null
             echo "file=$name.zip" >> "$GITHUB_OUTPUT"
           else
+            bare="bla-$version-${{ matrix.platform }}"
             cp target/${{ matrix.target }}/release/bla "$name/bla"
+            cp target/${{ matrix.target }}/release/bla "$bare"
             tar czf "$name.tar.gz" "$name"
             echo "file=$name.tar.gz" >> "$GITHUB_OUTPUT"
           fi
+          echo "bare=$bare" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         with:
           name: bla-${{ matrix.platform }}
-          path: cli/${{ steps.package.outputs.file }}
+          path: |
+            cli/${{ steps.package.outputs.file }}
+            cli/${{ steps.package.outputs.bare }}
 
   windows-setup:
     # The installer Windows users download: the app and bla in one setup.exe (desktop/windows/blablador.iss).
@@ -171,7 +189,7 @@ jobs:
           gh release upload "$TAG" * --clobber -R "$GITHUB_REPOSITORY"
           gh release download "$TAG" -p SHA256SUMS.txt -R "$GITHUB_REPOSITORY" -D sums || true
           touch sums/SHA256SUMS.txt
-          for file in Blablador-*; do
+          for file in Blablador-* bla-*; do
             grep -v " $file\$" sums/SHA256SUMS.txt > sums/next.txt || true
             sha256sum "$file" >> sums/next.txt
             mv sums/next.txt sums/SHA256SUMS.txt
