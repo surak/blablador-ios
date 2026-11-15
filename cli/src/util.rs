@@ -274,14 +274,19 @@ pub fn run(mut command: Command, input: &[u8], timeout: Duration, cancel: &Atomi
     Ok(Finished { code, stdout, stderr, timed_out })
 }
 
-/// Stops a whole process group (Unix); without `unsafe`, through kill(1).
+/// Stops a whole process group (Unix); without `unsafe`, through kill(1). Windows has no process groups, so
+/// `taskkill /T` walks the tree of children instead: a stopped job must not leave what it started running.
 pub fn kill_group(pid: u32) {
     #[cfg(unix)]
     {
         // `--` matters: without it, procps kill (Ubuntu 22.04) misreads `-<pgid>` and kills its own group.
         let _ = Command::new("kill").args(["-s", "KILL", "--", &format!("-{pid}")]).stdout(Stdio::null()).stderr(Stdio::null()).status();
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        let _ = Command::new("taskkill").args(["/T", "/F", "/PID", &pid.to_string()]).stdout(Stdio::null()).stderr(Stdio::null()).status();
+    }
+    #[cfg(not(any(unix, windows)))]
     let _ = pid;
 }
 

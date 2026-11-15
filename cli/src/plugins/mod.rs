@@ -9,6 +9,7 @@ pub mod context;
 pub mod core_tools;
 pub mod external;
 pub mod hooks;
+pub mod hermes;
 pub mod mcp;
 pub mod memory;
 pub mod openai;
@@ -36,6 +37,7 @@ pub const BUILT_IN: &[(&str, &str)] = &[
     ("web", "web_search on Blablador's SearXNG and read_page for public pages and PDFs"),
     ("agents", "Subagents: the task tool runs a fresh bla on a self-contained job, read-only ones in parallel"),
     ("processes", "Background shell jobs (dev servers, watchers, long builds): bash_background, bash_output, bash_kill; /jobs"),
+    ("hermes", "Hermes' scheduled jobs: cron_list, cron_edit, cron_state, cron_runs; /cron"),
     ("mcp", "MCP servers from ~/.bla/mcp.json and a trusted project's .mcp.json, as tools"),
     ("checkpoints", "Keeps files as they were before each turn; /undo restores them"),
     ("compaction", "Summarises long conversations so they fit the model's context"),
@@ -97,6 +99,10 @@ pub fn load(o: Options) -> (Vec<Arc<dyn Plugin>>, Vec<String>) {
     }
     if on("processes") {
         plugins.push(Arc::new(processes::Processes::new()));
+    }
+    // Only on a machine that has Hermes: elsewhere the tools could do nothing but say so.
+    if on("hermes") && hermes::Hermes::present() {
+        plugins.push(Arc::new(hermes::Hermes));
     }
     if on("agents") {
         plugins.push(Arc::new(agents::Agents::new(&o.model)));

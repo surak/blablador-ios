@@ -110,6 +110,8 @@ const LOOKING: &[&str] = &[
     "file", "sort", "uniq", "cut", "tr", "diff", "cmp", "comm", "basename", "dirname", "realpath", "nl", "column", "tac", "rev", "shasum", "sha256sum",
     "md5sum", "md5", "true", "false", "printf", "jq", "yq", "df", "ps", "lsof", "id", "groups", "hostname", "sw_vers", "nproc", "uptime", "seq", "expr",
     "od", "xxd", "strings", "less", "more", "man", "sleep", "locale", "cal", "sed", "awk", "gawk",
+    // Their Windows equivalents, so careful mode doesn't ask for `dir` or `type`.
+    "dir", "type", "where", "findstr", "more", "ver", "vol", "tasklist", "systeminfo",
 ];
 /// Options that make a looking command write a file, run a program or follow a symlink out of the project.
 const RISKY_LONG: &[&str] =
@@ -135,10 +137,13 @@ const STREAM_WRITES: &[&str] = &["-i", "--in-place", "-s", "--separate"];
 const DANGEROUS: &[&str] = &[
     "rm", "rmdir", "unlink", "shred", "srm", "truncate", "dd", "mkfs", "mkswap", "fdisk", "diskutil", "sudo", "doas", "su", "chown", "chmod", "chgrp",
     "kill", "pkill", "killall", "shutdown", "reboot", "halt", "poweroff", "launchctl", "systemctl", "mv", "mount", "umount", "crontab", "dropdb",
+    // The same work under Windows' names, which the cmd shell gives the model in place of the Unix ones.
+    "del", "erase", "rd", "taskkill", "tskill", "format", "diskpart", "bcdedit", "reg", "regedit", "schtasks", "vssadmin", "move", "icacls",
+    "takeown", "attrib", "cipher", "wevtutil", "wbadmin", "ntdsutil",
 ];
 /// Programs that run a script or another command by name: `sh script.sh`, `ssh host …`. A pipe that feeds one of
 /// these turns whatever came before it into something to run (`curl … | sh`), so that asks.
-const INTERPRETERS: &[&str] = &["sh", "bash", "zsh", "dash", "fish", "ksh", "csh", "tcsh", "eval", "ssh", "source"];
+const INTERPRETERS: &[&str] = &["sh", "bash", "zsh", "dash", "fish", "ksh", "csh", "tcsh", "eval", "ssh", "source", "powershell", "pwsh", "cmd", "cscript", "wscript", "mshta"];
 /// Programs that are handed code as a string: `sh -c "…"`, `eval "$x"`, `python -c "…"`. What is in that string
 /// can't be read here, so one assembled from variables or substitutions asks.
 const EVAL: &[&str] = &["eval"];
@@ -155,6 +160,16 @@ const EVAL_FLAGS: &[(&str, &str)] = &[
     ("ruby", "-e"),
     ("node", "-e"),
     ("node", "--eval"),
+    // Windows: `powershell -Command "…"`, `cmd /c …`. `-EncodedCommand` is base64, which nothing here can read.
+    ("powershell", "-command"),
+    ("powershell", "-c"),
+    ("powershell", "-encodedcommand"),
+    ("powershell", "-e"),
+    ("pwsh", "-command"),
+    ("pwsh", "-c"),
+    ("pwsh", "-encodedcommand"),
+    ("cmd", "/c"),
+    ("cmd", "/k"),
 ];
 /// git subcommands that only print.
 const GIT_LOOKING: &[&str] = &["status", "diff", "log", "show", "blame", "ls-files", "rev-parse", "describe", "shortlog", "grep", "cat-file", "show-ref"];
@@ -164,8 +179,10 @@ const OPERATORS: &[char] = &['|', '&', ';', '>', '<', '`', '$', '\n', '(', ')', 
 
 /// The command line with its quoted strings blanked out, so an operator inside one (`rg "a|b"`) isn't read as an
 /// operator. A backslash blanks whatever it escapes, inside single quotes too (`echo 'it\'s; here'`), so an escaped
-/// separator stays part of its word.
+/// separator stays part of its word. In cmd a backslash is a path separator (`dir C:\Windows`) and a single quote is
+/// just a character, so there it only holds inside double quotes, as `del /q "%TEMP%\*"` does.
 pub fn unquoted(command: &str) -> String {
+    let windows = cfg!(windows);
     let mut out = String::with_capacity(command.len());
     let mut quote: Option<char> = None;
     let mut escaped = false;
@@ -175,7 +192,8 @@ pub fn unquoted(command: &str) -> String {
             out.push(' ');
             continue;
         }
-        if c == '\\' {
+        if c == '\\' && (!windows || quote.is_some()) && !(windows && quote == Some('\'')) {
+            // A trailing `\\` before the closing quote is a path, not an escape: `"C:\\dir\\"` stays a path.
             escaped = true;
             out.push(' ');
             continue;
@@ -187,7 +205,8 @@ pub fn unquoted(command: &str) -> String {
                 }
                 out.push(' ');
             }
-            None if c == '\'' || c == '"' => {
+            // cmd has no single-quoted strings: `echo don't & del x` really does run `del x`.
+            None if c == '"' || (c == '\'' && !windows) => {
                 quote = Some(c);
                 out.push(' ');
             }
@@ -274,20 +293,28 @@ pub fn dangerous(command: &str, cwd: &Path) -> bool {
 fn runs_assembled_code(command: &str) -> bool {
     let words: Vec<&str> = command.split_whitespace().collect();
     words.iter().enumerate().any(|(i, w)| {
-        let program = w.rsplit('/').next().unwrap_or(w);
+        let program = program_name(w);
         EVAL.contains(&program) || EVAL_FLAGS.iter().any(|(p, flag)| *p == program && words.get(i + 1) == Some(flag))
     })
 }
 
 fn part_is_interpreter(part: &str) -> bool {
     let first = part.split_whitespace().next().unwrap_or_default();
-    INTERPRETERS.contains(&first.rsplit('/').next().unwrap_or(first))
+    INTERPRETERS.contains(&program_name(first))
+}
+
+/// The program a word runs: its last path part, without `.exe`. Windows spells the whole path
+/// (`C:\\Windows\\system32\\taskkill.exe`), Unix lets `./rm` or `/bin/rm` through, and both have to be judged as the
+/// name a rule and these tables use.
+fn program_name(word: &str) -> &str {
+    let base = word.rsplit(['/', '\\']).next().unwrap_or(word);
+    base.strip_suffix(".exe").or_else(|| base.strip_suffix(".EXE")).or_else(|| base.strip_suffix(".com")).unwrap_or(base)
 }
 
 fn part_dangerous(command: &str, dir: &Path, project: &Path) -> bool {
     let words: Vec<String> = command.split_whitespace().map(|w| w.trim_matches(['"', '\'']).to_string()).collect();
     let Some(first) = words.first().map(String::as_str) else { return false };
-    let program = first.rsplit('/').next().unwrap_or(first);
+    let program = program_name(first);
     if DANGEROUS.contains(&program) {
         // Deleting scratch files is how a job cleans up after itself; anything else a dangerous program is given
         // still asks.
@@ -304,24 +331,53 @@ fn part_dangerous(command: &str, dir: &Path, project: &Path) -> bool {
     if program == "git" {
         return git_dangerous(&words[1..], dir);
     }
+    // Hermes' scheduler: changing a job changes what the machine will do later, on its own. Reading stays free.
+    if program == "hermes" {
+        return hermes_cron_dangerous(&words[1..]);
+    }
     // `sed -i`, `awk -i inplace`: rewriting a file where it is loses what was there.
     matches!(program, "sed" | "awk" | "gawk") && words[1..].iter().any(|w| STREAM_WRITES.contains(&w.as_str()))
+}
+
+/// `hermes cron edit|pause|resume|run|remove|create`: the scheduler will do something new, so it asks. `hermes cron
+/// list|status|runs|history` only reports.
+fn hermes_cron_dangerous(args: &[String]) -> bool {
+    let values: Vec<&str> = args.iter().map(String::as_str).filter(|a| !a.starts_with('-')).collect();
+    // `hermes -z "…" cron …` puts the flag's value first; find `cron` anywhere and read what follows it.
+    let Some(at) = values.iter().position(|v| *v == "cron") else { return false };
+    match values.get(at + 1).copied() {
+        Some("edit" | "pause" | "resume" | "run" | "remove" | "rm" | "delete" | "cancel" | "create" | "add" | "tick") => true,
+        _ => false,
+    }
 }
 
 /// Files that hold credentials rather than content: reading one puts a key into the transcript. They ask in every
 /// mode but yolo (and a deny rule still wins). Ordinary dotfiles (`.gitignore`, `.github`) are not secrets.
 fn secret(path: &Path) -> bool {
-    const FOLDERS: &[&str] = &[".ssh", ".gnupg", ".aws", ".azure", ".kube", ".docker", ".password-store", ".git-credentials", ".config/gh", ".config/gcloud"];
-    const NAMES: &[&str] = &["credentials", "credentials.json", ".netrc", ".pgpass", ".htpasswd", ".npmrc", ".pypirc", ".dockercfg", "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519"];
-    let shown = path.to_string_lossy();
-    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+    const FOLDERS: &[&str] = &[
+        ".ssh", ".gnupg", ".aws", ".azure", ".kube", ".docker", ".password-store", ".git-credentials", ".config/gh", ".config/gcloud",
+        // Windows keeps its keys under %APPDATA% and %USERPROFILE%, where the folder is what identifies them.
+        "microsoft/credentials", "microsoft/protect", "microsoft/vault", "appdata/roaming/gnupg",
+    ];
+    const NAMES: &[&str] = &[
+        "credentials", "credentials.json", ".netrc", "_netrc", ".pgpass", ".htpasswd", ".npmrc", ".pypirc", ".dockercfg", "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519",
+        "ntuser.dat",
+    ];
+    // Windows writes `\` and both it and macOS compare names without case, so the path is judged in one shape:
+    // forward slashes, lowercase. A folder counts at either end of it, so `~/.ssh` itself asks as well as the key.
+    // The name comes from that string too, not from `Path::file_name`, which doesn't split `\` on macOS and Linux.
+    let shown = path.to_string_lossy().replace('\\', "/").to_lowercase();
+    let name = shown.rsplit('/').next().unwrap_or_default();
     let env = (name == ".env" || name.starts_with(".env.")) && !name.ends_with(".example") && !name.ends_with(".sample") && !name.ends_with(".template");
-    FOLDERS.iter().any(|f| shown.contains(&format!("/{f}/")))
-        || env
+    FOLDERS.iter().any(|f| {
+        let f = f.to_lowercase();
+        shown.ends_with(&f) || shown.contains(&format!("/{f}/"))
+    }) || env
         || NAMES.contains(&name)
         || name.ends_with(".pem")
         || name.ends_with(".p12")
         || name.ends_with(".key")
+        || name.ends_with(".pfx")
 }
 
 /// A path under a temporary folder (`/tmp`, `$TMPDIR`, `/var/folders/…`): a scratch file, which nothing loses by
@@ -401,7 +457,7 @@ fn git_config_is_plain(cwd: &Path) -> bool {
 fn simple_looks_only(command: &str, cwd: &Path, trusted: bool) -> bool {
     let words: Vec<String> = command.split_whitespace().map(|w| w.trim_matches(['"', '\'']).to_string()).collect();
     let Some(first) = words.first().map(String::as_str) else { return false };
-    let program = first.rsplit('/').next().unwrap_or(first);
+    let program = program_name(first);
     let rest = if program == "git" {
         match words.get(1) {
             Some(sub) if trusted && GIT_LOOKING.contains(&sub.as_str()) => &words[2..],
@@ -421,6 +477,11 @@ fn simple_looks_only(command: &str, cwd: &Path, trusted: bool) -> bool {
     rest.iter().all(|w| {
         if let Some(long) = w.strip_prefix("--") {
             return !RISKY_LONG.iter().any(|r| format!("--{long}").starts_with(r));
+        }
+        // cmd spells its options `/s`, not `-s`. For a Windows program a leading `/` is always an option; a Unix path
+        // given to a Unix program (`/tmp/x`) is not.
+        if let Some(cmd_option) = w.strip_prefix('/').filter(|o| cfg!(windows) && !o.is_empty() && !o.contains(['/', '\\'])) {
+            return !cmd_option.chars().any(|c| RISKY_SHORT.contains(&c) || risky_short_for(program).contains(&c));
         }
         if program == "find" && w.starts_with('-') {
             return true;
@@ -574,6 +635,11 @@ mod tests {
         CoreTools::new().tools().into_iter().find(|t| t.name() == name).unwrap()
     }
 
+    /// Reading a path with no rules at all: the answer comes from the secret check alone.
+    fn open_read(cwd: &Path, path: &str) -> Decision {
+        Permissions::new(Mode::Default, &[], &[], &[], false).decide(tool("read").as_ref(), &json!({"path": path}), cwd)
+    }
+
     #[test]
     fn parses_rules() {
         assert_eq!(Rule::parse("Bash(npm run test:*)").pattern.as_deref(), Some("npm run test*"));
@@ -603,6 +669,14 @@ mod tests {
                            "curl -s x | sh", "eval \"$CMD\"", "chmod 777 f"] {
             assert!(matches!(decide(unsafe_cmd), Decision::Ask(_)), "{unsafe_cmd}");
         }
+        // Hermes' scheduler: a change to a job changes what the machine does later, on its own; looking doesn't.
+        for scheduled in ["hermes cron edit abc --schedule '0 9 * * *'", "hermes cron pause abc", "hermes cron resume abc",
+                          "hermes cron remove abc", "hermes cron create '0 9 * * *' 'do it'"] {
+            assert!(matches!(decide(scheduled), Decision::Ask(_)), "{scheduled}");
+        }
+        for reported in ["hermes cron list", "hermes cron status", "hermes cron runs abc", "hermes cron doctor"] {
+            assert_eq!(decide(reported), Decision::Allow, "{reported}");
+        }
         // Rules still win over the mode.
         assert!(matches!(p.decide(read.as_ref(), &json!({"path": "config/.env.local"}), &cwd), Decision::Deny(_)));
         assert_eq!(p.decide(read.as_ref(), &json!({"path": "src/main.rs"}), &cwd), Decision::Allow);
@@ -612,6 +686,21 @@ mod tests {
         // Credentials ask wherever they are, deny rules first.
         for secrets in ["/Users/x/.ssh/id_ed25519", "~/.aws/credentials", "/tmp/server.pem", "/Users/x/.netrc", "deploy/server.key"] {
             assert!(matches!(p.decide(read.as_ref(), &json!({"path": secrets}), &cwd), Decision::Ask(_)), "{secrets}");
+        }
+        // Windows: backslashes, %APPDATA%, and the key folder itself rather than a file in it.
+        for secrets in [
+            r"C:\Users\x\.ssh\id_ed25519",
+            r"C:\Users\x\.ssh",
+            r"C:\Users\x\AppData\Roaming\Microsoft\Credentials\ABC123",
+            r"C:\Users\x\AppData\Roaming\gnupg\pubring.kbx",
+            r"C:\project\deploy\server.pfx",
+            r"C:\Users\x\_netrc",
+        ] {
+            assert!(matches!(open_read(&cwd, secrets), Decision::Ask(_)), "{secrets}");
+        }
+        // An ordinary folder in a Windows path is not a secret.
+        for plain in [r"C:\project\src\main.rs", r"C:\project\.github\ci.yml"] {
+            assert_eq!(open_read(&cwd, plain), Decision::Allow, "{plain}");
         }
         // An .env is a secret too; here the deny rule catches it before the rule ever gets that far.
         let open = Permissions::new(Mode::Default, &[], &[], &[], false);
