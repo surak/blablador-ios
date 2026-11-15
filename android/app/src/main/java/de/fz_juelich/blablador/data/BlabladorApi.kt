@@ -263,7 +263,16 @@ class BlabladorApi(private val apiKey: String) {
             call.await().use { response ->
                 checkSize(response, MAX_VIDEO_BYTES)
                 if (!response.isSuccessful) throw BlabladorException(response.code, response.body?.string().orEmpty().take(500))
-                response.body?.bytes() ?: ByteArray(0)
+                val bytes = response.body?.bytes() ?: ByteArray(0)
+                // An MP4 starts with an "ftyp" box. Anything else (an error page, a cut-off answer) would be saved and
+                // shown as a black video, so say what came back instead.
+                if (bytes.size <= 12 || String(bytes, 4, 4, Charsets.ISO_8859_1) != "ftyp") {
+                    val text = String(bytes.copyOf(minOf(bytes.size, 300))).trim()
+                    throw BlabladorException(0, if (text.isEmpty())
+                        "The video service sent no video (${bytes.size} bytes). Try again, and keep the app open while it works."
+                    else "The video service sent no video: $text")
+                }
+                bytes
             }
         }
     }

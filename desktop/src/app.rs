@@ -572,15 +572,6 @@ impl App {
                 .desired_rows(2)
                 .desired_width(ui.available_width() - button_width - 8.0);
             ui.add(editor);
-            if let Some(path) = std::env::var_os("BLABLADOR_INPUT_PROBE") {
-                let events: Vec<String> = ui.input(|i| i.raw.events.iter().filter(|e| matches!(e, egui::Event::Key { pressed: true, .. } | egui::Event::Text(_) | egui::Event::WindowFocused(_))).map(|e| format!("{e:?}")).collect());
-                if !events.is_empty() {
-                    use std::io::Write;
-                    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(format!("{}.log", path.to_string_lossy())) {
-                        let _ = writeln!(f, "before={nothing_focused} after={:?} input={:?} events={events:?}", ui.memory(|m| m.focused()), self.input);
-                    }
-                }
-            }
             if busy {
                 if ui.add_sized([button_width, 32.0], egui::Button::new("Stop")).clicked() {
                     if let Some(id) = self.current {

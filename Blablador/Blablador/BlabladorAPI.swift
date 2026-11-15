@@ -142,6 +142,14 @@ struct BlabladorAPI {
         request.httpBody = body
         let (data, response) = try await URLSession.shared.data(for: request)
         try Self.validate(response, body: String(data: data.prefix(500), encoding: .utf8) ?? "")
+        // An MP4 starts with an "ftyp" box. Anything else (an error page, a cut-off answer) would be saved and shown as
+        // a black video, so say what came back instead.
+        guard data.count > 12, data[data.startIndex + 4 ..< data.startIndex + 8] == Data("ftyp".utf8) else {
+            let text = String(data: data.prefix(300), encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            throw NSError(domain: "Blablador", code: 0, userInfo: [NSLocalizedDescriptionKey:
+                text.isEmpty ? "The video service sent no video (\(data.count) bytes). Try again, and keep the app open while it works."
+                             : "The video service sent no video: \(text)"])
+        }
         return data
     }
 
