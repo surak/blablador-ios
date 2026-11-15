@@ -858,7 +858,23 @@ impl eframe::App for App {
         self.handle_events();
         // CI types into the window and reads back what reached the composer.
         if let Some(path) = std::env::var_os("BLABLADOR_INPUT_PROBE") {
-            let _ = std::fs::write(path, &self.input);
+            let (keys, texts, imes) = ctx.input(|i| {
+                i.raw.events.iter().fold((0, 0, 0), |(k, t, m), e| match e {
+                    egui::Event::Key { .. } => (k + 1, t, m),
+                    egui::Event::Text(_) => (k, t + 1, m),
+                    egui::Event::Ime(_) => (k, t, m + 1),
+                    _ => (k, t, m),
+                })
+            });
+            let counts = ctx.data_mut(|d| {
+                let c = d.get_temp_mut_or_default::<(usize, usize, usize)>(egui::Id::new("probe"));
+                *c = (c.0 + keys, c.1 + texts, c.2 + imes);
+                *c
+            });
+            let focused = ctx.memory(|m| m.has_focus(egui::Id::new("composer")));
+            let window = ctx.input(|i| i.viewport().focused);
+            let _ = std::fs::write(path, format!("{}\nkeys={} text={} ime={} composer_focused={focused} window_focused={window:?}",
+                self.input, counts.0, counts.1, counts.2));
             ctx.request_repaint_after(std::time::Duration::from_millis(200));
         }
 

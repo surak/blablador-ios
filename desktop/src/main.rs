@@ -24,7 +24,12 @@ fn main() {
     // machines (older graphics, virtual machines, Remote Desktop) have no OpenGL the app can use.
     let mut errors = Vec::new();
     let mut runtime = Some(runtime);
-    for renderer in [eframe::Renderer::Wgpu, eframe::Renderer::Glow] {
+    let renderers = match std::env::var("BLABLADOR_RENDERER").as_deref() {
+        Ok("glow") => vec![eframe::Renderer::Glow],
+        Ok("wgpu") => vec![eframe::Renderer::Wgpu],
+        _ => vec![eframe::Renderer::Wgpu, eframe::Renderer::Glow],
+    };
+    for renderer in renderers {
         let Some(rt) = runtime.take() else { break };
         let cell = std::rc::Rc::new(std::cell::RefCell::new(Some(rt)));
         let taken = cell.clone();
