@@ -159,7 +159,10 @@ pub fn report() -> Option<String> {
 /// that tool's store. Overwriting any of them would be undone by the next `brew upgrade` and would break a
 /// verification, so those are left alone and pointed at their own updater.
 fn installer() -> Option<String> {
-    let path = exe_path();
+    installer_at(&exe_path())
+}
+
+fn installer_at(path: &Path) -> Option<String> {
     let text = path.to_string_lossy().replace('\\', "/");
     if text.contains(".app/Contents/Resources/") {
         return Some(
@@ -660,6 +663,27 @@ mod tests {
         assert!(refused.contains("does not match SHA256SUMS.txt"), "{refused}");
         assert_eq!(std::fs::read(&target).unwrap(), program, "a bad download never lands");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Whoever installed bla owns its update, and says how.
+    #[test]
+    fn a_bla_that_belongs_to_something_else_is_left_alone() {
+        let cases = [
+            ("/Applications/Blablador.app/Contents/Resources/bla", "Blablador app"),
+            ("/opt/homebrew/Caskroom/blablador/3.12.7/Blablador.app/Contents/Resources/bla", "Blablador app"),
+            ("/opt/homebrew/Cellar/bla/3.12.7/bin/bla", "brew upgrade bla"),
+            ("/usr/local/homebrew/bin/bla", "brew upgrade bla"),
+            ("/Users/x/.cargo/bin/bla", "cargo install"),
+            (r"C:\Users\x\.cargo\bin\bla.exe", "cargo install"),
+        ];
+        for (path, expected) in cases {
+            let said = installer_at(Path::new(path)).unwrap_or_else(|| panic!("{path} must be left alone"));
+            assert!(said.contains(expected), "{path}: {said}");
+        }
+        // A bla the install script put on the PATH is ours.
+        for path in ["/usr/local/bin/bla", "/Applications/bla", r"C:\Users\x\AppData\Local\Programs\bla\bla.exe"] {
+            assert_eq!(installer_at(Path::new(path)), None, "{path} may update itself");
+        }
     }
 
     #[test]
