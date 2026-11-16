@@ -1246,9 +1246,7 @@ fn draw(frame: &mut Frame, s: &mut State, tick: usize) {
     if !s.info.effort.is_empty() {
         parts.push(format!("effort {}", s.info.effort));
     }
-    if s.info.input_tokens > 0 {
-        parts.push(format!("{} in · {} out", tokens(s.info.input_tokens), tokens(s.info.output_tokens)));
-    }
+    parts.push(format!("{} tokens in · {} out", tokens(s.info.input_tokens), tokens(s.info.output_tokens)));
     parts.push(s.info.cwd.clone());
     let left = format!("  {}", parts.join(" · "));
     let right = "wheel scrolls · drag copies · click opens ";
