@@ -162,7 +162,10 @@ fn main() {
 
     if argv.len() == 1 {
         match argv[0].as_str() {
-            "login" => return login(),
+            "login" => {
+                login();
+                return;
+            }
             "logout" => {
                 secret::delete();
                 println!("The key is removed.");
@@ -321,7 +324,8 @@ fn main() {
 const NEW_KEY_URL: &str = "https://codebase.helmholtz.cloud/-/user_settings/personal_access_tokens/legacy/new";
 const KEY_GUIDE: &str = "https://sdlaml.pages.jsc.fz-juelich.de/ai/guides/blablador_api_access/";
 
-fn login() {
+/// Returns true when a key is saved by the end, so a caller that needs one can carry on.
+fn login() -> bool {
     // Without a terminal this is a script or a pipe, where a browser would be wrong and a prompt invisible.
     let interactive = std::io::stdin().is_terminal();
     // The endpoint as configured, so a key is tried against the server it will actually be used with.
@@ -371,7 +375,8 @@ fn login() {
         k.trim().to_string()
     };
     if key.is_empty() {
-        fail(&format!("No key given, so nothing was changed. Make one at {NEW_KEY_URL} and run `bla login` again."));
+        eprintln!("No key given, so nothing was changed. Make one at {NEW_KEY_URL} and run `bla login` again.");
+        return false;
     }
 
     // Tried before it is trusted: a mistyped or expired token says so now, not on the first question.
@@ -391,8 +396,14 @@ fn login() {
         }
     }
     match secret::save(&key) {
-        Ok(place) => println!("Saved the key in {place}."),
-        Err(e) => fail(&e),
+        Ok(place) => {
+            println!("Saved the key in {place}.");
+            true
+        }
+        Err(e) => {
+            eprintln!("Could not save the key: {e}");
+            false
+        }
     }
 }
 
@@ -497,6 +508,7 @@ const CHAT_HELP: &str = "/help         this list
 /new          start a new session
 /sessions     recent sessions
 /resume ID    continue a session
+/login        give or change the API key
 /model [ID]   show or change the model
 /models       list the models
 /effort LEVEL thinking effort: off, low, medium, high, max
@@ -588,6 +600,17 @@ fn run_chat(agent: &mut Agent, settings: &Settings, busy: &AtomicBool, thinking:
                     screen.notice("New session.");
                 }
                 "sessions" => screen.say(&sessions_text()),
+                // The way out of the circle the error message used to send people round: `bla login` cannot be
+                // typed in here, but this can.
+                "login" => {
+                    let mut guard = screen.suspend();
+                    let saved = login();
+                    guard.resume();
+                    if saved {
+                        // The key is live from here (secret::save), so the next question works without a restart.
+                        screen.notice("Key saved. Ask your question.");
+                    }
+                }
                 "resume" => match Session::open(args) {
                     // Another folder has its own settings, trust and plugins: start bla there instead.
                     Ok(s) if s.cwd != agent.session.cwd => screen.error(&format!("That session is in {}; run bla -r {args} there.", s.cwd.display())),

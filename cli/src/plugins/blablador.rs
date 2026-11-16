@@ -32,14 +32,23 @@ struct Api {
 }
 
 impl Api {
+    /// The key to send now: one saved since this was built wins, so `/login` in the chat takes effect at once.
+    fn live_key(&self) -> Result<String, String> {
+        let key = crate::secret::api_key().filter(|k| !k.trim().is_empty()).unwrap_or_else(|| self.key.clone());
+        if key.trim().is_empty() {
+            return Err("No API key. Run `bla login`.".into());
+        }
+        Ok(key)
+    }
+
     fn post_json(&self, path: &str, body: &Value) -> Result<Value, String> {
-        self.check()?;
-        let r = self.agent.post(&format!("{}/{path}", self.endpoint)).set("Authorization", &format!("Bearer {}", self.key)).set("Content-Type", "application/json");
+        let key = self.live_key()?;
+        let r = self.agent.post(&format!("{}/{path}", self.endpoint)).set("Authorization", &format!("Bearer {key}")).set("Content-Type", "application/json");
         answer(r.send_string(&body.to_string()))
     }
 
     fn post_multipart(&self, path: &str, fields: &[(&str, &str)], file: (&str, &str, &[u8])) -> Result<Value, String> {
-        self.check()?;
+        let key = self.live_key()?;
         let boundary = format!("bla-{}", crate::util::random_hex(16));
         let mut body = Vec::new();
         for (name, value) in fields {
@@ -52,7 +61,7 @@ impl Api {
         let r = self
             .agent
             .post(&format!("{}/{path}", self.endpoint))
-            .set("Authorization", &format!("Bearer {}", self.key))
+            .set("Authorization", &format!("Bearer {key}"))
             .set("Content-Type", &format!("multipart/form-data; boundary={boundary}"));
         answer(r.send_bytes(&body))
     }
@@ -60,21 +69,14 @@ impl Api {
     fn get_json(&self, url: &str, auth: bool) -> Result<Value, String> {
         let mut r = self.agent.get(url).timeout(Duration::from_secs(15));
         if auth {
-            self.check()?;
-            r = r.set("Authorization", &format!("Bearer {}", self.key));
+            let key = self.live_key()?;
+            r = r.set("Authorization", &format!("Bearer {key}"));
         }
         answer(r.call())
     }
 
     fn get_text(&self, url: &str) -> Result<String, String> {
         self.agent.get(url).timeout(Duration::from_secs(15)).call().map_err(|e| e.to_string())?.into_string().map_err(|e| e.to_string())
-    }
-
-    fn check(&self) -> Result<(), String> {
-        if self.key.is_empty() {
-            return Err("No API key. Run `bla login`.".into());
-        }
-        Ok(())
     }
 
     /// A chat completion with one image; the answer's text.

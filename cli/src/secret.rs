@@ -2,6 +2,12 @@
 //! (service de.fz-juelich.blablador, account apiKey), else a file only the user can read.
 
 use std::path::PathBuf;
+use std::sync::Mutex;
+
+/// The key as it is known now. Cached so that a request doesn't read the keyring every time, and updated by
+/// [`save`], so that a key given after a provider was built (say `/login` in the chat) is the one requests use:
+/// without this, logging in mid-chat would keep failing until bla was restarted.
+static LIVE: Mutex<Option<String>> = Mutex::new(None);
 
 const SERVICE: &str = "de.fz-juelich.blablador";
 const ACCOUNT: &str = "apiKey";
@@ -18,6 +24,15 @@ fn file() -> PathBuf {
 }
 
 pub fn api_key() -> Option<String> {
+    if let Some(key) = LIVE.lock().unwrap_or_else(|e| e.into_inner()).clone() {
+        return Some(key);
+    }
+    let key = resolve()?;
+    *LIVE.lock().unwrap_or_else(|e| e.into_inner()) = Some(key.clone());
+    Some(key)
+}
+
+fn resolve() -> Option<String> {
     if let Ok(key) = std::env::var("BLABLADOR_API_KEY") {
         if !key.trim().is_empty() {
             return Some(key.trim().to_string());
@@ -34,6 +49,8 @@ pub fn save(key: &str) -> Result<&'static str, String> {
     if key.is_empty() {
         return Err("no key given".into());
     }
+    // Before anything can fail: whatever is running now must use the key the user just gave.
+    *LIVE.lock().unwrap_or_else(|e| e.into_inner()) = Some(key.to_string());
     if let Some(e) = entry() {
         // Read back: some keyrings accept a write and forget it.
         if e.set_password(key).is_ok() && entry().and_then(|e| e.get_password().ok()).as_deref() == Some(key) {
@@ -50,6 +67,7 @@ pub fn save(key: &str) -> Result<&'static str, String> {
 }
 
 pub fn delete() {
+    *LIVE.lock().unwrap_or_else(|e| e.into_inner()) = None;
     if let Some(e) = entry() {
         let _ = e.delete_credential();
     }

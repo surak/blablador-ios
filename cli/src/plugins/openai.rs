@@ -33,14 +33,23 @@ impl OpenAi {
         Ok(OpenAi { endpoint, key, agent })
     }
 
-    fn post(&self, path: &str, body: &Value) -> Result<ureq::Response, String> {
-        if self.key.is_empty() {
+    /// The key to send now: the one saved since this was built wins, so `/login` in the chat takes effect at once.
+    fn live_key(&self) -> Result<String, String> {
+        let key = crate::secret::api_key().filter(|k| !k.trim().is_empty()).unwrap_or_else(|| self.key.clone());
+        if key.trim().is_empty() {
             return Err("No API key. Run `bla login`, or set BLABLADOR_API_KEY.".into());
         }
+        Ok(key)
+    }
+
+    fn post(&self, path: &str, body: &Value) -> Result<ureq::Response, String> {
+        // The key as it is now, not as it was at startup: a key given by /login in the chat must work at once, and
+        // bla can be started with no key at all.
+        let key = self.live_key()?;
         match self
             .agent
             .post(&format!("{}/{path}", self.endpoint))
-            .set("Authorization", &format!("Bearer {}", self.key))
+            .set("Authorization", &format!("Bearer {key}"))
             .set("Content-Type", "application/json")
             .send_string(&body.to_string())
         {
@@ -222,13 +231,11 @@ impl Provider for OpenAi {
     }
 
     fn models(&self) -> Result<Vec<String>, String> {
-        if self.key.is_empty() {
-            return Err("No API key. Run `bla login`, or set BLABLADOR_API_KEY.".into());
-        }
+        let key = self.live_key()?;
         let response = self
             .agent
             .get(&format!("{}/models", self.endpoint))
-            .set("Authorization", &format!("Bearer {}", self.key))
+            .set("Authorization", &format!("Bearer {key}"))
             .call()
             .map_err(|e| e.to_string())?;
         let v: Value = response.into_json().map_err(|e| e.to_string())?;

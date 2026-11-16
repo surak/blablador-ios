@@ -474,12 +474,53 @@ impl Screen {
         Some(line)
     }
 
+    /// Gives the terminal back for a moment, for something that talks to the user in the ordinary way (`/login`
+    /// asks for a key with a hidden prompt). The screen comes back when the guard is dropped.
+    pub fn suspend(&self) -> Suspend<'_> {
+        restore();
+        Suspend { screen: self, resumed: false }
+    }
+
     /// Gives the terminal back.
     pub fn close(mut self) {
         self.with(|s| s.stop = true);
         if let Some(t) = self.thread.take() {
             let _ = t.join();
         }
+    }
+}
+
+/// See [`Screen::suspend`]: the screen takes the terminal back when this is dropped, or at once with [`resume`].
+pub struct Suspend<'a> {
+    screen: &'a Screen,
+    resumed: bool,
+}
+
+impl Suspend<'_> {
+    /// Takes the screen back now rather than at the end of the borrow.
+    pub fn resume(mut self) {
+        self.take_back();
+    }
+
+    fn take_back(&mut self) {
+        if self.resumed {
+            return;
+        }
+        self.resumed = true;
+        let _ = terminal::enable_raw_mode();
+        let mut out = std::io::stdout();
+        let _ = execute!(out, EnterAlternateScreen, EnableMouseCapture, EnableBracketedPaste);
+        if terminal::supports_keyboard_enhancement().unwrap_or(false) {
+            let _ = execute!(out, PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES));
+        }
+        // Painted whole again: the other program wrote over the screen.
+        self.screen.with(|s| s.dirty = true);
+    }
+}
+
+impl Drop for Suspend<'_> {
+    fn drop(&mut self) {
+        self.take_back();
     }
 }
 
