@@ -9,6 +9,7 @@
 
 use crate::llm::Usage;
 use crate::plugin::ToolOutput;
+use crate::price;
 use crate::ui::{Approval, Ui};
 use ratatui::crossterm::event::{
     self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers,
@@ -1283,19 +1284,7 @@ fn draw(frame: &mut Frame, s: &mut State, tick: usize) {
     y += input_rows + 2;
 
     // The status line.
-    let mut parts = vec![s.info.model.clone()];
-    if !s.info.effort.is_empty() {
-        parts.push(format!("effort {}", s.info.effort));
-    }
-    parts.push(format!("{} tokens in · {} out", tokens(s.info.input_tokens), tokens(s.info.output_tokens)));
-    parts.push(s.info.cwd.clone());
-    let left = format!("  {}", parts.join(" · "));
-    let right = "wheel scrolls · drag copies · click opens ";
-    let line = if left.width() + right.width() + 2 <= area.width as usize {
-        Line::from(vec![Span::styled(left.clone(), dim), Span::raw(" ".repeat(area.width as usize - left.width() - right.width())), Span::styled(right, dim)])
-    } else {
-        Line::from(Span::styled(left, dim))
-    };
+    let line = Line::from(Span::styled(status(&s.info), dim));
     frame.render_widget(Paragraph::new(line), Rect { x: 0, y, width: area.width, height: 1 });
 
     // / suggestions, over the conversation just above the input.
@@ -1331,6 +1320,21 @@ fn tokens(n: u64) -> String {
 }
 
 // ---------- Input ----------
+
+/// The line under the input: model, effort, tokens, what they would cost at Claude's price, and the folder.
+/// The cost only appears once there are tokens to count.
+fn status(info: &Info) -> String {
+    let mut parts = vec![info.model.clone()];
+    if !info.effort.is_empty() {
+        parts.push(format!("effort {}", info.effort));
+    }
+    parts.push(format!("{} tokens in · {} out", tokens(info.input_tokens), tokens(info.output_tokens)));
+    if info.input_tokens + info.output_tokens > 0 {
+        parts.push(price::line(info.input_tokens, info.output_tokens));
+    }
+    parts.push(info.cwd.clone());
+    format!("  {}", parts.join(" · "))
+}
 
 /// The selected text, row by row.
 fn selected_text(s: &State) -> String {
@@ -1962,6 +1966,26 @@ mod tests {
         let all: Vec<char> = SMALL_LOGO.concat().chars().collect();
         assert!(all.iter().any(|c| *c == '█' || *c == '▀' || *c == '▄'));
         assert!(SMALL_LOGO.iter().all(|l| l.chars().count() == 14));
+    }
+
+    #[test]
+    fn the_status_line_counts_and_prices_the_tokens() {
+        let info = |input_tokens, output_tokens| Info {
+            model: "deepseek-v4.1-flash-at-hzdr".into(),
+            effort: "medium".into(),
+            cwd: "~/code".into(),
+            input_tokens,
+            output_tokens,
+        };
+        let fresh = status(&info(0, 0));
+        assert!(fresh.contains("0 tokens in · 0 out"), "{fresh}");
+        assert!(!fresh.contains('$'), "nothing spent, no price: {fresh}");
+        let used = status(&info(150_000, 20_000));
+        assert!(used.contains("150.0k tokens in · 20.0k out"), "{used}");
+        assert!(used.contains("≈$2.50 at Claude Fable 5"), "{used}");
+        assert!(used.ends_with("~/code"), "{used}");
+        // The hint that used to sit on the right is gone.
+        assert!(!used.contains("wheel") && !used.contains("drag") && !used.contains("click"), "{used}");
     }
 
     #[test]

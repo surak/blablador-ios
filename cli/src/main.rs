@@ -7,6 +7,7 @@ mod llm;
 mod onboard;
 mod plugin;
 mod plugins;
+mod price;
 mod secret;
 mod session;
 mod telegram;

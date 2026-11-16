@@ -87,7 +87,9 @@ new line, Up/Down go through earlier messages. You can type while the answer is 
 turn above the input. Esc stops the answer; Ctrl-C twice quits.
 
 The line under the input shows the model, the thinking effort, the tokens (`in`: the last request, so how full the
-context is; `out`: everything written this session) and the folder.
+context is; `out`: everything written this session), what that would cost at Claude's most expensive standard rate
+(`≈$0.42 at Claude Fable 5`, $10/$50 per million tokens — Blablador itself is free, the number is a reference),
+and the folder.
 
 In a chat: `/help` lists the commands (`/new`, `/resume`, `/login` (a new key without leaving the chat; used at once), `/model`, `/effort`, `/mode`, `/compact`, `/undo`,
 `/skills`, `/memory`, `/voice`, `/tools`, `/plugins`, and one per skill); `/yolo` stops asking for the rest of the
