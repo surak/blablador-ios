@@ -307,9 +307,15 @@ pub fn install(version: &str) -> Result<String, String> {
     if !target.exists() {
         return Err(format!("cannot find the running bla ({})", target.display()));
     }
+    let base = format!("{RELEASES}/download/v{version}");
+    let said = install_from(&base, version, platform, &target)?;
+    remember(version);
+    Ok(said)
+}
 
-    let tag = format!("v{version}");
-    let base = format!("{RELEASES}/download/{tag}");
+/// The part that does not care where the release is: downloading, checking, proving, replacing. Kept apart from
+/// [`install`] so that a test can point it at a release of its own.
+fn install_from(base: &str, version: &str, platform: &str, target: &Path) -> Result<String, String> {
     let name = bare_name(version, platform);
     let bytes = download(&format!("{base}/{name}"))?;
     // The checksum is not optional: without it a strange copy is not run at all.
@@ -322,18 +328,17 @@ pub fn install(version: &str) -> Result<String, String> {
     }
 
     // Written beside the old one, started once to be sure it runs here, then renamed into place.
-    let staged = staging_path(&target);
-    write_program(&staged, &bytes, &target)?;
+    let staged = staging_path(target);
+    write_program(&staged, &bytes, target)?;
     if let Err(e) = prove(&staged, version) {
         let _ = std::fs::remove_file(&staged);
         return Err(e);
     }
-    if let Err(e) = replace(&target, &staged) {
+    if let Err(e) = replace(target, &staged) {
         let _ = std::fs::remove_file(&staged);
         return Err(e);
     }
-    sweep_old(&target);
-    remember(version);
+    sweep_old(target);
     Ok(format!("bla {version} is installed ({})", target.display()))
 }
 
@@ -576,6 +581,84 @@ mod tests {
             write_program(&right, b"#!/bin/sh\necho bla 3.12.2\n", &target).unwrap();
             assert!(prove(&right, "3.12.2").is_ok());
         }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The whole update, end to end, against a release served from this machine: download, checksum, smoke test, and
+    /// the old binary gone. A server that answers with a file whose checksum is wrong proves the check is not optional.
+    #[cfg(unix)]
+    #[test]
+    fn an_update_walks_from_the_release_to_the_binary_on_disk() {
+        use std::io::{BufRead, BufReader, Write as _};
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = std::env::temp_dir().join(format!("bla-install-{}", crate::util::random_hex(8)));
+        let release = dir.join("release");
+        std::fs::create_dir_all(&release).unwrap();
+        let platform = "test-platform";
+        let name = bare_name("9.9.9", platform);
+        let program = b"#!/bin/sh\necho bla 9.9.9\n";
+        std::fs::write(release.join(&name), program).unwrap();
+        std::fs::write(release.join("SHA256SUMS.txt"), format!("{}  {name}\n", sha256_hex(program))).unwrap();
+
+        // As many requests as the updater makes (the binary, then the sums), one connection each.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let serving = release.clone();
+        let server = std::thread::spawn(move || {
+            for stream in listener.incoming().take(2) {
+                let Ok(mut stream) = stream else { continue };
+                let mut head = String::new();
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                if reader.read_line(&mut head).is_err() {
+                    continue;
+                }
+                while reader.read_line(&mut head).is_ok_and(|n| n > 2) {}
+                let path = head.split_whitespace().nth(1).unwrap_or_default().to_string();
+                let file = serving.join(path.rsplit('/').next().unwrap_or_default());
+                match std::fs::read(&file) {
+                    Ok(body) => {
+                        let _ = write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len());
+                        let _ = stream.write_all(&body);
+                    }
+                    Err(_) => {
+                        let _ = write!(stream, "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                    }
+                }
+            }
+        });
+
+        let target = dir.join("bla");
+        std::fs::write(&target, b"#!/bin/sh\necho bla 9.9.8\n").unwrap();
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let said = install_from(&base, "9.9.9", platform, &target).unwrap();
+        assert!(said.contains("9.9.9 is installed"), "{said}");
+        assert_eq!(std::fs::read(&target).unwrap(), program, "the new binary is in place");
+        let _ = server.join();
+
+        // A release whose file does not match its checksum is refused, and the working bla stays.
+        std::fs::write(release.join("SHA256SUMS.txt"), format!("{}  {name}\n", sha256_hex(b"something else"))).unwrap();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let serving = release.clone();
+        std::thread::spawn(move || {
+            use std::io::{BufRead, BufReader, Write as _};
+            for stream in listener.incoming().take(2) {
+                let Ok(mut stream) = stream else { continue };
+                let mut head = String::new();
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                let _ = reader.read_line(&mut head);
+                while reader.read_line(&mut head).is_ok_and(|n| n > 2) {}
+                let path = head.split_whitespace().nth(1).unwrap_or_default().to_string();
+                let file = serving.join(path.rsplit('/').next().unwrap_or_default());
+                let body = std::fs::read(&file).unwrap_or_default();
+                let _ = write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len());
+                let _ = stream.write_all(&body);
+            }
+        });
+        let refused = install_from(&base, "9.9.9", platform, &target).unwrap_err();
+        assert!(refused.contains("does not match SHA256SUMS.txt"), "{refused}");
+        assert_eq!(std::fs::read(&target).unwrap(), program, "a bad download never lands");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
