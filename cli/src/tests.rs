@@ -292,7 +292,12 @@ fn fake_telegram(message: Value) -> (String, Arc<Mutex<Vec<(String, Value)>>>) {
                 _ => json!([]),
             };
             let payload = json!({"ok": true, "result": result}).to_string();
-            let out = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{payload}", payload.len());
+            // One request per connection: without this the client keeps it open for the next call,
+            // which this loop never reads, and the bridge waits for an answer that cannot come.
+            let out = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{payload}",
+                payload.len()
+            );
             let _ = stream.write_all(out.as_bytes());
         }
     });
