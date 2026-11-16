@@ -54,10 +54,10 @@ Options:
                         BLA_TELEGRAM_TOKEN or ~/.bla/telegram.json
       --telegram-allow ID  a chat that may talk to it (repeatable, and required)
       --speak           (with serve) read the answers aloud as voice notes
-      --quiet           no notice about a newer bla at the start of a chat
+      --quiet           no update of bla at the start of a chat
   -l, --models          list the models
   -v, --version         show the version, and whether a newer one is out
-      --update          how to get a newer bla (same as bla update)
+      --update          install a newer bla now (same as bla update)
   -h, --help            show this help
 
 In a chat: /help lists commands, !command runs a shell command, @file attaches a file,

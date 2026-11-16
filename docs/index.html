@@ -267,7 +267,7 @@
           <li><strong>Linux, Raspberry Pi, Mac</strong>: <code>curl -fsSL https://surak.github.io/blablador-ios/install.sh | sh</code> &mdash; on the Mac it also comes with the app (Settings → Command line).</li>
           <li>Open a new terminal and type <code>bla</code>. The first time, it opens the page where you make your Blablador API key and asks you to paste it; then you are chatting. <code>bla login</code> changes the key later.</li>
         </ol>
-        <div class="note">The installers download the build for your machine from the <a href="https://github.com/surak/blablador-ios/releases/latest">latest release</a>, check it against SHA256SUMS.txt and put it on your PATH. <code>bla update</code> tells you when there is a newer one.</div>
+        <div class="note">The installers download the build for your machine from the <a href="https://github.com/surak/blablador-ios/releases/latest">latest release</a>, check it against SHA256SUMS.txt and put it on your PATH. <code>bla update</code> tells you when there is a newer one, and a chat updates bla by itself: the newer build is downloaded, checked against SHA256SUMS.txt and, once it has run with <code>--version</code> to see it works here, put in place of the one on your PATH, and the chat starts again with it. <code>BLA_NO_UPDATE_CHECK=1</code> stops it asking GitHub; <code>BLA_NO_AUTO_UPDATE=1</code> lets it ask but never install. A <code>bla</code> that came with the Mac app or Homebrew is left to them and updates the way it was installed.</div>
       </div>
     </section>
 

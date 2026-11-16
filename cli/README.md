@@ -28,6 +28,13 @@ itself. Its memory is the Blablador apps' memory: what you tell the app, bla kno
   [latest release](https://github.com/surak/blablador-ios/releases/latest) and put `bla` on your PATH.
 - **From source:** `cargo install --path cli`.
 
+bla keeps itself up to date: at the start of a chat it looks for a newer release once every few hours and, if there is
+one, installs it (downloaded from the release's bare `bla-<version>-<platform>`, checked against `SHA256SUMS.txt`, run
+once with `--version` to see it works here) and starts the chat again with the new one. `bla update` does the same now
+and says what happened; `bla update --check` only looks. A bla that belongs to the Mac app, Homebrew or cargo is left
+alone and pointed at its own updater, and the app's Settings → Command line and `brew upgrade --cask` update those.
+`BLA_NO_UPDATE_CHECK=1` stops bla from asking GitHub at all; `BLA_NO_AUTO_UPDATE=1` lets it look but never touch.
+
 The first `bla` (or `bla login`) opens your browser on the page where a [Blablador API key](https://sdlaml.pages.jsc.fz-juelich.de/ai/guides/blablador_api_access/) is made (a Codebase token with the `read_user` scope), and you paste the key there.
 It goes into the system keyring (the same entry the desktop app uses), or `~/.bla/.apikey` readable only by you
 where there is no keyring. `BLABLADOR_API_KEY` overrides it, and piping a key into `bla login` skips the browser —
@@ -77,6 +84,10 @@ paste it at the hidden prompt.
 | `--no-tools` | just answer |
 | `--no-plugin NAME` | turn a plugin off for this run |
 | `--json` | events as JSON lines: text, thinking, tool_start, tool_end, usage, error |
+| `--quiet` | no update of bla at the start of a chat |
+| `-l, --models` | list the models |
+| `-v, --version` | the version, and whether a newer one is out (fast: it uses an answer less than six hours old) |
+| `--update` | install a newer bla now (same as `bla update`) |
 
 In one-shot mode only the answer goes to stdout; tool lines and questions go to stderr, so `bla … > file` works.
 
