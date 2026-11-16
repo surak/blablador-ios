@@ -8,3 +8,6 @@ xcuserdata/
 .build/
 build-dev/
 build-mac/
+# Local agent worktrees, the release files assembled for a tag, and pictures made while trying things
+.claude/
+/dist/
