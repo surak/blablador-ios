@@ -514,6 +514,7 @@ const CHAT_HELP: &str = "/help         this list
 /models       list the models
 /effort LEVEL thinking effort: off, low, medium, high, max
 /voice [LANG] talk instead of typing (/voice off ends it)
+/steer TEXT   tell the model something while it answers, without stopping it
 /tools        the tools the model has
 /plugins      the plugins that are on
 /exit         quit (or Ctrl-D)

@@ -201,14 +201,30 @@ impl Agent {
                         self.session.push(Message::user(message));
                         continue;
                     }
-                    _ => break Ok(()),
+                    _ => {
+                        // A steer that came in as the answer ended still gets an answer in this turn.
+                        if self.take_steer(ui) {
+                            continue;
+                        }
+                        break Ok(());
+                    }
                 }
             }
             self.run_tools(&calls, ui);
+            self.take_steer(ui);
         };
         let ps = PluginSession { id: &self.session.id, cwd: &self.session.cwd, interactive: self.interactive };
         self.host.event(&ps, &Event::TurnEnd { turn });
         result
+    }
+
+    /// Adds what the user typed to steer the answer as their next message; true if there was something.
+    fn take_steer(&mut self, ui: &mut dyn Ui) -> bool {
+        let steer = ui.steer();
+        for text in &steer {
+            self.session.push(Message::user(text.clone()));
+        }
+        !steer.is_empty()
     }
 
     fn compact_if_needed(&mut self) {

@@ -26,6 +26,10 @@ pub trait Ui {
     fn notice(&mut self, text: &str);
     fn error(&mut self, text: &str);
     fn usage(&mut self, _usage: &Usage) {}
+    /// Messages the user typed to steer the answer while it runs; the agent reads them between steps.
+    fn steer(&mut self) -> Vec<String> {
+        Vec::new()
+    }
 }
 
 pub struct Terminal {

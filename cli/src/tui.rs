@@ -5,7 +5,8 @@
 //!
 //! The agent stays on the main thread and talks to the screen through `Screen` (which is a `Ui`); the screen
 //! draws and reads the keyboard and mouse on its own thread, so typing, scrolling and Esc work while the
-//! model answers. Lines typed during an answer wait in a queue and are sent after it.
+//! model answers. Lines typed during an answer wait in a queue and are sent after it; `/steer` instead: the
+//! message reaches the model at its next step, between tool calls, without stopping the answer.
 
 use crate::llm::Usage;
 use crate::plugin::ToolOutput;
@@ -234,6 +235,8 @@ struct State {
     last_verb: usize,
     since: Instant,
     queued: Vec<String>,
+    /// Messages sent with /steer during an answer, for the agent to pick up at its next step.
+    steering: Vec<String>,
     question: Option<Question>,
     selected_button: usize,
     commands: Vec<(String, String)>,
@@ -349,6 +352,7 @@ impl Screen {
             last_verb: usize::MAX,
             since: Instant::now(),
             queued: Vec::new(),
+            steering: Vec::new(),
             question: None,
             selected_button: 0,
             commands: Vec::new(),
@@ -446,8 +450,15 @@ impl Screen {
 
     /// Waits for the next line the user sends; None when they quit.
     pub fn read_line(&mut self) -> Option<String> {
-        self.with(|s| s.busy = false);
-        let line = self.lines.recv().ok().flatten()?;
+        // A steer that came too late for the answer it meant is the next message.
+        let late = self.with(|s| {
+            s.busy = false;
+            (!s.steering.is_empty()).then(|| s.steering.remove(0))
+        });
+        let line = match late {
+            Some(line) => line,
+            None => self.lines.recv().ok().flatten()?,
+        };
         self.with(|s| {
             if let Some(i) = s.queued.iter().position(|q| *q == line) {
                 s.queued.remove(i);
@@ -535,6 +546,19 @@ impl Drop for Screen {
 }
 
 impl Ui for Screen {
+    fn steer(&mut self) -> Vec<String> {
+        self.with(|s| {
+            let steer = std::mem::take(&mut s.steering);
+            for line in &steer {
+                s.history.retain(|h| h != line);
+                s.history.push(line.clone());
+                s.push(Item::new(Kind::User, clean(line)));
+            }
+            s.top = None;
+            steer
+        })
+    }
+
     fn text(&mut self, text: &str) {
         if let Some(v) = &mut self.voice {
             v.feed(text);
@@ -1108,7 +1132,7 @@ fn draw(frame: &mut Frame, s: &mut State, tick: usize) {
     let status_h = if s.busy || s.toast.is_some() { 1 } else { 0 };
     let voice_h = if s.voice.is_some() { 1 } else { 0 };
     let question_h = if s.question.is_some() { 5 } else { 0 };
-    let queue_h = s.queued.len().min(3) as u16;
+    let queue_h = (s.queued.len() + s.steering.len()).min(3) as u16;
     bottom.push((status_h, "status"));
     let below = status_h + voice_h + question_h + queue_h + input_rows + 2 + 1;
     let transcript = Rect { x: 0, y: 0, width: area.width, height: area.height.saturating_sub(below) };
@@ -1250,9 +1274,9 @@ fn draw(frame: &mut Frame, s: &mut State, tick: usize) {
         y += question_h;
     }
 
-    // Messages waiting for the answer to end.
-    for q in s.queued.iter().take(3) {
-        let line = Line::from(vec![Span::styled("  ⏳ ", dim), Span::styled(crate::util::clip(q.lines().next().unwrap_or_default(), 300).to_string(), dim)]);
+    // Messages waiting for the answer to end, and steers waiting for its next step.
+    for (mark, q) in s.steering.iter().map(|q| ("  ↪ ", q)).chain(s.queued.iter().map(|q| ("  ⏳ ", q))).take(3) {
+        let line = Line::from(vec![Span::styled(mark, dim), Span::styled(crate::util::clip(q.lines().next().unwrap_or_default(), 300).to_string(), dim)]);
         frame.render_widget(Paragraph::new(line), Rect { x: 0, y, width: area.width, height: 1 });
         y += 1;
     }
@@ -1269,7 +1293,7 @@ fn draw(frame: &mut Frame, s: &mut State, tick: usize) {
     let first_row = cursor_at.0.saturating_sub(input_rows as usize - 1);
     if s.input.is_empty() {
         let hint =
-            if s.busy { "Type to queue a message · Esc stops the answer" } else { "Ask anything · / commands · @file · !shell · Shift-Enter new line" };
+            if s.busy { "Enter queues a message · /steer changes course · Esc stops it" } else { "Ask anything · / commands · @file · !shell · Shift-Enter new line" };
         frame.buffer_mut().set_string(inner.x, inner.y, hint, dim);
     } else {
         for (i, text) in input_lines(&s.input, inner_width).iter().enumerate().skip(first_row).take(input_rows as usize) {
@@ -1585,6 +1609,20 @@ fn key(s: &mut State, k: KeyEvent, lines: &Sender<Option<String>>, cancel: &Atom
             s.set_input("");
             s.browsing = None;
             s.selection = None;
+            // /steer is read here, not by the chat loop, which is busy with the answer it steers.
+            if let Some(steer) = text.strip_prefix("/steer").filter(|t| t.is_empty() || t.starts_with(char::is_whitespace)) {
+                let steer = steer.trim().to_string();
+                if steer.is_empty() {
+                    s.toast("/steer MESSAGE tells the model something while it answers");
+                } else if s.busy {
+                    s.steering.push(steer);
+                    s.top = None;
+                } else {
+                    s.top = None;
+                    let _ = lines.send(Some(steer));
+                }
+                return;
+            }
             if s.busy {
                 s.queued.push(text.clone());
             }
