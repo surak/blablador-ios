@@ -1,6 +1,6 @@
 [package]
 name = "blablador"
-version = "3.12.7"
+version = "3.12.8"
 edition = "2021"
 description = "Blablador chat client for Windows and Linux"
 license = "MIT"

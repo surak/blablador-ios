@@ -106,7 +106,8 @@ In a chat: `/help` lists the commands (`/new`, `/resume`, `/login` (a new key wi
 `/skills`, `/memory`, `/voice`, `/tools`, `/plugins`, and one per skill); `/yolo` stops asking for the rest of the
 session and `/safe` starts again; `!command` runs a shell command and
 shows the model its output; `@path` attaches a file; Esc or Ctrl-C stops the answer; Ctrl-C twice or Ctrl-D
-quits.
+quits. While it answers, Enter queues your message for after the answer, and `/steer TEXT` changes course without
+stopping it: the model gets the message at its next step, between tool calls (or right after its last words).
 
 ### Talking to it
 
