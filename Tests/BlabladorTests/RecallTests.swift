@@ -59,6 +59,26 @@ final class ChatFindTests: XCTestCase {
         XCTAssertTrue(result.components(separatedBy: "\n\n").first?.contains("December") == true, "reranked first")
         XCTAssertFalse(result.contains("pasta"))
     }
+
+    /// Deleting all chats must delete what was remembered of them, not only the chats.
+    func testForgetAllDropsEveryVector() async throws {
+        MockServer.start { request, body in
+            if request.url?.path.hasSuffix("/embeddings") == true {
+                let inputs = body.json["input"] as? [String] ?? []
+                let data = inputs.enumerated().map { index, _ in ["index": index, "embedding": EmbeddingTests.axis(index)] }
+                return .init(body: try! JSONSerialization.data(withJSONObject: ["data": data]))
+            }
+            return .init(body: Data("{}".utf8))
+        }
+        var chat = Conversation(title: "Cluster", model: "m")
+        chat.messages = [ChatMessage(role: .user, content: "We agreed on 40 GPU nodes for the new project.")]
+        let index = ChatIndex.shared
+        await index.update([chat], api: BlabladorAPI(apiKey: "test"))
+        XCTAssertNotNil(index.vector(for: chat.messages[0].id))
+        index.forgetAll()
+        XCTAssertNil(index.vector(for: chat.messages[0].id))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: AppFolder.url.appendingPathComponent("chat-index.json").path))
+    }
 }
 
 /// Real Blablador embeddings: BLABLADOR_NETWORK_TESTS=1 BLABLADOR_API_KEY=… swift test --filter LiveEmbeddingTests
