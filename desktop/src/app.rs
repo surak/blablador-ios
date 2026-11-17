@@ -58,6 +58,8 @@ pub struct App {
     new_base: String,
     renaming: Option<(Uuid, String)>,
     error: Option<String>,
+    /// "Delete all chats" is waiting for its confirmation.
+    confirm_delete_all: bool,
     markdown: CommonMarkCache,
 }
 
@@ -95,6 +97,7 @@ impl App {
             new_base: String::new(),
             renaming: None,
             error: None,
+            confirm_delete_all: false,
             markdown: CommonMarkCache::default(),
         };
         app.current = app.chats.first().map(|c| c.id);
@@ -298,6 +301,19 @@ impl App {
             }
         }
         self.save_chats();
+    }
+
+    /// Deletes every chat, like the apps' "Delete all chats". The desktop app keeps no chat index —
+    /// `search_chats` reads the chats themselves — so forgetting them needs nothing more.
+    fn delete_all_chats(&mut self) {
+        for id in self.running.keys().copied().collect::<Vec<_>>() {
+            self.stop(id);
+        }
+        self.approvals.clear();
+        self.chats.clear();
+        self.current = None;
+        self.save_chats();
+        self.new_chat();
     }
 
     fn regenerate(&mut self) {
@@ -711,9 +727,27 @@ impl App {
                 self.settings.save();
             }
             ui.separator();
+            if self.confirm_delete_all {
+                ui.label("Delete every chat? The history is forgotten, so earlier chats can't be searched any more. Memory is kept. This can't be undone.");
+                ui.horizontal(|ui| {
+                    if ui.button("Delete all chats").clicked() {
+                        self.delete_all_chats();
+                        self.confirm_delete_all = false;
+                    }
+                    if ui.button("Keep them").clicked() {
+                        self.confirm_delete_all = false;
+                    }
+                });
+            } else if ui.button("Delete all chats…").clicked() {
+                self.confirm_delete_all = true;
+            }
+            ui.separator();
             ui.weak(format!("Blablador {} · data in {}", env!("CARGO_PKG_VERSION"), storage::data_dir().display()));
             ui.weak("Everything saved is encrypted; the key is in the system keyring.");
         });
+        if !open {
+            self.confirm_delete_all = false;
+        }
         self.show_settings = open;
     }
 
