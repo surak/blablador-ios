@@ -174,6 +174,7 @@ fun SettingsScreen(vm: ChatViewModel, onOpenKnowledge: () -> Unit, onOpenVoices:
     if (confirmDelete) AlertDialog(
         onDismissRequest = { confirmDelete = false },
         title = { Text("Delete all chats?") },
+        text = { Text("Every chat is deleted and the history is forgotten, so earlier chats can't be searched any more. Memory is kept. This can't be undone.") },
         confirmButton = { TextButton(onClick = { vm.deleteAll(); confirmDelete = false }) { Text("Delete all", color = MaterialTheme.colorScheme.error) } },
         dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
     )

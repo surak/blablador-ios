@@ -326,6 +326,9 @@ final class ChatStore: ObservableObject {
         VideoStore.delete(conversations.flatMap { $0.allMessages.flatMap(\.videos) })
         conversations.removeAll()
         persist()
+        // Otherwise the embeddings of deleted messages still answer search_chats — the history is kept
+        // on the device, so deleting the chats must delete what is remembered of them too.
+        ChatIndex.shared.forgetAll()
     }
 
     // MARK: - Messaging

@@ -99,6 +99,12 @@ final class ChatIndex {
     }
 
     func vector(for id: UUID) -> [Float]? { load()[id] }
+
+    /// Forgets every message vector, when the chats they came from are deleted.
+    func forgetAll() {
+        vectors = [:]
+        try? FileManager.default.removeItem(at: Self.fileURL)
+    }
 }
 
 extension ChatSearch {

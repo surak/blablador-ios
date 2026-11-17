@@ -200,6 +200,10 @@ struct SettingsView: View {
 
                 Section {
                     Button("Delete all chats", role: .destructive) { confirmDelete = true }
+                } header: {
+                    Text("Chats")
+                } footer: {
+                    Text("Deletes every chat and what went with them — photos, documents, audio, videos — and forgets the history: earlier chats can't be searched any more. Memory in Settings → Memory is kept.")
                 }
 
 #if os(macOS)
@@ -251,6 +255,8 @@ struct SettingsView: View {
             }
             .confirmationDialog("Delete all chats?", isPresented: $confirmDelete, titleVisibility: .visible) {
                 Button("Delete all", role: .destructive) { store.deleteAll() }
+            } message: {
+                Text("Every chat is deleted and the history is forgotten. This can't be undone.")
             }
         }
         .onAppear { apiKey = store.apiKey }

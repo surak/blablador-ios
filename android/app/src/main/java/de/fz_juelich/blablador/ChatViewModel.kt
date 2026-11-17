@@ -379,6 +379,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         videos.delete(conversations.flatMap { c -> c.allMessages.flatMap { it.videos } })
         conversations.clear()
         persist()
+        // Otherwise the embeddings of deleted messages still answer search_chats — the history is kept
+        // on the device, so deleting the chats must delete what is remembered of them too.
+        chatIndex.forgetAll()
     }
 
     // MARK: Attachments

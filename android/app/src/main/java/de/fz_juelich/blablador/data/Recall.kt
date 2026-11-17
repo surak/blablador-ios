@@ -106,6 +106,14 @@ class ChatIndex(private val context: Context?) {
     }
 
     fun vector(id: String): FloatArray? = load()[id]
+
+    /** Forgets every message vector, when the chats they came from are deleted. */
+    fun forgetAll() {
+        synchronized(this) { vectors = mutableMapOf() }
+        val context = context
+        val file = file
+        if (context != null && file != null) EncryptedStorage.delete(context, file)
+    }
 }
 
 /** Finds earlier messages by meaning and keywords, reranked; falls back to keywords without embeddings. */
