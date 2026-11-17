@@ -114,6 +114,13 @@ class ChatIndex(private val context: Context?) {
         val file = file
         if (context != null && file != null) EncryptedStorage.delete(context, file)
     }
+
+    /** Forgets the messages of one deleted chat, so search_chats can't quote them before the next re-index. */
+    fun forget(ids: Collection<String>) {
+        if (ids.isEmpty()) return
+        synchronized(this) { val vectors = load(); ids.forEach { vectors.remove(it) } }
+        save()
+    }
 }
 
 /** Finds earlier messages by meaning and keywords, reranked; falls back to keywords without embeddings. */

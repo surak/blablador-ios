@@ -105,6 +105,15 @@ final class ChatIndex {
         vectors = [:]
         try? FileManager.default.removeItem(at: Self.fileURL)
     }
+
+    /// Forgets the messages of one deleted chat, so search_chats can't quote them before the next re-index.
+    func forget(_ ids: [UUID]) {
+        guard !ids.isEmpty else { return }
+        var vectors = load()
+        ids.forEach { vectors.removeValue(forKey: $0) }
+        self.vectors = vectors
+        save()
+    }
 }
 
 extension ChatSearch {

@@ -367,6 +367,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         videos.delete(conversation.allMessages.flatMap { it.videos })
         conversations.removeAll { it.id == conversation.id }
         persist()
+        chatIndex.forget(conversation.allMessages.map { it.id })
     }
 
     fun deleteAll() {

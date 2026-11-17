@@ -315,6 +315,7 @@ final class ChatStore: ObservableObject {
         VideoStore.delete(conversation.allMessages.flatMap(\.videos))
         conversations.removeAll { $0.id == conversation.id }
         persist()
+        ChatIndex.shared.forget(conversation.allMessages.map(\.id))
     }
 
     func deleteAll() {

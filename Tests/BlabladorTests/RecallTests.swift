@@ -79,6 +79,29 @@ final class ChatFindTests: XCTestCase {
         XCTAssertNil(index.vector(for: chat.messages[0].id))
         XCTAssertFalse(FileManager.default.fileExists(atPath: AppFolder.url.appendingPathComponent("chat-index.json").path))
     }
+
+    /// Deleting one chat forgets its messages and leaves the other chats' alone.
+    func testForgetOneChat() async throws {
+        MockServer.start { request, body in
+            if request.url?.path.hasSuffix("/embeddings") == true {
+                let inputs = body.json["input"] as? [String] ?? []
+                let data = inputs.enumerated().map { index, _ in ["index": index, "embedding": EmbeddingTests.axis(index)] }
+                return .init(body: try! JSONSerialization.data(withJSONObject: ["data": data]))
+            }
+            return .init(body: Data("{}".utf8))
+        }
+        var secret = Conversation(title: "Private", model: "m")
+        secret.messages = [ChatMessage(role: .user, content: "My salary negotiation starts on Monday.")]
+        var kept = Conversation(title: "Cluster", model: "m")
+        kept.messages = [ChatMessage(role: .user, content: "We agreed on 40 GPU nodes for the new project.")]
+        let index = ChatIndex.shared
+        await index.update([secret, kept], api: BlabladorAPI(apiKey: "test"))
+        index.forget(secret.allMessages.map(\.id))
+        XCTAssertNil(index.vector(for: secret.messages[0].id), "the deleted chat's messages are forgotten")
+        XCTAssertNotNil(index.vector(for: kept.messages[0].id), "other chats keep their vectors")
+        // And it stays that way after a reload from disk.
+        index.forgetAll()
+    }
 }
 
 /// Real Blablador embeddings: BLABLADOR_NETWORK_TESTS=1 BLABLADOR_API_KEY=… swift test --filter LiveEmbeddingTests
