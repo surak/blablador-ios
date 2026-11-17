@@ -605,7 +605,7 @@ fn run_chat(agent: &mut Agent, settings: &Settings, busy: &AtomicBool, thinking:
                 // The way out of the circle the error message used to send people round: `bla login` cannot be
                 // typed in here, but this can.
                 "login" => {
-                    let mut guard = screen.suspend();
+                    let guard = screen.suspend();
                     let saved = login();
                     guard.resume();
                     if saved {
