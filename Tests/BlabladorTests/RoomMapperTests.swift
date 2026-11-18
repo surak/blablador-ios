@@ -18,6 +18,13 @@ final class RoomMapperTests: XCTestCase {
         XCTAssertThrowsError(try RoomMapper.PointCloud(ply: Data("hello".utf8)))
     }
 
+    func testRecognizesMissingServerPhotos() {
+        let body = #"{"error":{"message":"need at least 2 photos","type":"invalid_request_error","code":400}}"#
+        XCTAssertTrue(RoomMapper.needsMorePhotos(BlabladorAPIError.http(status: 400, body: body)))
+        XCTAssertFalse(RoomMapper.needsMorePhotos(BlabladorAPIError.http(status: 503, body: body)))
+        XCTAssertFalse(RoomMapper.needsMorePhotos(BlabladorAPIError.http(status: 400, body: "Bad request")))
+    }
+
     func testCommandsAndQueue() {
         XCTAssertEqual(RoomMapper.stepCommand(session: "a", cameraHeight: 120), "step session=a camera_height_cm=120.0")
         XCTAssertTrue(RoomMapper.isValidSession(RoomMapper.newSessionName()))

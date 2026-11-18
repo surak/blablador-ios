@@ -40,6 +40,13 @@ enum RoomMapper {
         return "step session=\(session) camera_height_cm=\(cameraHeight)"
     }
 
+    static func needsMorePhotos(_ error: Error) -> Bool {
+        guard case let BlabladorAPIError.http(status, body) = error, status == 400,
+              let payload = try? JSONSerialization.jsonObject(with: Data(body.utf8)) as? [String: Any],
+              let detail = payload["error"] as? [String: Any] else { return false }
+        return detail["message"] as? String == "need at least 2 photos"
+    }
+
     /// The `queue` part of every answer.
     struct Queue: Equatable {
         var aheadOnArrival = 0
@@ -161,7 +168,7 @@ struct RoomMapperView: View {
         var sent = false
     }
 
-    @AppStorage("roomMapperSession") private var session = RoomMapper.newSessionName()
+    @AppStorage("roomMapperSession") private var session = ""
     @AppStorage("roomMapperHeight") private var height = 120.0
     @State private var photos: [Photo] = []
     @State private var pickerItems: [PhotosPickerItem] = []
@@ -205,6 +212,7 @@ struct RoomMapperView: View {
 
                 Section {
                     TextField("Name", text: $session)
+                        .disabled(sending || building || frames != nil)
                         .autocorrectionDisabled()
 #if os(iOS)
                         .textInputAutocapitalization(.never)
@@ -298,7 +306,7 @@ struct RoomMapperView: View {
                             }
                         }
                         .buttonStyle(.borderedProminent)
-                        .disabled(building || sending)
+                        .disabled(frames < 2 || building || sending)
                     }
                 }
 
@@ -352,7 +360,12 @@ struct RoomMapperView: View {
         .sheet(isPresented: $showCamera) {
             CameraPicker { add($0) }
         }
+        .onAppear {
+            // Persist the generated name once so a SwiftUI redraw cannot change it.
+            if session.isEmpty { session = RoomMapper.newSessionName() }
+        }
         .task(id: session) {
+            guard !session.isEmpty else { return }
             while !Task.isCancelled {
                 await pollQueue()
                 try? await Task.sleep(for: .seconds(5))
@@ -448,7 +461,7 @@ struct RoomMapperView: View {
                 if let activity { store.addToActivityRequest(chat: activity.chat, images: jpegs.map(ImageStore.save)) }
                 sentCount = start + ids.count
                 show(result)
-                if let text = result["note"] as? String { note = text }
+                note = result["note"] as? String
                 waited += RoomMapper.Queue(result["queue"] as? [String: Any]).waitedNote
             }
             if let note { say(note, error: true) } else { say("Sent. Add more photos, or build the 3D model." + waited) }
@@ -463,12 +476,27 @@ struct RoomMapperView: View {
     }
 
     private func finish() async {
+        guard (frames ?? 0) >= 2 else { return }
         building = true
         defer { building = false }
         say("Building the 3D model… this takes up to a minute" + (queue?.isBusy == true ? ", longer while others are using the GPU." : "."))
         do {
             let name = try checkedSession()
-            let result = try await api.visualGeometry("finish session=\(name)")
+            let result: [String: Any]
+            do {
+                result = try await api.visualGeometry("finish session=\(name)")
+            } catch where RoomMapper.needsMorePhotos(error) {
+                let failure = RoomMapper.Failure("The server no longer has enough photos for this room. Send your photos again, then build the 3D model.")
+                if let activity {
+                    store.updateActivityChat(activity.message, text: failure.localizedDescription, finished: true, failed: true)
+                }
+                session = RoomMapper.newSessionName()
+                activity = nil
+                for index in photos.indices { photos[index].sent = false }
+                clearRoomResult()
+                say(failure.localizedDescription, error: true)
+                return
+            }
             show(result)
             guard let parts = (result["parts"] as? NSNumber)?.intValue, parts > 0 else {
                 throw RoomMapper.Failure((result["note"] as? String) ?? "No model came back.")
@@ -481,6 +509,9 @@ struct RoomMapperView: View {
                     throw RoomMapper.Failure("Part \(part + 1) of the model came back broken.")
                 }
                 ply.append(data)
+            }
+            if let size = (result["ply_bytes"] as? NSNumber)?.intValue, size != ply.count {
+                throw RoomMapper.Failure("The downloaded point cloud has the wrong size.")
             }
             let parsed = try await Task.detached { try RoomMapper.PointCloud(ply: ply) }.value
             let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(name).ply")
@@ -495,8 +526,17 @@ struct RoomMapperView: View {
             say("Done!" + RoomMapper.Queue(result["queue"] as? [String: Any]).waitedNote)
             if let activity {
                 let model = DataFiles.store(ply, name: "\(name).ply", description: "3D point cloud (PLY) of the room: \(modelInfo)")
+                guard let file = model.dataFile, DataFiles.data(for: file) == ply else {
+                    throw RoomMapper.Failure("Could not save the point cloud on this device.")
+                }
                 store.updateActivityChat(activity.message, text: "The 3D model is ready: \(modelInfo.replacingOccurrences(of: " Drag to turn, pinch to zoom.", with: ""))\n\nTop-down map:",
                                          images: map.map { [ImageStore.save($0)] }, documents: [model], finished: true)
+                if let receipt = result["receipt"] as? String {
+                    let reply = try? await api.visualGeometry("received session=\(name) receipt=\(receipt)")
+                    if reply?["deleted"] as? Bool != true {
+                        say("Model saved. Server cleanup could not be confirmed.", error: true)
+                    }
+                }
             }
         } catch {
             say(error.localizedDescription, error: true)
@@ -508,13 +548,18 @@ struct RoomMapperView: View {
         session = RoomMapper.newSessionName()
         activity = nil
         photos = []
+        clearRoomResult()
+        say("")
+    }
+
+    private func clearRoomResult() {
+        queue = nil
         frames = nil
         frontiers = nil
         obstacle = nil
         map = nil
         cloud = nil
         plyURL = nil
-        say("")
     }
 }
 
