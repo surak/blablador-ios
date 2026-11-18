@@ -855,6 +855,11 @@ private struct ComposerView: View {
         readingPDFs == 0 && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty || !documents.isEmpty)
     }
 
+    /// What the send button says in its tooltip; once the draft has more than one line, the key that sends it.
+    private var sendHelp: String {
+        draft.contains("\n") ? "Send (⌘↩)" : ""
+    }
+
     private var placeholder: String {
         if speech.isRecording { return "Listening…" }
         if speechMode { return "What should be said?" }
@@ -940,6 +945,7 @@ private struct ComposerView: View {
                         .onSubmit { if canSend { onSend() } }
                         .lineLimit(1...)
                         .fixedSize(horizontal: false, vertical: true)
+                        .composerReturnKey(send: onSend, canSend: { canSend }, draft: $draft)
                         .background(GeometryReader { Color.clear.preference(key: FieldHeight.self, value: $0.size.height) })
                 }
                 .frame(height: min(fieldHeight, Self.maxFieldHeight))
@@ -979,7 +985,7 @@ private struct ComposerView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(store.isStreaming ? "Queue message" : speechMode ? "Speak" : imageMode ? "Create image" : videoMode ? "Create video" : "Send")
-                    .help(store.isStreaming ? "Send when the reply is done; Steer sends it now" : "")
+                    .help(store.isStreaming ? "Send when the reply is done; Steer sends it now" : sendHelp)
                     .transition(.scale.combined(with: .opacity))
                 } else if !speech.isRecording {
                     Button { store.talking = true } label: {
@@ -1615,6 +1621,46 @@ private struct MouseDownObserver: NSViewRepresentable {
         }
 
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    }
+}
+#endif
+
+private extension View {
+    /// Enter puts a line break in the composer (Shift+Enter too) and Cmd+Enter (Ctrl+Enter on iPad) sends it.
+    /// A multiline `TextField` on macOS would otherwise take Return as "submit": it sends the draft, inserts no
+    /// line break, and does nothing at all with Cmd+Return.
+    @ViewBuilder
+    func composerReturnKey(send: @escaping () -> Void, canSend: @escaping () -> Bool, draft: Binding<String>) -> some View {
+        onKeyPress(keys: [.return], phases: .down) { press in
+            if press.modifiers.contains(.command) || press.modifiers.contains(.control) {
+                if canSend() { send() }
+                return .handled
+            }
+#if os(macOS)
+            ComposerEditing.insertLineBreak(in: draft)
+            return .handled
+#else
+            // iOS already puts the line break in a field with more than one line; handling it here would drop it.
+            return .ignored
+#endif
+        }
+    }
+}
+
+#if os(macOS)
+/// A line break where the caret is: SwiftUI has no way to put one into its `TextField` from outside.
+enum ComposerEditing {
+    static func insertLineBreak(in draft: Binding<String>) {
+        // While the text is being edited, the field's editor is the window's first responder: it holds the text
+        // and knows where the caret is.
+        if let editor = NSApp.keyWindow?.firstResponder as? NSTextView {
+            editor.insertText("\n", replacementRange: editor.selectedRange())
+            // The editor reports the change to SwiftUI, which writes it back into `draft`.
+            if draft.wrappedValue == editor.string { return }
+            draft.wrappedValue = editor.string
+            return
+        }
+        draft.wrappedValue += "\n"
     }
 }
 #endif
