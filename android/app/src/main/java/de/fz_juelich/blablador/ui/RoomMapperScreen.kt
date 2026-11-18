@@ -69,6 +69,7 @@ import de.fz_juelich.blablador.data.RoomMapper
 import de.fz_juelich.blablador.data.roomDownload
 import de.fz_juelich.blablador.data.roomFinish
 import de.fz_juelich.blablador.data.roomQueue
+import de.fz_juelich.blablador.data.roomReceived
 import de.fz_juelich.blablador.data.roomStep
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -225,14 +226,33 @@ fun RoomMapperScreen(vm: ChatViewModel, onClose: () -> Unit) {
                         note(finish.queue, finish.note)
                         busy = "Downloading the model…"
                         val data = vm.api.roomDownload(session, finish.parts) { progress = it.toFloat() / maxOf(finish.parts, 1) }
+                        if (finish.plyBytes != null && finish.plyBytes != data.size) {
+                            kotlin.error("The downloaded point cloud has the wrong size.")
+                        }
                         val parsed = withContext(Dispatchers.Default) { RoomMapper.parsePly(data) }
                         ply = data; cloud = parsed
                         info = "${parsed.count} points from ${finish.framesUsed} photos" +
                             if (finish.centimetres) ", in centimetres." else ". No floor found, so the size is not to scale."
                         activity?.let {
-                            val model = vm.storeMadeFile("$session.ply", data, "3D point cloud (PLY) of the room: $info")
+                            val model = withContext(Dispatchers.IO) {
+                                val file = vm.storeMadeFile("$session.ply", data, "3D point cloud (PLY) of the room: $info")
+                                check(vm.madeFile(file)?.contentEquals(data) == true) {
+                                    "Could not save the point cloud on this device."
+                                }
+                                file
+                            }
                             vm.updateActivityChat(it.second, "The 3D model is ready: $info\n\nTop-down map:",
                                 images = mapPng?.let { png -> listOf(vm.images.save(png)) }, documents = listOf(model))
+                            finish.receipt?.let { receipt ->
+                                val deleted = try {
+                                    vm.api.roomReceived(session, receipt)
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (_: Exception) {
+                                    false
+                                }
+                                if (!deleted) error = "Model saved. Server cleanup could not be confirmed."
+                            }
                         }
                     }
                 }) { Text("Build the 3D model") }

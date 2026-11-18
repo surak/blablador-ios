@@ -289,10 +289,22 @@ impl Mapper {
                 let data = value["data"].as_str().ok_or_else(|| anyhow!("Missing part {part}."))?;
                 ply.extend(base64::engine::general_purpose::STANDARD.decode(data.trim())?);
             }
+            if value["ply_bytes"].as_u64().is_some_and(|size| size != ply.len() as u64) {
+                return Err(anyhow!("Downloaded PLY has the wrong size."));
+            }
             // Kept encrypted with the app's data, so the history can point at it.
             let file = crate::storage::path(&format!("rooms/{session}.ply"));
             crate::storage::write(&file, &ply);
+            if crate::storage::read(&file).as_deref() != Some(&ply[..]) {
+                return Err(anyhow!("Could not save the point cloud on this device."));
+            }
             let cloud = tokio::task::spawn_blocking(move || make_cloud(ply, frames, in_cm)).await??;
+            let cleanup_failed = if let Some(receipt) = value["receipt"].as_str() {
+                let cmd = format!("received session={session} receipt={receipt}");
+                !command(&api, &cmd, &[]).await.is_ok_and(|reply| reply["deleted"] == true)
+            } else {
+                false
+            };
             let mut s = shared.lock().unwrap();
             let question = (s.recorded.as_deref() != Some(session.as_str())).then(|| format!("3D room · {session}"));
             s.recorded = Some(session.clone());
@@ -306,6 +318,9 @@ impl Mapper {
                 ),
             ));
             s.cloud = Some(cloud);
+            if cleanup_failed {
+                s.note = Some("Model saved. Server cleanup could not be confirmed.".into());
+            }
             Ok(())
         });
     }

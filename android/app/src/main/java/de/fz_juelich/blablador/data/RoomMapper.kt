@@ -10,6 +10,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
@@ -95,7 +96,10 @@ object RoomMapper {
     }
 
     data class Step(val frames: Int, val frontiers: Int, val obstacleAheadCm: Double?, val map: ByteArray?, val note: String?, val queue: Queue?)
-    data class Finish(val parts: Int, val points: Int, val framesUsed: Int, val centimetres: Boolean, val note: String?, val queue: Queue?)
+    data class Finish(
+        val parts: Int, val points: Int, val framesUsed: Int, val centimetres: Boolean,
+        val note: String?, val queue: Queue?, val receipt: String?, val plyBytes: Int?,
+    )
 
     fun parseStep(reply: JsonObject) = Step(
         frames = reply["frames"]?.jsonPrimitive?.intOrNull ?: 0,
@@ -111,6 +115,8 @@ object RoomMapper {
         points = reply["points"]?.jsonPrimitive?.intOrNull ?: 0,
         framesUsed = reply["frames_used"]?.jsonPrimitive?.intOrNull ?: 0,
         centimetres = reply["units"]?.jsonPrimitive?.contentOrNull == "cm",
+        receipt = reply["receipt"]?.jsonPrimitive?.contentOrNull,
+        plyBytes = reply["ply_bytes"]?.jsonPrimitive?.intOrNull,
         note = reply["note"]?.jsonPrimitive?.contentOrNull,
         queue = Queue.from(reply),
     )
@@ -208,6 +214,9 @@ suspend fun BlabladorApi.roomStep(session: String, heightCm: Int, jpegs: List<By
     RoomMapper.parseStep(roomCommand(RoomMapper.stepCommand(session, heightCm), jpegs))
 
 suspend fun BlabladorApi.roomFinish(session: String) = RoomMapper.parseFinish(roomCommand(RoomMapper.finishCommand(session)))
+
+suspend fun BlabladorApi.roomReceived(session: String, receipt: String): Boolean =
+    roomCommand("received session=$session receipt=$receipt", timeout = 30)["deleted"]?.jsonPrimitive?.booleanOrNull == true
 
 suspend fun BlabladorApi.roomQueue(session: String) = RoomMapper.Queue.from(roomCommand(RoomMapper.queueCommand(session), timeout = 30))
 
