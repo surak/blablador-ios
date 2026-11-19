@@ -245,6 +245,13 @@ impl MemoryStore {
         self.save();
     }
 
+    /// Forgets every fact, for "Forget everything".
+    pub fn delete_all(&mut self) {
+        self.refresh();
+        self.memories.clear();
+        self.save();
+    }
+
     pub fn system_prompt(&self, question: &str) -> String {
         let mut prompt = String::from("You have a long-term memory of the user that lasts across chats. Call remember when the user shares something lasting about themselves (name, job, preferences, ongoing projects) or asks you to remember something; save one short fact per call, written in the third person. Call forget with a number when the user says a memory is wrong or asks you to forget it. Never save passwords, keys or other secrets.");
         if self.memories.is_empty() {

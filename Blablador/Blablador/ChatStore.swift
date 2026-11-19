@@ -332,6 +332,13 @@ final class ChatStore: ObservableObject {
         ChatIndex.shared.forgetAll()
     }
 
+    /// "Forget everything": the chats go and so does the long-term memory, so in the end nothing of the user
+    /// stays on the device — neither what they said in a chat nor what was learned about them from it.
+    func forgetEverything() {
+        deleteAll()
+        MemoryStore.shared.deleteAll()
+    }
+
     // MARK: - Messaging
 
     /// Sends a chat message. With `createImage`, the text is used directly as an image prompt;

@@ -7,6 +7,7 @@ struct SettingsView: View {
     @State private var apiKey = ""
     @State private var endpoint = BlabladorAPI.endpoint
     @State private var confirmDelete = false
+    @State private var confirmForgetEverything = false
     /// So a tap anywhere in the instructions box starts typing there, not only on the line of the text.
     @FocusState private var writingInstructions: Bool
 #if os(macOS)
@@ -200,10 +201,11 @@ struct SettingsView: View {
 
                 Section {
                     Button("Delete all chats", role: .destructive) { confirmDelete = true }
+                    Button("Forget everything", role: .destructive) { confirmForgetEverything = true }
                 } header: {
-                    Text("Chats")
+                    Text("Chats and memory")
                 } footer: {
-                    Text("Deletes every chat and what went with them — photos, documents, audio, videos — and forgets the history: earlier chats can't be searched any more. Memory in Settings → Memory is kept.")
+                    Text("Delete all chats removes every chat and what went with them — photos, documents, audio, videos — and forgets the history: earlier chats can't be searched any more. Memory is kept. Forget everything does that and also deletes every memory in Settings → Memory, so the assistant starts over knowing nothing about you. Neither can be undone.")
                 }
 
 #if os(macOS)
@@ -257,6 +259,11 @@ struct SettingsView: View {
                 Button("Delete all", role: .destructive) { store.deleteAll() }
             } message: {
                 Text("Every chat is deleted and the history is forgotten. This can't be undone.")
+            }
+            .confirmationDialog("Forget everything?", isPresented: $confirmForgetEverything, titleVisibility: .visible) {
+                Button("Forget everything", role: .destructive) { store.forgetEverything() }
+            } message: {
+                Text("Every chat is deleted and every memory is forgotten — what Blablador learned about you, the memories you added and what it remembers of your chats. This can't be undone.")
             }
         }
         .onAppear { apiKey = store.apiKey }

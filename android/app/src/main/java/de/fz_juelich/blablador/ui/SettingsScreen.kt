@@ -53,6 +53,7 @@ fun SettingsScreen(vm: ChatViewModel, onOpenKnowledge: () -> Unit, onOpenVoices:
     var key by remember { mutableStateOf(vm.apiKey) }
     var endpoint by remember { mutableStateOf(vm.endpoint) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var confirmForgetAll by remember { mutableStateOf(false) }
     val context = LocalContext.current
     fun close() { vm.updateConnection(key, endpoint); onClose() }
     BackHandler(onBack = ::close)
@@ -162,6 +163,11 @@ fun SettingsScreen(vm: ChatViewModel, onOpenKnowledge: () -> Unit, onOpenVoices:
             }
 
             TextButton(onClick = { confirmDelete = true }) { Text("Delete all chats", color = MaterialTheme.colorScheme.error) }
+            TextButton(onClick = { confirmForgetAll = true }) { Text("Forget everything", color = MaterialTheme.colorScheme.error) }
+            Text("Delete all chats removes every chat and what went with them — photos, documents, audio, videos — " +
+                "and forgets the history, so earlier chats can't be searched any more. Memory is kept. " +
+                "Forget everything does that and also forgets every memory, so the assistant starts over knowing nothing about you.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
             val context = LocalContext.current
             Section("About") { Link("What's new", "", onWhatsNew) }
@@ -177,6 +183,14 @@ fun SettingsScreen(vm: ChatViewModel, onOpenKnowledge: () -> Unit, onOpenVoices:
         text = { Text("Every chat is deleted and the history is forgotten, so earlier chats can't be searched any more. Memory is kept. This can't be undone.") },
         confirmButton = { TextButton(onClick = { vm.deleteAll(); confirmDelete = false }) { Text("Delete all", color = MaterialTheme.colorScheme.error) } },
         dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
+    )
+
+    if (confirmForgetAll) AlertDialog(
+        onDismissRequest = { confirmForgetAll = false },
+        title = { Text("Forget everything?") },
+        text = { Text("Every chat is deleted and every memory is forgotten — what Blablador learned about you, the memories you added and what it remembers of your chats. This can't be undone.") },
+        confirmButton = { TextButton(onClick = { vm.forgetEverything(); confirmForgetAll = false }) { Text("Forget everything", color = MaterialTheme.colorScheme.error) } },
+        dismissButton = { TextButton(onClick = { confirmForgetAll = false }) { Text("Cancel") } },
     )
 }
 

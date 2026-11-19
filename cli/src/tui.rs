@@ -263,6 +263,39 @@ enum Drag {
 }
 
 impl State {
+    /// An empty screen, for the keys' tests.
+    #[cfg(test)]
+    fn empty() -> State {
+        State {
+            items: Vec::new(),
+            input: Vec::new(),
+            cursor: 0,
+            history: Vec::new(),
+            browsing: None,
+            top: None,
+            busy: false,
+            verb: VERBS[0],
+            last_verb: usize::MAX,
+            since: Instant::now(),
+            queued: Vec::new(),
+            steering: Vec::new(),
+            question: None,
+            selected_button: 0,
+            commands: Vec::new(),
+            suggestion: 0,
+            hide_suggestions: false,
+            selection: None,
+            dragging: None,
+            toast: None,
+            quit_armed: None,
+            info: Info { model: String::new(), effort: String::new(), cwd: String::new(), input_tokens: 0, output_tokens: 0 },
+            voice: None,
+            hits: Hits::default(),
+            stop: false,
+            dirty: true,
+        }
+    }
+
     fn changed(&mut self) {
         self.dirty = true;
     }
@@ -1660,17 +1693,16 @@ fn key(s: &mut State, k: KeyEvent, lines: &Sender<Option<String>>, cancel: &Atom
             s.input.drain(start..s.cursor);
             s.cursor = start;
         }
+        // Option+Delete deletes the word before the cursor, counted the way Alt+Left moves.
         KeyCode::Backspace if alt => {
-            let mut start = s.cursor;
-            while start > 0 && !s.input[start - 1].is_alphanumeric() {
-                start -= 1;
-            }
-            while start > 0 && s.input[start - 1].is_alphanumeric() {
-                start -= 1;
-            }
+            let start = word_start(&s.input, s.cursor);
             s.input.drain(start..s.cursor);
             s.cursor = start;
         }
+        // Option+Left and Option+Right, the word keys of a Mac terminal: iTerm2, Terminal.app and the rest send
+        // them as Alt+b and Alt+f (the readline keys), not as a cursor key, so the letter was typed instead.
+        KeyCode::Char('b') if alt => s.cursor = word_start(&s.input, s.cursor),
+        KeyCode::Char('f') if alt => s.cursor = word_end(&s.input, s.cursor),
         KeyCode::Char(c) if !ctrl => {
             let mut b = [0; 4];
             insert(s, c.encode_utf8(&mut b));
@@ -1684,22 +1716,8 @@ fn key(s: &mut State, k: KeyEvent, lines: &Sender<Option<String>>, cancel: &Atom
         KeyCode::Delete if s.cursor < s.input.len() => {
             s.input.remove(s.cursor);
         }
-        KeyCode::Left if alt || ctrl => {
-            while s.cursor > 0 && !s.input[s.cursor - 1].is_alphanumeric() {
-                s.cursor -= 1;
-            }
-            while s.cursor > 0 && s.input[s.cursor - 1].is_alphanumeric() {
-                s.cursor -= 1;
-            }
-        }
-        KeyCode::Right if alt || ctrl => {
-            while s.cursor < s.input.len() && !s.input[s.cursor].is_alphanumeric() {
-                s.cursor += 1;
-            }
-            while s.cursor < s.input.len() && s.input[s.cursor].is_alphanumeric() {
-                s.cursor += 1;
-            }
-        }
+        KeyCode::Left if alt || ctrl => s.cursor = word_start(&s.input, s.cursor),
+        KeyCode::Right if alt || ctrl => s.cursor = word_end(&s.input, s.cursor),
         KeyCode::Left => s.cursor = s.cursor.saturating_sub(1),
         KeyCode::Right => s.cursor = (s.cursor + 1).min(s.input.len()),
         KeyCode::Home if ctrl => s.top = Some(0),
@@ -1748,6 +1766,35 @@ fn line_start(s: &State) -> usize {
 fn line_end(s: &State) -> usize {
     let mut i = s.cursor;
     while i < s.input.len() && s.input[i] != '\n' {
+        i += 1;
+    }
+    i
+}
+
+/// A word is a run of letters, digits and underscores, like in a shell: `read the file_name` is three stops.
+fn is_word(c: char) -> bool {
+    c.is_alphanumeric() || c == '_'
+}
+
+/// The start of the word before `cursor`, skipping the spaces and punctuation in between.
+fn word_start(input: &[char], cursor: usize) -> usize {
+    let mut i = cursor;
+    while i > 0 && !is_word(input[i - 1]) {
+        i -= 1;
+    }
+    while i > 0 && is_word(input[i - 1]) {
+        i -= 1;
+    }
+    i
+}
+
+/// The end of the word at `cursor`, skipping what separates it from the next.
+fn word_end(input: &[char], cursor: usize) -> usize {
+    let mut i = cursor;
+    while i < input.len() && !is_word(input[i]) {
+        i += 1;
+    }
+    while i < input.len() && is_word(input[i]) {
         i += 1;
     }
     i
@@ -2057,6 +2104,41 @@ mod tests {
         let layout = input_layout(&input, 4);
         assert_eq!(layout[4], (1, 0));
         assert_eq!(*layout.last().unwrap(), (2, 2));
+    }
+
+    #[test]
+    fn the_word_keys_are_not_letters() {
+        // Option+Left arrives as Alt+b and Option+Right as Alt+f in a Mac terminal. Both must move by a word;
+        // before, they fell through and typed the letter.
+        let mut s = screen_for_tests("read the file_name now");
+        let (lines, _rx) = std::sync::mpsc::channel();
+        let cancel = std::sync::atomic::AtomicBool::new(false);
+        key(&mut s, KeyEvent::new(KeyCode::Char('b'), KeyModifiers::ALT), &lines, &cancel);
+        assert_eq!(s.cursor, 19, "to the start of \"now\"");
+        assert_eq!(s.input_text(), "read the file_name now", "nothing typed");
+        key(&mut s, KeyEvent::new(KeyCode::Char('b'), KeyModifiers::ALT), &lines, &cancel);
+        assert_eq!(s.cursor, 9);
+        key(&mut s, KeyEvent::new(KeyCode::Char('b'), KeyModifiers::ALT), &lines, &cancel);
+        assert_eq!(s.cursor, 5);
+        key(&mut s, KeyEvent::new(KeyCode::Char('f'), KeyModifiers::ALT), &lines, &cancel);
+        assert_eq!(s.cursor, 8, "the end of \"the\"");
+        key(&mut s, KeyEvent::new(KeyCode::Char('f'), KeyModifiers::ALT), &lines, &cancel);
+        assert_eq!(s.cursor, 18, "the end of \"file_name\"");
+        // Kept inside the line, and Unicode is counted by character.
+        let mut s = screen_for_tests("Grüße, Welt\nab");
+        s.cursor = 6;
+        key(&mut s, KeyEvent::new(KeyCode::Char('b'), KeyModifiers::ALT), &lines, &cancel);
+        assert_eq!(s.cursor, 0);
+        key(&mut s, KeyEvent::new(KeyCode::Char('f'), KeyModifiers::ALT), &lines, &cancel);
+        assert_eq!(s.cursor, 5, "\"Grüße\" ends before the comma");
+    }
+
+    /// A fake screen with only what the keys and the input need.
+    fn screen_for_tests(text: &str) -> State {
+        let mut s = State::empty();
+        s.input = text.chars().collect();
+        s.cursor = s.input.len();
+        s
     }
 
     #[test]

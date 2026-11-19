@@ -94,8 +94,9 @@ In one-shot mode only the answer goes to stdout; tool lines and questions go to 
 The chat is a full-screen view with the Blablador logo at the top. Scroll back with the mouse wheel, the scroll
 bar or Page Up/Down; drag over text to select and copy it; click a tool call or the thinking to open or close
 it (Ctrl-O opens all). `/` suggests commands, Tab completes `@path`, Shift-Enter (or `\` then Enter) starts a
-new line, Up/Down go through earlier messages. You can type while the answer is written: messages wait their
-turn above the input. Esc stops the answer; Ctrl-C twice quits.
+new line, Up/Down go through earlier messages, Option-Left/Right (or Ctrl-Left/Right, and Alt-b/Alt-f) move a word
+at a time, Option-Delete deletes a word, Ctrl-A/Ctrl-E go to the start and end of the line. You can type while the
+answer is written: messages wait their turn above the input. Esc stops the answer; Ctrl-C twice quits.
 
 The line under the input shows the model, the thinking effort, the tokens (`in`: the last request, so how full the
 context is; `out`: everything written this session), what that would cost at Claude's most expensive standard rate
@@ -242,7 +243,7 @@ Everything lives in `~/.bla` (or `BLA_HOME`): `settings.json`, `sessions/`, `ski
 | permissions | rules and modes, `/mode` |
 | hooks | shell hooks in Claude Code's format |
 | skills | `SKILL.md` skills from `~/.bla/skills`, `~/.claude/skills`, `~/.agents/skills` (and the project's, when trusted); the agent saves new ones; `/skills`, `/<skill> task` |
-| memory | the long-term memory shared with the Blablador apps (on the Mac through the app, `Blablador --memory`; on Linux and Windows the desktop app's encrypted `memories.json`), frozen into each session's prompt; `/memory`. Facts in the old `~/.bla/memory` are moved over once |
+| memory | the long-term memory shared with the Blablador apps (on the Mac through the app, `Blablador --memory`; on Linux and Windows the desktop app's encrypted `memories.json`), frozen into each session's prompt; `/memory`, and `/memory forget all` deletes every fact, in the apps too. Facts in the old `~/.bla/memory` are moved over once |
 | checkpoints | `/undo` |
 | compaction | summarises long conversations; `/compact` |
 | blablador | Blablador's other models: `look_at_image` (vision), `ocr_image`, `generate_image`, `transcribe_audio`, and `blablador_models`, a catalog of every served model in `~/.bla/models.json` (new ones are looked up on Hugging Face or the web and described) |

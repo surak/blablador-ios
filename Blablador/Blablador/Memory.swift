@@ -289,8 +289,8 @@ final class MemoryStore: ObservableObject {
     }
 }
 
-/// `Blablador --memory list|add TEXT|update ID TEXT|remove ID`: how bla reads and changes the memory on the Mac.
-/// Only the app's own binary can open the key in its Keychain, so bla runs it for each change.
+/// `Blablador --memory list|add TEXT|update ID TEXT|remove ID|forget-all`: how bla reads and changes the memory on
+/// the Mac. Only the app's own binary can open the key in its Keychain, so bla runs it for each change.
 enum MemoryCommand {
     @MainActor
     static func run(_ arguments: [String]) -> Int32 {
@@ -314,8 +314,11 @@ enum MemoryCommand {
             guard let id = UUID(uuidString: arguments[1]) else { return 1 }
             store.delete([id])
             output("removed")
+        case ("forget-all", 1):
+            store.deleteAll()
+            output("forgotten")
         default:
-            FileHandle.standardError.write(Data("Usage: Blablador --memory list | add TEXT | update ID TEXT | remove ID\n".utf8))
+            FileHandle.standardError.write(Data("Usage: Blablador --memory list | add TEXT | update ID TEXT | remove ID | forget-all\n".utf8))
             return 2
         }
         return 0

@@ -60,6 +60,8 @@ pub struct App {
     error: Option<String>,
     /// "Delete all chats" is waiting for its confirmation.
     confirm_delete_all: bool,
+    /// "Forget everything" is waiting for its confirmation.
+    confirm_forget_everything: bool,
     markdown: CommonMarkCache,
 }
 
@@ -98,6 +100,7 @@ impl App {
             renaming: None,
             error: None,
             confirm_delete_all: false,
+            confirm_forget_everything: false,
             markdown: CommonMarkCache::default(),
         };
         app.current = app.chats.first().map(|c| c.id);
@@ -314,6 +317,13 @@ impl App {
         self.current = None;
         self.save_chats();
         self.new_chat();
+    }
+
+    /// "Forget everything": the chats go and so does the memory, so in the end nothing of the user stays on
+    /// the device — neither what they said in a chat nor what was learned about them from it.
+    fn forget_everything(&mut self) {
+        self.delete_all_chats();
+        self.memory.lock().unwrap().delete_all();
     }
 
     fn regenerate(&mut self) {
@@ -741,12 +751,27 @@ impl App {
             } else if ui.button("Delete all chats…").clicked() {
                 self.confirm_delete_all = true;
             }
+            if self.confirm_forget_everything {
+                ui.label("Delete every chat and every memory? What Blablador learned about you and the memories you added go too, so it starts over knowing nothing about you. This can't be undone.");
+                ui.horizontal(|ui| {
+                    if ui.button("Forget everything").clicked() {
+                        self.forget_everything();
+                        self.confirm_forget_everything = false;
+                    }
+                    if ui.button("Keep them").clicked() {
+                        self.confirm_forget_everything = false;
+                    }
+                });
+            } else if ui.button("Forget everything…").on_hover_text("Deletes every chat and every memory").clicked() {
+                self.confirm_forget_everything = true;
+            }
             ui.separator();
             ui.weak(format!("Blablador {} · data in {}", env!("CARGO_PKG_VERSION"), storage::data_dir().display()));
             ui.weak("Everything saved is encrypted; the key is in the system keyring.");
         });
         if !open {
             self.confirm_delete_all = false;
+            self.confirm_forget_everything = false;
         }
         self.show_settings = open;
     }
@@ -778,7 +803,25 @@ impl App {
                     });
                 }
             });
+            ui.separator();
+            if self.confirm_forget_everything {
+                ui.label("Delete every chat and every memory? What Blablador learned about you and the memories you added go too. This can't be undone.");
+                ui.horizontal(|ui| {
+                    if ui.button("Forget everything").clicked() {
+                        self.forget_everything();
+                        self.confirm_forget_everything = false;
+                    }
+                    if ui.button("Keep them").clicked() {
+                        self.confirm_forget_everything = false;
+                    }
+                });
+            } else if !memories.is_empty() && ui.button("Forget everything…").clicked() {
+                self.confirm_forget_everything = true;
+            }
         });
+        if !open {
+            self.confirm_forget_everything = false;
+        }
         self.show_memory = open;
     }
 

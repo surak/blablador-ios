@@ -124,6 +124,19 @@ impl Store {
         }
     }
 
+    /// Forgets every fact: "Forget everything" in the apps, `/memory forget all` in bla.
+    pub fn forget_all(&self) -> Result<(), String> {
+        match self {
+            Store::App(app) => run_app(app, &["forget-all"]).map(|_| ()),
+            Store::Files { .. } => {
+                if self.read_files()?.is_empty() {
+                    return Ok(());
+                }
+                self.write_files(&[])
+            }
+        }
+    }
+
     fn cipher(&self, create: bool) -> Result<Option<Aes256Gcm>, String> {
         let Store::Files { dir, keyring } = self else {
             return Ok(None);
@@ -331,23 +344,9 @@ impl Memory {
             }
         }
     }
-}
 
-impl Plugin for Memory {
-    fn name(&self) -> &str {
-        "memory"
-    }
-    fn description(&self) -> &str {
-        "the long-term memory shared with the Blablador apps, frozen into each session's prompt"
-    }
-    fn tools(&self) -> Vec<Arc<dyn Tool>> {
-        vec![Arc::new(MemoryTool { store: self.store.clone() })]
-    }
-    fn commands(&self) -> Vec<CommandSpec> {
-        vec![CommandSpec { name: "memory".into(), help: "show what Blablador remembers (shared with the apps)".into() }]
-    }
-    fn session_start(&self, _session: &Session) {
-        self.import_old();
+    /// Reads the facts into the prompt's snapshot: at the start of a session, and again once they are forgotten.
+    fn reload(&self) {
         let facts = self.store.list().unwrap_or_default();
         // The newest that fit.
         let mut lines = Vec::new();
@@ -362,6 +361,25 @@ impl Plugin for Memory {
         lines.reverse();
         *self.snapshot.lock().unwrap() = if lines.is_empty() { String::new() } else { format!("\n\nWhat you remember:\n{}", lines.join("\n")) };
     }
+}
+
+impl Plugin for Memory {
+    fn name(&self) -> &str {
+        "memory"
+    }
+    fn description(&self) -> &str {
+        "the long-term memory shared with the Blablador apps, frozen into each session's prompt"
+    }
+    fn tools(&self) -> Vec<Arc<dyn Tool>> {
+        vec![Arc::new(MemoryTool { store: self.store.clone() })]
+    }
+    fn commands(&self) -> Vec<CommandSpec> {
+        vec![CommandSpec { name: "memory".into(), help: "show what Blablador remembers; /memory forget all deletes it all".into() }]
+    }
+    fn session_start(&self, _session: &Session) {
+        self.import_old();
+        self.reload();
+    }
     fn system_prompt(&self, _session: &Session, sections: &mut Vec<String>) {
         let snapshot = self.snapshot.lock().unwrap();
         sections.push(format!(
@@ -369,9 +387,20 @@ impl Plugin for Memory {
             snapshot
         ));
     }
-    fn command(&self, _ctx: &Ctx, name: &str, _args: &str, _messages: &mut Vec<Message>) -> Option<Result<CommandResult, String>> {
+    fn command(&self, _ctx: &Ctx, name: &str, args: &str, _messages: &mut Vec<Message>) -> Option<Result<CommandResult, String>> {
         if name != "memory" {
             return None;
+        }
+        // Forgetting everything the apps learned about the user: the same promise the apps' "Forget everything"
+        // makes, for the half of it bla can reach (the chats are the apps' own).
+        if args.trim() == "forget" || args.trim() == "forget all" {
+            return Some(match self.store.forget_all() {
+                Ok(()) => {
+                    self.reload();
+                    Ok(CommandResult::Output(format!("Forgotten: every memory is gone from {}. The chats themselves are deleted in the apps, in Settings.", self.store.place())))
+                }
+                Err(e) => Err(e),
+            });
         }
         Some(self.store.list().map(|facts| {
             let mut out = format!("Shared with {}:\n", self.store.place());
@@ -379,6 +408,9 @@ impl Plugin for Memory {
                 out.push_str("  (nothing yet)");
             }
             out.push_str(&facts.iter().enumerate().map(|(i, f)| format!("  {}. {}", i + 1, f.text)).collect::<Vec<_>>().join("\n"));
+            if !facts.is_empty() {
+                out.push_str("\n\n/memory forget all deletes every one of them, in the apps too.");
+            }
             CommandResult::Output(out.trim_end().to_string())
         }))
     }
@@ -405,6 +437,34 @@ mod tests {
         assert!(apply(&store, &[json!({"action": "remove", "old_text": "nothing"})]).unwrap_err().contains("Nothing was changed"));
         let id = store.list().unwrap()[0].id.clone();
         assert_eq!(id.len(), 36);
+        // Forget everything: the file stays, and it is empty and still encrypted.
+        store.forget_all().unwrap();
+        assert!(store.list().unwrap().is_empty());
+        let raw = std::fs::read(dir.join("memories.json")).unwrap();
+        assert!(raw.starts_with(MAGIC) && !raw.windows(5).any(|w| w == b"Rust"));
+        store.forget_all().unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn forgetting_everything_asks_the_app() {
+        // On the Mac the facts are behind the app's Keychain key, so forgetting them is one more command to the
+        // app's binary. The stand-in records what bla would have run.
+        let dir = std::env::temp_dir().join(format!("bla-mem-app-{}", crate::util::random_hex(8)));
+        std::fs::create_dir_all(&dir).unwrap();
+        let log = dir.join("calls");
+        let fake = dir.join("Blablador");
+        std::fs::write(
+            &fake,
+            format!("#!/bin/sh\nprintf '%s\\n' \"$*\" >> '{}'\nexit 0\n", log.display()),
+        )
+        .unwrap();
+        let mut perms = std::fs::metadata(&fake).unwrap().permissions();
+        std::os::unix::fs::PermissionsExt::set_mode(&mut perms, 0o755);
+        std::fs::set_permissions(&fake, perms).unwrap();
+
+        Store::App(fake).forget_all().unwrap();
+        assert_eq!(std::fs::read_to_string(&log).unwrap().trim(), "--memory forget-all");
         let _ = std::fs::remove_dir_all(dir);
     }
 }
