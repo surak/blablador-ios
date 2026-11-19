@@ -447,6 +447,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)] // the stand-in is a shell script; the app's memory only exists on the Mac anyway
     fn forgetting_everything_asks_the_app() {
         // On the Mac the facts are behind the app's Keychain key, so forgetting them is one more command to the
         // app's binary. The stand-in records what bla would have run.
