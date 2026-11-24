@@ -234,6 +234,16 @@ struct ChatView: View {
             if let goal = store.current?.goal {
                 GoalBanner(goal: goal)
             }
+            if store.isDisappearing {
+                DisappearingBanner { store.newChat() }
+            }
+            ForEach(store.currentAsides) { aside in
+                AsideCard(aside: aside) {
+                    store.openAside(aside.id)
+                } onClose: {
+                    withAnimation(.snappy) { store.dismissAside(aside.id) }
+                }
+            }
             ForEach(store.queued) { item in
                 QueuedMessageRow(item: item) {
                     // Back into the composer to change it.
@@ -303,9 +313,24 @@ struct ChatView: View {
 #endif
         ToolbarItemGroup(placement: .primaryAction) {
             Button {
+                store.newDisappearingChat()
+                draft = ""
+                attachments = []
+                documents = []
+                mentions = []
+                inputFocused = true
+            } label: {
+                Label("Disappearing chat", systemImage: store.isDisappearing ? "theatermasks.fill" : "theatermasks")
+                    .labelStyle(.iconOnly)
+                    .foregroundStyle(store.isDisappearing ? AnyShapeStyle(Theme.gradient) : AnyShapeStyle(.primary))
+            }
+            .accessibilityLabel(store.isDisappearing ? "This chat disappears" : "Start a disappearing chat")
+            .help("A chat that leaves no trace: nothing is saved, nothing is remembered")
+            Button {
                 store.newChat()
                 draft = ""
                 attachments = []
+                documents = []
             } label: {
                 Label("New chat", systemImage: "square.and.pencil")
             }
@@ -516,11 +541,12 @@ struct ChatView: View {
         attachments = []
         documents = []
         mentions = []
-        if store.isStreaming {
+        if store.isStreaming, AsideTools.command(text) == nil {
             // Waits above the composer until the reply ends, unless the user steers with it.
             store.enqueue(text, attachments: images, documents: pdfs, mentions: mentioned)
             return
         }
+        // /btw goes through send even while a reply streams: the store answers it aside.
         store.send(text, attachments: images, documents: pdfs, mentions: mentioned, createImage: imageMode, createVideo: videoMode, speak: speechMode)
     }
 

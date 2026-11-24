@@ -274,6 +274,7 @@ fn main() {
     let mut agent = Agent::new(host, provider, session, args.model.clone().unwrap_or_else(|| settings.model.clone()));
     agent.effort = args.effort.clone().or(settings.effort.clone());
     agent.max_steps = settings.max_steps.max(1);
+    agent.goal_max_steps = settings.goal_max_steps.max(1);
     agent.interactive = chat;
     agent.yes = args.yes;
     agent.instructions = args.system.clone();

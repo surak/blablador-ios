@@ -83,7 +83,9 @@ at most three rounds. So `pre_tool` can run more than once for one call; keep it
 
 The decisions of all plugins combine strictly: any deny wins, then any ask, then allow. If a plugin with
 `pre_tool` fails to answer, bla asks the user rather than letting the call through unseen. A `turn_end`
-continuation is limited to eight per message, so a plugin can't keep a turn going forever.
+continuation is limited to 25 per message, so a plugin can't keep a turn going forever; while a plugin reports an open
+goal (`goal_open`, as `/goal` does) the message gets `goalMaxSteps` model requests instead of `maxSteps`, and that
+budget bounds the continuations too.
 
 ### Notifications
 

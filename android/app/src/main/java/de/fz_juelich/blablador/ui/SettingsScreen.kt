@@ -144,8 +144,11 @@ fun SettingsScreen(vm: ChatViewModel, onOpenKnowledge: () -> Unit, onOpenVoices:
                 Toggle("Run Python code", vm.pythonEnabled, vm::setPython)
             }
 
-            Section("Tasks", footer = "After a task with a plan, a goal or several tools, Blablador looks over its answer once more and fixes what's wrong before showing it. Type /goal and what you want to have it keep working until it's done.") {
+            Section("Tasks", footer = "After a task with a plan, a goal or several tools, Blablador looks over its answer once more and fixes what's wrong before showing it. Type /goal and what you want to have it keep working until it's done. Goal rounds: how many steps one reply on a goal may take before it has to answer with what it has.") {
                 Toggle("Check results before finishing", vm.checksResults, vm::checkResults)
+                de.fz_juelich.blablador.data.GoalTools.ROUND_CHOICES.forEach { rounds ->
+                    Choice("$rounds tool rounds", rounds == vm.goalRounds) { vm.chooseGoalRounds(rounds) }
+                }
             }
 
             Section("Custom instructions", footer = "Sent as a system prompt with every chat.") {

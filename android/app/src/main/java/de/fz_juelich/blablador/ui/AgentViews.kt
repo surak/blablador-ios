@@ -28,6 +28,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.material.icons.outlined.AutoFixHigh
 import androidx.compose.material.icons.outlined.Brush
 import androidx.compose.material.icons.outlined.Checklist
+import androidx.compose.material.icons.outlined.Chat
 import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.Event
@@ -287,7 +288,10 @@ fun GoalBanner(goal: de.fz_juelich.blablador.data.Goal, running: Boolean, onCont
 /** Commands offered while "/" is typed as the whole draft. */
 @Composable
 fun SlashSuggestions(query: String, onPick: (String) -> Unit) {
-    val commands = listOf(Triple("goal", Icons.Outlined.Flag, "Keep working until it's done")).filter { query.isEmpty() || it.first.startsWith(query.lowercase()) }
+    val commands = listOf(
+        Triple("goal", Icons.Outlined.Flag, "Keep working until it's done"),
+        Triple("btw", Icons.Outlined.Chat, "Ask something aside, while the reply is written"),
+    ).filter { query.isEmpty() || it.first.startsWith(query.lowercase()) }
     if (commands.isEmpty()) return
     Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
         commands.forEach { (name, icon, text) ->

@@ -222,7 +222,8 @@ are read. Its hooks, plugins, skills, allow rules and endpoint are ignored.
 |---|---|
 | `model`, `effort` | as the options |
 | `endpoint` | any OpenAI-compatible API (default Blablador); `allowInsecureHttp` for plain http elsewhere |
-| `maxSteps` | model requests per message (60) |
+| `maxSteps` | model requests per message (600) |
+| `goalMaxSteps` | model requests for one message that works on a `/goal`, which settles it with `goal_status` rather than running out (1000) |
 | `compactAt` | compact the conversation past this many characters (240000) |
 | `permissions` | above |
 | `hooks` | below |
@@ -250,7 +251,7 @@ Everything lives in `~/.bla` (or `BLA_HOME`): `settings.json`, `sessions/`, `ski
 | web | `web_search` on Blablador's SearXNG and `read_page` for public pages, PDFs and shared Google Docs; local and private addresses are refused |
 | agents | `task`: subagents. `explore` ones are read-only and run in parallel; `general` ones may edit, after the usual permission check |
 | processes | `bash_background`, `bash_output`, `bash_kill` for dev servers, watchers and long builds; `/jobs` |
-| plan | `update_plan` checklists; `/goal TEXT` keeps bla working until the goal is reached and verified (`/goal clear` ends it) |
+| plan | `update_plan` checklists; `/goal TEXT` keeps bla working until the goal is reached and verified (`/goal clear` ends it), with `goalMaxSteps` model requests rather than `maxSteps` |
 | mcp | MCP servers in Claude Code's `mcpServers` format from `~/.bla/mcp.json` (and a trusted project's `.mcp.json`), stdio or Streamable HTTP; tools appear as `server__tool`; `/mcp` |
 
 Anything else is an external plugin: a program in any language that speaks JSON-RPC over stdin and stdout. It

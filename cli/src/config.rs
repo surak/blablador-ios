@@ -44,6 +44,9 @@ pub struct Settings {
     pub provider: String,
     pub effort: Option<String>,
     pub max_steps: usize,
+    /// Model requests for one message that works on a goal (`/goal`). A goal is meant to be worked through
+    /// without coming back to the user, so the limit is high: the model settles it with goal_status.
+    pub goal_max_steps: usize,
     /// Compact the conversation when it grows past this many characters.
     pub compact_at: usize,
     pub permissions: Permissions,
@@ -65,7 +68,8 @@ impl Default for Settings {
             model: DEFAULT_MODEL.into(),
             provider: "openai".into(),
             effort: None,
-            max_steps: 60,
+            max_steps: 600,
+            goal_max_steps: 1000,
             compact_at: 240_000,
             permissions: Permissions::default(),
             hooks: Value::Null,
@@ -217,5 +221,16 @@ mod tests {
             "plugins": {"external": [{"name": "x", "command": ["sh"]}]}
         });
         assert_eq!(untrusted_subset(&project), json!({"model": "m", "permissions": {"deny": ["write"]}}));
+    }
+
+    #[test]
+    fn a_message_gets_600_steps_and_a_goal_1000() {
+        // A coding task can take many rounds; a goal is meant to be worked through without coming back to the user.
+        let settings = Settings::default();
+        assert_eq!(settings.max_steps, 600);
+        assert_eq!(settings.goal_max_steps, 1000);
+        // Both are settings, spelled as in settings.json.
+        let parsed: Settings = serde_json::from_value(json!({"maxSteps": 42, "goalMaxSteps": 7})).unwrap();
+        assert_eq!((parsed.max_steps, parsed.goal_max_steps), (42, 7));
     }
 }

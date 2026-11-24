@@ -67,6 +67,9 @@ pub struct Message {
     #[serde(default)]
     pub tokens: Option<(u64, u64)>,
     pub created: DateTime<Utc>,
+    /// The chat a question was asked aside (/btw) in, so the kept chat says where it came from.
+    #[serde(default)]
+    pub aside_of: Option<String>,
     /// "Searching the web…" and the like while the reply is being written; not saved.
     #[serde(skip)]
     pub status: Option<String>,
@@ -86,6 +89,7 @@ impl Message {
             model: None,
             tokens: None,
             created: Utc::now(),
+            aside_of: None,
             status: None,
         }
     }
@@ -99,6 +103,10 @@ pub struct Conversation {
     /// Knowledge bases searched for every question in this chat.
     #[serde(default)]
     pub knowledge: Vec<Uuid>,
+    /// What was said in the chat a question was asked aside in, before the long reply started: the aside's
+    /// chat reads on its own, and a follow-up has the context.
+    #[serde(default)]
+    pub context: Vec<Message>,
     pub created: DateTime<Utc>,
     pub updated: DateTime<Utc>,
 }
@@ -106,7 +114,7 @@ pub struct Conversation {
 impl Conversation {
     pub fn new() -> Conversation {
         let now = Utc::now();
-        Conversation { id: Uuid::new_v4(), title: "New chat".into(), messages: vec![], knowledge: vec![], created: now, updated: now }
+        Conversation { id: Uuid::new_v4(), title: "New chat".into(), messages: vec![], knowledge: vec![], context: vec![], created: now, updated: now }
     }
 }
 

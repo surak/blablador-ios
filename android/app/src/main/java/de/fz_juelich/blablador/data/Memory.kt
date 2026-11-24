@@ -257,7 +257,8 @@ object ChatSearch {
         val words = MemoryStore.words(query)
         if (words.isEmpty()) return "No keywords to search for."
         data class Hit(val score: Int, val conversation: Conversation, val message: ChatMessage)
-        val hits = conversations.filter { it.id != excluding }.flatMap { conversation ->
+        // A disappearing chat is never quoted back, not even while it is open.
+        val hits = conversations.filter { it.id != excluding && !it.isEphemeral }.flatMap { conversation ->
             conversation.messages.filter { !it.isError && it.content.isNotEmpty() }.mapNotNull { message ->
                 val score = (MemoryStore.words(message.content) intersect words).size + (MemoryStore.words(conversation.title) intersect words).size
                 if (score > 0) Hit(score, conversation, message) else null

@@ -111,6 +111,12 @@ struct MessageView: View {
                     if !message.mentions.isEmpty {
                         MentionChips(mentions: message.mentions)
                     }
+                    // A question that was asked aside (/btw) says which chat it came from.
+                    if let asideOf = message.asideOf {
+                        Label("Asked aside in “\(asideOf)”", systemImage: "bubble.left.and.text.bubble.right")
+                            .scaledFont(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
                     if !message.content.isEmpty {
                         Text(message.content)
                             .scaledFont(.body)

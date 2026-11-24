@@ -128,6 +128,21 @@ final class AgentFeatureTests: XCTestCase {
         XCTAssertEqual(TraceLine.summary(Trace(model: "m", seconds: 2, check: .corrected)), "2.0 s · corrected after a check")
     }
 
+    func testGoalRoundsAreASetting() {
+        let saved = UserDefaults.standard.object(forKey: "goalRounds")
+        defer {
+            if let saved { UserDefaults.standard.set(saved, forKey: "goalRounds") }
+            else { UserDefaults.standard.removeObject(forKey: "goalRounds") }
+        }
+        UserDefaults.standard.removeObject(forKey: "goalRounds")
+        XCTAssertEqual(GoalTools.maxRounds, 1000)
+        XCTAssertTrue(GoalTools.roundChoices.contains(GoalTools.maxRounds))
+        GoalTools.maxRounds = 250
+        XCTAssertEqual(GoalTools.maxRounds, 250)
+        GoalTools.maxRounds = 0
+        XCTAssertEqual(GoalTools.maxRounds, 1)
+    }
+
     func testKnowledgeBasesAreNotAtMentions() {
         XCTAssertFalse(MentionCatalog.all().contains { $0.kind == .knowledge })
     }

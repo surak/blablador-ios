@@ -78,7 +78,12 @@ data class ChatMessage(
     val mentions: List<Mention> = emptyList(),
     /** Transient status shown while tools run, e.g. "Searching the web…". Not saved. */
     @kotlinx.serialization.Transient val status: String? = null,
+    /** On the question of a chat that was asked aside (/btw): the title of the chat it was asked in. */
+    val asideOf: String? = null,
 )
+
+/** The title of the disappearing chat, which is never saved. */
+const val DISAPPEARING_TITLE = "Disappearing chat"
 
 @Serializable
 data class Conversation(
@@ -94,7 +99,14 @@ data class Conversation(
     val summaryCount: Int? = null,
     /** Set with /goal: Blablador keeps working until it's reached. */
     val goal: Goal? = null,
+    /** A disappearing chat: never saved, never indexed for search, and it writes nothing to memory. */
+    val ephemeral: Boolean = false,
+    /** What was said in the chat an aside (/btw) was asked in, sent ahead of its own messages. */
+    val context: List<ChatMessage> = emptyList(),
 ) {
+    /** Chats that go when the user leaves them. */
+    val isEphemeral: Boolean get() = ephemeral
+
     /** Messages of every version, for deleting their files. */
     val allMessages: List<ChatMessage>
         get() {

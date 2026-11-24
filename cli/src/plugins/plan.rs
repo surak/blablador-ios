@@ -171,6 +171,10 @@ impl Plugin for Plan {
             _ => None,
         }
     }
+    fn goal_open(&self, _session: &Session) -> bool {
+        let state = self.state.lock().unwrap();
+        state.goal.is_some() && state.settled.is_none()
+    }
 }
 
 #[cfg(test)]

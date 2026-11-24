@@ -7,7 +7,8 @@ struct HistoryView: View {
     let onClose: () -> Void
 
     private var filtered: [Conversation] {
-        let sorted = store.conversations.sorted { $0.updatedAt > $1.updatedAt }
+        // A disappearing chat stays out of the history while it lasts.
+        let sorted = store.conversations.filter { !$0.isEphemeral }.sorted { $0.updatedAt > $1.updatedAt }
         guard !search.isEmpty else { return sorted }
         return sorted.filter { conversation in
             conversation.title.localizedCaseInsensitiveContains(search)

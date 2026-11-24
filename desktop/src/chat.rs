@@ -8,6 +8,7 @@ use crate::model::{Conversation, Message, MemoryStore, Role, Settings, Step, Ste
 use crate::tools;
 use anyhow::Result;
 use serde_json::{json, Map, Value};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -57,6 +58,10 @@ pub enum Event {
     KnowledgeAdded { base: Uuid, document: knowledge::Document, model: String },
     /// A picture attached to the next question has been looked at.
     PictureRead { name: String, result: Result<String, String> },
+    /// An answer asked aside (/btw) as it is now.
+    Aside(crate::aside::Aside),
+    /// The aside is answered: its answer, the chat it read, and what it looked up.
+    AsideDone { aside: crate::aside::Aside, context: Vec<Value>, steps: Vec<Step> },
     Error(String),
 }
 
@@ -89,6 +94,9 @@ pub struct Turn {
     pub memory: Arc<Mutex<MemoryStore>>,
     pub commands_allowed: bool,
     pub needs_title: bool,
+    /// Questions asked aside (/btw) while a reply is being written, by chat: the reply is told each round, so
+    /// it doesn't answer them itself or wander off.
+    pub aside_questions: Arc<Mutex<HashMap<Uuid, Vec<String>>>>,
     pub reply: Message,
 }
 
@@ -106,7 +114,7 @@ fn joined(earlier: &str, new: &str) -> String {
     if earlier.is_empty() { new.to_string() } else if new.is_empty() { earlier.to_string() } else { format!("{earlier}\n\n{new}") }
 }
 
-fn wire(message: &Message) -> Value {
+pub fn wire(message: &Message) -> Value {
     let role = if message.role == Role::User { "user" } else { "assistant" };
     let mut content = message.content.clone();
     for file in &message.attachments {
@@ -225,6 +233,10 @@ async fn write_reply(turn: &mut Turn, reply: &mut Message, events: &Events) -> R
             // Keep the tools declared (removing them makes some models print raw tool markup),
             // but tell the model to answer with what it has.
             messages.push(json!({ "role": "user", "content": "Stop using tools now and write the final answer using the results above." }));
+        }
+        // Questions asked aside meanwhile: not for this answer, and not a reason to abandon it.
+        for question in turn.aside_questions.lock().unwrap().remove(&chat).unwrap_or_default() {
+            messages.push(json!({ "role": "user", "content": crate::aside::resume_note(&question) }));
         }
         let prefix = reply.content.clone();
         let reasoning_prefix = reply.reasoning.clone();

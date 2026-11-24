@@ -156,6 +156,11 @@ pub trait Plugin: Send + Sync {
     fn turn_end(&self, _session: &Session, _messages: &[Message]) -> Option<String> {
         None
     }
+    /// Whether a goal the user set is still open, which lets the turn use the goal's step budget rather than the
+    /// ordinary one (the plan plugin's `/goal`).
+    fn goal_open(&self, _session: &Session) -> bool {
+        false
+    }
     fn event(&self, _session: &Session, _event: &Event) {}
     /// Handles `/name args` when it owns the command; None when it doesn't.
     fn command(&self, _ctx: &Ctx, _name: &str, _args: &str, _messages: &mut Vec<Message>) -> Option<Result<CommandResult, String>> {
@@ -274,6 +279,10 @@ impl Host {
 
     pub fn turn_end(&self, session: &Session, messages: &[Message]) -> Option<String> {
         self.plugins.iter().find_map(|p| p.turn_end(session, messages))
+    }
+
+    pub fn goal_open(&self, session: &Session) -> bool {
+        self.plugins.iter().any(|p| p.goal_open(session))
     }
 
     pub fn event(&self, session: &Session, event: &Event) {

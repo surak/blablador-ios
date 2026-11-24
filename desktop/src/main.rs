@@ -2,6 +2,7 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
 mod api;
+mod aside;
 mod app;
 mod chat;
 mod effort;

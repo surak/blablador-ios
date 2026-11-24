@@ -92,7 +92,8 @@ class ChatIndex(private val context: Context?) {
         updating = true
         try {
             val vectors = load()
-            val messages = conversations.flatMap { it.messages }.filter(::indexable)
+            // A disappearing chat is never written down, so its messages are never indexed either.
+            val messages = conversations.filter { !it.isEphemeral }.flatMap { it.messages }.filter(::indexable)
             val present = messages.map { it.id }.toSet()
             val removed = synchronized(this) { vectors.keys.filter { it !in present }.onEach { vectors.remove(it) } }
             val missing = messages.filter { vectors[it.id] == null }.takeLast(PER_UPDATE)
@@ -130,7 +131,7 @@ suspend fun ChatSearch.find(query: String, conversations: List<Conversation>, ex
     index.update(conversations, api)
     val words = MemoryStore.words(query)
     data class Candidate(val score: Float, val conversation: Conversation, val message: ChatMessage)
-    val candidates = conversations.filter { it.id != excluding }.flatMap { conversation ->
+    val candidates = conversations.filter { it.id != excluding && !it.isEphemeral }.flatMap { conversation ->
         conversation.messages.filter(ChatIndex::indexable).mapNotNull { message ->
             val vector = index.vector(message.id)
             val meaning = vector?.let { Embeddings.similarity(it, queryVector) } ?: 0f

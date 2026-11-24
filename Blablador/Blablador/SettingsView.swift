@@ -15,6 +15,8 @@ struct SettingsView: View {
     @State private var blaMessage: String?
 #endif
     @AppStorage("ocrEngine") private var ocrEngine: OCREngine = .onDevice
+    /// GoalTools.maxRounds, as @AppStorage so the picker follows the saved value.
+    @AppStorage("goalRounds") private var goalRounds = 1000
 
     var body: some View {
         NavigationStack {
@@ -172,8 +174,17 @@ struct SettingsView: View {
                         get: { SelfCheck.enabled },
                         set: { SelfCheck.enabled = $0; store.objectWillChange.send() }
                     ))
+                    Picker("Goal rounds", selection: $goalRounds) {
+                        // A saved number outside the list still shows, rather than snapping to another.
+                        if !GoalTools.roundChoices.contains(goalRounds) {
+                            Text("\(goalRounds) tool rounds").tag(goalRounds)
+                        }
+                        ForEach(GoalTools.roundChoices, id: \.self) { rounds in
+                            Text("\(rounds) tool rounds").tag(rounds)
+                        }
+                    }
                 } footer: {
-                    Text("After a task with a plan, a goal or several tools, Blablador looks over its answer once more and fixes what's wrong before showing it. Type /goal and what you want to have it keep working until it's done.")
+                    Text("After a task with a plan, a goal or several tools, Blablador looks over its answer once more and fixes what's wrong before showing it. Type /goal and what you want to have it keep working until it's done. Goal rounds: how many steps one reply on a goal may take before it has to answer with what it has.")
                 }
                 Section {
                     // The placeholder went inside the field, where grey text reads as something already typed, and

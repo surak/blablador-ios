@@ -137,13 +137,13 @@ class AgentFeatureTest {
     @Test
     fun whatsNewShowsOnceAfterAnUpdate() {
         val newest = de.fz_juelich.blablador.data.WhatsNew.releases.first().first
-        assertEquals("3.12", newest)
+        assertEquals("3.13", newest)
         assertNull(de.fz_juelich.blablador.data.WhatsNew.unseen(null, hasChats = false))
         assertEquals(newest, de.fz_juelich.blablador.data.WhatsNew.unseen(null, hasChats = true)?.first)
         assertEquals(newest, de.fz_juelich.blablador.data.WhatsNew.unseen("3.2", hasChats = true)?.first)
-        assertNull(de.fz_juelich.blablador.data.WhatsNew.unseen("3.12", hasChats = true))
+        assertNull(de.fz_juelich.blablador.data.WhatsNew.unseen("3.13", hasChats = true))
         assertTrue(de.fz_juelich.blablador.data.WhatsNew.compare("3.10", "3.9") > 0)
-        assertEquals(2, de.fz_juelich.blablador.data.WhatsNew.releases.first().second.size)
+        assertEquals(3, de.fz_juelich.blablador.data.WhatsNew.releases.first().second.size)
     }
 
     @Test
@@ -165,6 +165,8 @@ class AgentFeatureTest {
         assertEquals("", goals.command("/GOAL"))
         assertNull(goals.command("/goals are nice"))
         assertNull(goals.command("my /goal"))
+        assertEquals(1000, goals.DEFAULT_ROUNDS)
+        assertTrue(goals.DEFAULT_ROUNDS in goals.ROUND_CHOICES)
         assertTrue(check.passed("CHECKED"))
         assertTrue(check.passed(" checked. "))
         assertFalse(check.passed("The sum is 12, not 13."))

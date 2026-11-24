@@ -38,6 +38,8 @@ import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.FormatAlignLeft
 import androidx.compose.material.icons.outlined.IosShare
 import androidx.compose.material.icons.outlined.PanTool
+import androidx.compose.material.icons.outlined.TheaterComedy
+import androidx.compose.material.icons.outlined.QuestionAnswer
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -93,6 +95,8 @@ fun WhatsNewDialog(version: String, items: List<WhatsNewItem>, onTry: (WhatsNewI
                                         "terminal" -> Icons.Outlined.Terminal
                                         "atom" -> Icons.Outlined.Biotech
                                         "check" -> Icons.Outlined.VerifiedUser
+                                        "answer" -> Icons.Outlined.QuestionAnswer
+                                        "masks" -> Icons.Outlined.TheaterComedy
                                         else -> Icons.Outlined.AlternateEmail
                                     }, null, Modifier.size(26.dp), tint = Brand.violet)
                                 }

@@ -12,6 +12,20 @@ struct WhatsNewItem: Identifiable, Hashable {
 
 enum WhatsNew {
     static let releases: [(version: String, items: [WhatsNewItem])] = [
+        ("3.13", [
+            WhatsNewItem(icon: "bubble.left.and.text.bubble.right", title: "Ask something aside",
+                         text: "While a long answer is being written, type /btw and a question that has nothing to do with it. "
+                         + "It's answered in a card above the composer, the answer carries on undisturbed, and what was asked "
+                         + "aside is kept as a chat of its own."),
+            WhatsNewItem(icon: "theatermasks", title: "Chats that leave no trace",
+                         text: "The masks in the top bar start a disappearing chat: nothing is saved, nothing in it is "
+                         + "remembered, and it can't be found again in the history. Start another chat or close the app and "
+                         + "it is gone."),
+            WhatsNewItem(icon: "flag", title: "Goals that don't run out of steps",
+                         text: "A reply working on a /goal now gets many more steps before it has to answer with what it has — "
+                         + "1000 by default, chosen in Settings.",
+                         tryIt: .prompt("/goal ", mention: nil))
+        ]),
         ("3.12", [
             WhatsNewItem(icon: "waveform", title: "Talk to bla in the Terminal",
                          text: "Type /voice in bla and talk to it: it listens with Whisper, and reads the answer back with Drama 3 "

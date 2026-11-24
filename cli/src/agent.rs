@@ -20,6 +20,8 @@ pub struct Agent {
     pub model: String,
     pub effort: Option<String>,
     pub max_steps: usize,
+    /// Model requests for one message that works on a goal, instead of `max_steps`.
+    pub goal_max_steps: usize,
     pub interactive: bool,
     /// Approve everything that would ask (--yes).
     pub yes: bool,
@@ -68,7 +70,8 @@ impl Agent {
             session,
             model,
             effort: None,
-            max_steps: 60,
+            max_steps: 600,
+            goal_max_steps: 1000,
             interactive: false,
             yes: false,
             cancel: Arc::new(AtomicBool::new(false)),
@@ -149,13 +152,20 @@ impl Agent {
         }
         self.session.push(Message::user(text));
         let schemas = self.host.schemas();
+        // A goal is meant to be worked through without coming back to the user, so it gets its own step budget
+        // and the nudges that keep it going aren't capped separately: the budget bounds them too. Read once, so a
+        // goal that is settled halfway through still gets to write its answer.
+        let ps = PluginSession { id: &self.session.id, cwd: &self.session.cwd, interactive: self.interactive };
+        let on_a_goal = self.host.goal_open(&ps);
+        let budget = if on_a_goal { self.goal_max_steps } else { self.max_steps }.max(1);
+        let max_continuations = if on_a_goal { budget } else { MAX_CONTINUATIONS };
         let mut continuations = 0;
         let mut steps = 0;
         let result = loop {
             if self.cancel.load(Ordering::Relaxed) {
                 break Err("cancelled".to_string());
             }
-            if steps == self.max_steps {
+            if steps == budget {
                 ui.notice(&format!("Stopped after {steps} steps. Say \"continue\" to go on."));
                 break Ok(());
             }
@@ -195,7 +205,7 @@ impl Agent {
                     self.host.turn_end(&ps, &self.session.messages)
                 };
                 match next {
-                    Some(message) if continuations < MAX_CONTINUATIONS => {
+                    Some(message) if continuations < max_continuations => {
                         continuations += 1;
                         ui.notice(&format!("↻ {}", crate::util::clip(message.lines().next().unwrap_or_default(), 120)));
                         self.session.push(Message::user(message));

@@ -22,8 +22,11 @@ class ConversationStore(private val context: Context) {
     }.getOrDefault(emptyList())
 
     fun save(conversations: List<Conversation>) =
-        EncryptedStorage.write(context, file, BlabladorApi.json.encodeToString(serializer, conversations))
+        EncryptedStorage.write(context, file, BlabladorApi.json.encodeToString(serializer, stored(conversations)))
 }
+
+/** What is written to disk: disappearing chats are never part of it. */
+fun stored(conversations: List<Conversation>): List<Conversation> = conversations.filter { !it.isEphemeral }
 
 /**
  * App files encrypted with AES-GCM under a key in the Android Keystore: chats, memories, images, audio, videos,
@@ -265,6 +268,11 @@ class Settings(context: Context) {
     var selfCheck: Boolean
         get() = prefs.getBoolean("selfCheck", true)
         set(value) = prefs.edit().putBoolean("selfCheck", value).apply()
+
+    /** Tool rounds for one reply that works on a goal (GoalTools.DEFAULT_ROUNDS). */
+    var goalRounds: Int
+        get() = prefs.getInt("goalRounds", GoalTools.DEFAULT_ROUNDS).coerceAtLeast(1)
+        set(value) = prefs.edit().putInt("goalRounds", value.coerceAtLeast(1)).apply()
 
     var skillsDraftAutomatically: Boolean
         get() = prefs.getBoolean("skillsDraftAutomatically", true)

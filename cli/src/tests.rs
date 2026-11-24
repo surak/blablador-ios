@@ -2,7 +2,7 @@
 
 use crate::agent::Agent;
 use crate::llm::Usage;
-use crate::plugin::{Host, Plugin, ToolOutput};
+use crate::plugin::{Host, Plugin, Session as PluginSession, ToolOutput};
 use crate::plugins::{checkpoints::Checkpoints, core_tools::CoreTools, openai, permissions};
 use crate::session::Session;
 use crate::ui::{Approval, Ui};
@@ -171,6 +171,58 @@ fn bad_arguments_and_unknown_tools_are_answered() {
     let results: Vec<_> = agent.session.messages.iter().filter(|m| m.role == "tool").map(|m| m.content.clone()).collect();
     assert!(results[0].contains("not valid JSON"));
     assert!(results[1].contains("no tool called nope"));
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+// ── goals ────────────────────────────────────────────────────────────────────
+
+/// Stands in for the plan plugin: a goal the user set and hasn't settled, which keeps the turn going.
+struct AlwaysOnAGoal;
+
+impl Plugin for AlwaysOnAGoal {
+    fn name(&self) -> &str {
+        "goal-test"
+    }
+    fn description(&self) -> &str {
+        "a goal that is never settled"
+    }
+    fn goal_open(&self, _session: &PluginSession) -> bool {
+        true
+    }
+    fn turn_end(&self, _session: &PluginSession, _messages: &[crate::llm::Message]) -> Option<String> {
+        Some("keep going".into())
+    }
+}
+
+fn scripted_tool_calls(count: usize) -> Vec<Vec<Value>> {
+    (0..count).map(|i| vec![call(&format!("c{i}"), "bash", json!({"command": "true"}))]).collect()
+}
+
+#[test]
+fn a_goal_gets_the_goal_step_budget() {
+    let dir = temp();
+    let (address, seen) = fake_server(scripted_tool_calls(4));
+    let mut agent = agent(&address, &dir, permissions::Mode::Default);
+    agent.host.plugins.push(Arc::new(AlwaysOnAGoal));
+    agent.max_steps = 2;
+    agent.goal_max_steps = 4;
+    let mut ui = Recorder::default();
+    agent.turn("work on the goal", &mut ui).unwrap();
+    // The ordinary limit of 2 does not apply, and the budget bounds the continuations too.
+    assert_eq!(seen.lock().unwrap().len(), 4);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn without_a_goal_the_ordinary_limit_applies() {
+    let dir = temp();
+    let (address, seen) = fake_server(scripted_tool_calls(4));
+    let mut agent = agent(&address, &dir, permissions::Mode::Default);
+    agent.max_steps = 2;
+    agent.goal_max_steps = 4;
+    let mut ui = Recorder::default();
+    agent.turn("just do these two", &mut ui).unwrap();
+    assert_eq!(seen.lock().unwrap().len(), 2);
     let _ = std::fs::remove_dir_all(dir);
 }
 

@@ -76,8 +76,13 @@ final class ConversationLibrary: ObservableObject {
     }
 
     func persist() {
-        guard let data = try? JSONEncoder().encode(conversations) else { return }
+        guard let data = try? JSONEncoder().encode(Self.stored(conversations)) else { return }
         EncryptedStorage.write(data, to: Self.storageURL)
+    }
+
+    /// What goes into the file: everything but the disappearing chats, which are never written down.
+    nonisolated static func stored(_ conversations: [Conversation]) -> [Conversation] {
+        conversations.filter { !$0.isEphemeral }
     }
 }
 
@@ -159,6 +164,12 @@ final class ChatStore: ObservableObject {
         BlabladorAPI.imageModels.first { $0.id == imageModel }?.name ?? imageModel
     }
 
+    /// Questions asked aside with /btw, answered in a chat of their own while the reply goes on.
+    @Published private(set) var asides: [Aside] = []
+    /// The aside being answered in a chat, so a second /btw waits for it.
+    private var asideWork: [UUID: Task<Void, Never>] = [:]
+    /// Questions asked aside while a reply runs, handed to that reply so it stays on its own task.
+    private var asideQuestions: [UUID: [String]] = [:]
     /// A voice conversation is open: replies are short and spoken.
     @Published var voiceConversation = false
     /// The language picked in the voice conversation (English name), or nil to follow the user.
@@ -270,10 +281,52 @@ final class ChatStore: ObservableObject {
     // MARK: - Conversations
 
     func newChat() {
+        // Leaving a disappearing chat throws it away: it was never saved in the first place.
+        deleteEphemeral()
         currentID = nil
         pendingKnowledge = []
         pendingWorkspace = nil
     }
+
+    /// Starts a chat that leaves no trace: nothing is saved, indexed for search_chats, sent to the memory as
+    /// context or learned from it. It is there until the user starts another chat or quits the app.
+    func newDisappearingChat() {
+        deleteEphemeral()
+        let conversation = Conversation(title: Self.disappearingTitle, model: selectedModel, ephemeral: true)
+        conversations.insert(conversation, at: 0)
+        currentID = conversation.id
+        pendingKnowledge = []
+        pendingWorkspace = nil
+        persist()
+    }
+
+    /// The open chat is a disappearing one.
+    var isDisappearing: Bool { current?.isEphemeral ?? false }
+
+    /// Removes the disappearing chats and the files they made.
+    private func deleteEphemeral() {
+        let going = conversations.filter(\.isEphemeral)
+        guard !going.isEmpty else { return }
+        // A question asked aside in a disappearing chat goes with it.
+        for chat in going.map(\.id) {
+            asideWork[chat]?.cancel()
+            asideWork[chat] = nil
+            asideQuestions[chat] = nil
+            asides.removeAll { $0.chat == chat }
+        }
+        for conversation in going {
+            running[conversation.id]?.cancel()
+            ImageStore.delete(conversation.allMessages.flatMap(\.images))
+            DataFiles.delete(conversation.allMessages.flatMap(\.documents).compactMap(\.dataFile))
+            AudioStore.delete(conversation.allMessages.flatMap(\.audio))
+            VideoStore.delete(conversation.allMessages.flatMap(\.videos))
+        }
+        let ids = Set(going.map(\.id))
+        conversations.removeAll { ids.contains($0.id) }
+        persist()
+    }
+
+    static let disappearingTitle = "Disappearing chat"
 
     /// Knowledge bases picked before the first message of a new chat.
     @Published private var pendingKnowledge: [UUID] = []
@@ -302,6 +355,8 @@ final class ChatStore: ObservableObject {
     }
 
     func select(_ conversation: Conversation) {
+        // Picking a chat from the history leaves the disappearing one behind for good.
+        if !conversation.isEphemeral { deleteEphemeral() }
         currentID = conversation.id
         selectedModel = conversation.model
     }
@@ -352,6 +407,16 @@ final class ChatStore: ObservableObject {
             trimmed = goal
             if !mentions.contains(GoalTools.mention) { mentions.insert(GoalTools.mention, at: 0) }
         }
+        // /btw is answered beside the reply, not in place of it, so it may be asked while one is being written.
+        // In a chat that doesn't exist yet there is nothing to ask beside: it starts the chat instead.
+        if let aside = AsideTools.command(trimmed) {
+            guard !aside.isEmpty else { return }
+            if currentID != nil {
+                askAside(aside)
+                return
+            }
+            trimmed = aside
+        }
         guard !trimmed.isEmpty || !attachments.isEmpty || !documents.isEmpty, !isStreaming else { return }
 
         if currentID == nil {
@@ -363,7 +428,7 @@ final class ChatStore: ObservableObject {
             pendingWorkspace = nil
             conversations.insert(conversation, at: 0)
             currentID = conversation.id
-            if !trimmed.isEmpty { nameChat(conversation.id, from: trimmed, model: selectedModel) }
+            if !trimmed.isEmpty, !conversation.isEphemeral { nameChat(conversation.id, from: trimmed, model: selectedModel) }
         }
         let images = attachments.map(ImageStore.save)
         var message = ChatMessage(role: .user, content: trimmed, images: images, documents: documents)
@@ -676,6 +741,201 @@ final class ChatStore: ObservableObject {
         send(item.text, attachments: item.attachments, documents: item.documents, mentions: item.mentions)
     }
 
+    // MARK: - Aside (/btw)
+
+    /// The aside cards of the open chat.
+    var currentAsides: [Aside] { asides.filter { $0.chat == currentID } }
+
+    /// The aside with this id, if its card is still there.
+    func aside(_ id: UUID) -> Aside? {
+        asides.first { $0.id == id }
+    }
+
+    /// The card is only dismissed: the chat it was asked in doesn't change.
+    func dismissAside(_ id: UUID) {
+        // Closing a card that is still being answered stops it; a finished one is only hidden.
+        if let aside = asides.first(where: { $0.id == id }), aside.answerChat == nil {
+            asideWork[aside.chat]?.cancel()
+            asideWork[aside.chat] = nil
+        }
+        asides.removeAll { $0.id == id }
+    }
+
+    /// Asks a question aside: it goes into a chat of its own, with what was said in this one up to where the
+    /// reply that is being written started, so the reply carries on undisturbed.
+    func askAside(_ question: String) {
+        guard let chatID = currentID, !asides.contains(where: { $0.chat == chatID && $0.answerChat == nil }) else { return }
+        var aside = Aside(question: question, chat: chatID)
+        aside.status = PotatoVerbs.random + "…"
+        asides.append(aside)
+        // The reply that is being written is told about it before its next round, so it doesn't answer the
+        // aside itself or wander off.
+        if running[chatID] != nil { asideQuestions[chatID, default: []].append(question) }
+
+        let conversation = chat(chatID)
+        let model = selectedModel
+        // Looking things up is allowed if the user allows the web tools at all; nothing that changes anything is.
+        let web = (webSearchEnabled ? [WebSearch.tool, WebPage.tool] : [WebPage.tool]).filter { tool in
+            guard let name = (tool["function"] as? [String: Any])?["name"] as? String, let kind = ToolPermissions.kind(of: name) else { return true }
+            return ToolPermissions.shared.rule(kind) != .never
+        }
+        var context: [[String: Any]] = []
+        if let conversation {
+            if let summary = conversation.summary, (conversation.summaryCount ?? 0) > 0 {
+                context.append(["role": "system", "content": "Summary of the earlier part of this chat:\n" + summary])
+            }
+            var earlier = conversation.messages.dropFirst(conversation.summaryCount ?? 0).filter { !$0.isError }
+            // The reply being written is the last message: only half of it exists, so it is not context for the
+            // aside, which is asked beside it.
+            if running[chatID] != nil, earlier.last?.role == .assistant { earlier = earlier.dropLast() }
+            context += earlier.map(Self.wireMessage)
+        }
+
+        let work = Task { [self] in
+            let started = Date()
+            var answer = ""
+            var trace = Trace(model: model)
+            var errorText: String?
+            do {
+                for round in 0..<AsideTools.maxRounds {
+                    var calls: [BlabladorAPI.ToolCall] = []
+                    for try await event in api.streamChat(model: model, messages: AsideTools.prompt(question: question, context: context), tools: web, effort: ReasoningEffort.level(for: model)) {
+                        switch event {
+                        case let .content(delta):
+                            answer += delta
+                            let shown = Self.splitThinking(answer).answer
+                            updateAside(aside.id) { $0.answer = shown; $0.status = nil }
+                        case let .toolCalls(found):
+                            calls = found
+                        case .usage, .reasoning:
+                            break
+                        }
+                    }
+                    answer = Self.splitThinking(answer).answer
+                    if calls.isEmpty || round == AsideTools.maxRounds - 1 { break }
+                    // The aside may look something up, as long as it is quick about it.
+                    var assistant: [String: Any] = ["role": "assistant", "tool_calls": calls.map(\.wire)]
+                    assistant["content"] = answer.isEmpty ? NSNull() : answer
+                    context.append(assistant)
+                    for call in calls {
+                        let arguments = (try? JSONSerialization.jsonObject(with: Data(call.arguments.utf8))) as? [String: Any] ?? [:]
+                        let callStarted = Date()
+                        var traced = TraceCall(tool: call.name, arguments: call.arguments)
+                        let (output, state) = await runAsideTool(call.name, arguments, aside: aside.id)
+                        traced.result = String(output.prefix(4_000))
+                        traced.seconds = Date().timeIntervalSince(callStarted)
+                        traced.state = state
+                        trace.calls.append(traced)
+                        context.append(["role": "tool", "tool_call_id": call.id, "content": output])
+                    }
+                    answer = ""
+                }
+            } catch is CancellationError {
+            } catch let error as URLError where error.code == .cancelled {
+            } catch {
+                errorText = error.localizedDescription
+            }
+            let cancelled = Task.isCancelled
+            asideWork[chatID] = nil
+            trace.seconds = Date().timeIntervalSince(started)
+            let text = Self.stripToolMarkup(answer).trimmingCharacters(in: .whitespacesAndNewlines)
+            // The card may have been closed while the reply came in, or the chat switched.
+            let asideID = aside.id
+            guard self.aside(asideID) != nil else { return }
+            // What was asked aside is kept as a chat of its own, with the chat it was asked in as context, so it
+            // can be read again and followed up. A disappearing chat leaves nothing behind, and nothing at all
+            // came back when there is no text: not worth a chat either.
+            let answerChat = (!text.isEmpty || errorText != nil) && conversation?.isEphemeral != true
+                ? keepAside(question: question, answer: text.isEmpty ? errorText ?? "No answer." : text,
+                            context: Array(context.dropFirst()), failed: errorText != nil,
+                            in: chatID, model: model, trace: trace)
+                : nil
+            updateAside(asideID) {
+                $0.answer = text.isEmpty ? errorText ?? "No answer." : text
+                $0.isError = errorText != nil
+                $0.status = cancelled ? "Stopped." : nil
+                $0.answerChat = answerChat
+            }
+            if !cancelled {
+                await ChatIndex.shared.update(conversations, api: api)
+            }
+        }
+        asideWork[chatID] = work
+    }
+
+    private func updateAside(_ id: UUID, _ change: (inout Aside) -> Void) {
+        guard let index = asides.firstIndex(where: { $0.id == id }) else { return }
+        change(&asides[index])
+    }
+
+    /// Opens the chat an aside was kept in.
+    func openAside(_ id: UUID) {
+        guard let aside = aside(id), let answerChat = aside.answerChat,
+              let conversation = conversations.first(where: { $0.id == answerChat }) else { return }
+        select(conversation)
+        dismissAside(id)
+    }
+
+    /// Saves an aside as a chat of its own: the question, the answer, and what was said in the chat it was asked
+    /// in, so it reads on its own and a follow-up has the context. Returns the chat's id.
+    @discardableResult
+    private func keepAside(question: String, answer: String, context: [[String: Any]], failed: Bool, in chatID: UUID, model: String, trace: Trace) -> UUID {
+        var conversation = Conversation(title: Self.title(for: question), model: model)
+        var asked = ChatMessage(role: .user, content: question)
+        asked.asideOf = chat(chatID)?.title
+        var reply = ChatMessage(role: .assistant, content: answer)
+        reply.isError = failed
+        reply.trace = trace
+        conversation.messages = [asked, reply]
+        conversation.context = context.compactMap(Self.asContext)
+        conversations.insert(conversation, at: 0)
+        persist()
+        return conversation.id
+    }
+
+    /// What a wire message held, as a message, for the aside's chat (pictures stay a note).
+    private static func asContext(_ wire: [String: Any]) -> ChatMessage? {
+        guard let raw = wire["role"] as? String, let role = ChatRole(rawValue: raw), role != .system else { return nil }
+        var message = ChatMessage(role: role, content: "")
+        if let text = wire["content"] as? String {
+            message.content = text
+        } else if let parts = wire["content"] as? [[String: Any]] {
+            let texts = parts.compactMap { $0["text"] as? String }
+            let pictures = parts.filter { $0["type"] as? String == "image_url" }.count
+            message.content = (texts + (pictures > 0 ? ["[\(pictures) picture(s)]"] : [])).joined(separator: "\n")
+        }
+        return message.content.isEmpty ? nil : message
+    }
+
+    /// Runs one tool call for an aside: only looking things up, nothing that changes anything.
+    private func runAsideTool(_ name: String, _ arguments: [String: Any], aside: UUID) async -> (String, AgentStep.State) {
+        updateAside(aside) { $0.status = nil }
+        let query = arguments["query"] as? String ?? ""
+        if name == "web_search", !query.isEmpty {
+            updateAside(aside) { $0.status = "Searching “\(query)”" }
+            do {
+                let results = try await WebSearch.search(query, category: arguments["category"] as? String, timeRange: arguments["time_range"] as? String)
+                updateAside(aside) { $0.status = nil }
+                return (WebSearch.toolOutput(query: query, results: results.enumerated().map { (number: $0.offset + 1, result: $0.element) }), .done)
+            } catch {
+                updateAside(aside) { $0.status = nil }
+                return ("Search failed: \(error.localizedDescription)", .failed)
+            }
+        }
+        if name == "read_page", let address = arguments["url"] as? String {
+            updateAside(aside) { $0.status = "Reading \(URL(string: address)?.host() ?? address)…" }
+            do {
+                let page = try await WebPage.read(address)
+                updateAside(aside) { $0.status = nil }
+                return ("\(page.title)\nURL: \(page.url.absoluteString)\n\n\(page.text.isEmpty ? "(No readable text on this page.)" : page.text)", .done)
+            } catch {
+                updateAside(aside) { $0.status = nil }
+                return ("Could not read the page: \(error.localizedDescription)", .failed)
+            }
+        }
+        return ("A question asked aside can't use \(name). Answer with what you know.", .failed)
+    }
+
     // MARK: - Reasoning effort
 
     /// How hard the model thinks, or nil when it can't be set.
@@ -943,7 +1203,10 @@ final class ChatStore: ObservableObject {
         let memory = MemoryStore.shared
         let skills = SkillLibrary.shared
         if let skillPrompt = skills.systemPrompt { system += "\n\n" + skillPrompt }
-        system += "\n\n" + SkillTools.systemPrompt + " Use search_chats when the user refers to an earlier conversation."
+        system += "\n\n" + SkillTools.systemPrompt + (conversation.isEphemeral ? "" : " Use search_chats when the user refers to an earlier conversation.")
+        if conversation.isEphemeral {
+            system += "\n\nThis chat disappears: it is not saved, not searchable later and writes nothing to memory. You have no remember, forget or search_chats tools and no memories of the user here, so don't offer to remember anything. The other tools work as usual."
+        }
         let folder = conversation.workspace.map { URL(fileURLWithPath: $0, isDirectory: true) }
         if let folder { system += "\n\n" + AgentTools.systemPrompt(workspace: folder) }
         if let hint = Self.mentionPrompt(mentions) { system += "\n\n" + hint }
@@ -985,8 +1248,9 @@ final class ChatStore: ObservableObject {
         else { tools.append(WebPage.tool) }
         if useImages { tools += [ImageTools.generate, ImageTools.edit] }
         if useSpeech { tools.append(SpeechTools.generate) }
-        if memory.enabled { tools += [MemoryTools.remember, MemoryTools.forget] }
-        tools += [ChatSearch.tool, SkillTools.suggest, PlanTools.tool, TaskScheduler.tool]
+        if memory.enabled, !conversation.isEphemeral { tools += [MemoryTools.remember, MemoryTools.forget] }
+        // A disappearing chat can't quote other chats, so it doesn't search them.
+        tools += conversation.isEphemeral ? [SkillTools.suggest, PlanTools.tool, TaskScheduler.tool] : [ChatSearch.tool, SkillTools.suggest, PlanTools.tool, TaskScheduler.tool]
         if usePython { tools.append(PythonRunner.tool) }
         if useDevice { tools += DeviceTools.definitions }
 #if os(macOS)
@@ -998,13 +1262,14 @@ final class ChatStore: ObservableObject {
         tools = ToolPermissions.shared.filter(tools)
         let api = api
         let spoken = voiceConversation
+        let disappearing = conversation.isEphemeral
         start(chatID) { [self] in
             let started = Date()
             var readOutside = false
             do {
                 // Memories go last in the system prompt; with many, picking the relevant ones may need an embedding.
                 var systemText = systemText
-                if memory.enabled { systemText += "\n\n" + (await memory.systemPrompt(for: question, api: api)) }
+                if memory.enabled, !disappearing { systemText += "\n\n" + (await memory.systemPrompt(for: question, api: api)) }
                 if let folder {
                     // A fresh look at the project: git state, files, instructions, how to build and test.
                     let overview = await Task.detached { ProjectOverview.make(for: folder) }.value
@@ -1038,7 +1303,8 @@ final class ChatStore: ObservableObject {
                 }
                 readOutside = try await runTurn(model: model, messages: wire, tools: tools, replyID: reply.id, chatID: chatID, workspace: folder, outsideContent: outsideContent, mcp: mcpTools)
                 // Speech recognition mishears names; facts aren't learned from what it thought it heard.
-                if !spoken { learn(question: question, replyID: reply.id, model: model, userOnly: readOutside) }
+                // A disappearing chat leaves nothing behind, so nothing is learned from it either.
+                if !spoken, !disappearing { learn(question: question, replyID: reply.id, model: model, userOnly: readOutside) }
             } catch is CancellationError {
             } catch let error as URLError where error.code == .cancelled {
             } catch BlabladorAPIError.http(let status, let body) where status == 400 && body.localizedCaseInsensitiveContains("image") {
@@ -1227,8 +1493,10 @@ final class ChatStore: ObservableObject {
         if let summary = conversation.summary, covered > 0 {
             system += "\n\nSummary of the earlier part of this chat (those messages are not shown):\n" + summary
         }
+        // A chat asked aside carries the chat it came from, so it can be followed up like any other.
+        let earlier = (conversation.context ?? []).filter { !$0.isError }.map(Self.wireMessage)
         return [["role": "system", "content": system]]
-            + conversation.messages[covered...].filter { !$0.isError }.map(Self.wireMessage)
+            + earlier + conversation.messages[covered...].filter { !$0.isError }.map(Self.wireMessage)
     }
 
     /// Rough size of a request: text, plus about 3,000 characters per image.
@@ -1279,6 +1547,7 @@ final class ChatStore: ObservableObject {
               !reply.isError, !reply.content.isEmpty else { return }
         let api = api
         let chat = conversations.first { $0.messages.contains { $0.id == replyID } }
+        guard chat?.isEphemeral != true else { return }
         Task {
             await ChatIndex.shared.update(conversations, api: api)
             guard memory.enabled, memory.learnsAutomatically,
@@ -1318,6 +1587,10 @@ final class ChatStore: ObservableObject {
                 // Keep the tools declared (removing them makes DeepSeek print raw tool markup),
                 // but tell the model to answer with what it has.
                 messages.append(["role": "user", "content": "Stop using tools now and write the final answer using the results above."])
+            }
+            // Questions asked aside meanwhile: not for this answer, and not a reason to abandon it.
+            for question in asideQuestions.removeValue(forKey: chatID) ?? [] {
+                messages.append(["role": "user", "content": AsideTools.resumeNote(question)])
             }
             let prefix = message(replyID)?.content ?? ""
             let reasoningPrefix = message(replyID)?.reasoning ?? ""

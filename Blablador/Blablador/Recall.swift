@@ -84,7 +84,8 @@ final class ChatIndex {
         updating = true
         defer { updating = false }
         var vectors = load()
-        let messages = conversations.flatMap(\.messages).filter(Self.indexable)
+        // A disappearing chat is never indexed: search_chats can't quote it later.
+        let messages = conversations.filter { !$0.isEphemeral }.flatMap(\.messages).filter(Self.indexable)
         let present = Set(messages.map(\.id))
         let removed = vectors.keys.filter { !present.contains($0) }
         removed.forEach { vectors.removeValue(forKey: $0) }
@@ -126,7 +127,7 @@ extension ChatSearch {
         await ChatIndex.shared.update(conversations, api: api)
         let words = MemoryStore.words(query)
         var candidates: [(score: Float, conversation: Conversation, message: ChatMessage)] = []
-        for conversation in conversations where conversation.id != current {
+        for conversation in conversations where conversation.id != current && !conversation.isEphemeral {
             for message in conversation.messages where ChatIndex.indexable(message) {
                 let vector = ChatIndex.shared.vector(for: message.id)
                 let meaning = vector.map { Embeddings.similarity($0, queryVector) } ?? 0

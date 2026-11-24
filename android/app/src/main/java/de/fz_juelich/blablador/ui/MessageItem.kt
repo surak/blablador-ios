@@ -45,6 +45,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Chat
 import androidx.compose.material.icons.automirrored.outlined.LibraryBooks
 import androidx.compose.material.icons.automirrored.outlined.VolumeUp
 import androidx.compose.material.icons.outlined.GraphicEq
@@ -140,6 +141,13 @@ fun MessageItem(
             }
             message.documents.forEach { DocumentChip(it) }
             if (message.mentions.isNotEmpty()) MentionChips(message.mentions)
+            // A question that was asked aside (/btw) says which chat it came from.
+            message.asideOf?.let { origin ->
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Icon(Icons.Outlined.Chat, null, Modifier.size(12.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Asked aside in “$origin”", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
             if (message.content.isNotEmpty()) SelectionContainer {
                 Text(message.content, style = MaterialTheme.typography.bodyLarge,
                     modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceVariant)

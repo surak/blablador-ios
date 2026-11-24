@@ -47,8 +47,10 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     var mentions: [Mention] = []
     /// Transient status shown while tools run, e.g. "Searching the web…"
     var status: String?
+    /// On the question of a chat that was asked aside (/btw): the title of the chat it was asked in.
+    var asideOf: String?
 
-    private enum CodingKeys: String, CodingKey { case id, role, content, date, isError, sources, webImages, remembered, forgotten, skillsUsed, suggestedSkills, alternatives, version, images, documents, audio, videos, citations, steps, reasoning, plan, trace, mentions }
+    private enum CodingKeys: String, CodingKey { case id, role, content, date, isError, sources, webImages, remembered, forgotten, skillsUsed, suggestedSkills, alternatives, version, images, documents, audio, videos, citations, steps, reasoning, plan, trace, mentions, asideOf }
 
     init(role: ChatRole, content: String, images: [String] = [], documents: [DocumentAttachment] = []) {
         self.role = role
@@ -82,6 +84,7 @@ struct ChatMessage: Identifiable, Codable, Equatable {
         plan = try c.decodeIfPresent([PlanItem].self, forKey: .plan) ?? []
         trace = try c.decodeIfPresent(Trace.self, forKey: .trace)
         mentions = try c.decodeIfPresent([Mention].self, forKey: .mentions) ?? []
+        asideOf = try c.decodeIfPresent(String.self, forKey: .asideOf)
     }
 }
 
@@ -102,6 +105,13 @@ struct Conversation: Identifiable, Codable, Equatable {
     var summaryCount: Int?
     /// Set with /goal: Blablador keeps working until it's reached.
     var goal: Goal?
+    /// A disappearing chat: it is never saved, never indexed for search and writes nothing to memory.
+    var ephemeral: Bool?
+    /// What was said in the chat an aside (/btw) was asked in, sent ahead of its own messages.
+    var context: [ChatMessage]?
+
+    /// Chats that go when the app is closed.
+    var isEphemeral: Bool { ephemeral == true }
 
     /// Messages of every version, for deleting their files.
     var allMessages: [ChatMessage] {

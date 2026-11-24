@@ -19,6 +19,7 @@ import de.fz_juelich.blablador.data.ChatMessage
 import de.fz_juelich.blablador.data.ChatRole
 import de.fz_juelich.blablador.data.Conversation
 import de.fz_juelich.blablador.data.ConversationStore
+import de.fz_juelich.blablador.data.DISAPPEARING_TITLE
 import de.fz_juelich.blablador.data.DocumentAttachment
 import de.fz_juelich.blablador.data.ImageStore
 import de.fz_juelich.blablador.data.EncryptedStorage
@@ -50,6 +51,9 @@ import de.fz_juelich.blablador.data.WebSearch
 import de.fz_juelich.blablador.data.jsonString
 import de.fz_juelich.blablador.data.speech
 import de.fz_juelich.blablador.data.DeviceTools
+import de.fz_juelich.blablador.data.Aside
+import de.fz_juelich.blablador.data.AsideTools
+import de.fz_juelich.blablador.data.PotatoVerbs
 import de.fz_juelich.blablador.data.Goal
 import de.fz_juelich.blablador.data.GoalTools
 import de.fz_juelich.blablador.data.Mention
@@ -75,6 +79,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -252,6 +258,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         private set
     fun checkResults(on: Boolean) { checksResults = on; settings.selfCheck = on }
 
+    /** Tool rounds for one reply that works on a goal (Settings: Goal rounds). */
+    var goalRounds by mutableStateOf(settings.goalRounds)
+        private set
+    fun chooseGoalRounds(rounds: Int) { goalRounds = rounds; settings.goalRounds = rounds }
+
     var pythonEnabled by mutableStateOf(settings.pythonEnabled)
         private set
     fun setPython(on: Boolean) { pythonEnabled = on; settings.pythonEnabled = on }
@@ -348,11 +359,50 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     // MARK: Conversations
 
     fun newChat() {
+        // Leaving a disappearing chat throws it away: it was never saved in the first place.
+        deleteEphemeral()
         currentId = null
         pendingKnowledge = emptyList()
     }
 
+    /**
+     * Starts a chat that leaves no trace: nothing is saved, indexed for search_chats, sent to the memory as
+     * context or learned from it. It goes when the user starts another chat or closes the app.
+     */
+    fun newDisappearingChat() {
+        deleteEphemeral()
+        val conversation = Conversation(title = DISAPPEARING_TITLE, model = selectedModel, ephemeral = true)
+        conversations.add(0, conversation)
+        currentId = conversation.id
+        pendingKnowledge = emptyList()
+        persist()
+    }
+
+    /** The open chat is a disappearing one. */
+    val isDisappearing: Boolean get() = current?.isEphemeral == true
+
+    /** Removes the disappearing chats and the files they made. */
+    private fun deleteEphemeral() {
+        val going = conversations.filter { it.isEphemeral }
+        if (going.isEmpty()) return
+        going.forEach { conversation ->
+            running.remove(conversation.id)?.cancel()
+            asideWork.remove(conversation.id)?.cancel()
+            asideQuestions.remove(conversation.id)
+            asides.removeAll { it.chat == conversation.id }
+            images.delete(conversation.allMessages.flatMap { it.images })
+            DataFiles.delete(getApplication(), conversation.allMessages.flatMap { it.documents }.mapNotNull { it.dataFile })
+            audio.delete(conversation.allMessages.flatMap { it.audio })
+            videos.delete(conversation.allMessages.flatMap { it.videos })
+        }
+        val ids = going.map { it.id }.toSet()
+        conversations.removeAll { it.id in ids }
+        persist()
+    }
+
     fun select(conversation: Conversation) {
+        // Picking a chat from the history leaves the disappearing one behind for good.
+        if (!conversation.isEphemeral) deleteEphemeral()
         currentId = conversation.id
         selectModel(conversation.model)
         sendQueued()
@@ -425,6 +475,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             trimmed = goal
             if (GoalTools.mention !in mentions) mentions = listOf(GoalTools.mention) + mentions
         }
+        // /btw is answered beside the reply, not in place of it, so it may be asked while one is being written.
+        // In a chat that doesn't exist yet there is nothing to ask beside: it starts the chat instead.
+        val aside = AsideTools.command(trimmed)
+        if (aside != null) {
+            if (aside.isEmpty()) return
+            if (currentId != null) {
+                askAside(aside)
+                return
+            }
+            trimmed = aside
+        }
         if ((trimmed.isEmpty() && attachments.isEmpty() && documents.isEmpty()) || isStreaming) return
 
         if (currentId == null) {
@@ -437,7 +498,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             pendingKnowledge = emptyList()
             conversations.add(0, conversation)
             currentId = conversation.id
-            if (trimmed.isNotEmpty()) nameChat(conversation.id, trimmed, selectedModel)
+            if (trimmed.isNotEmpty() && !conversation.isEphemeral) nameChat(conversation.id, trimmed, selectedModel)
         }
         val names = attachments.map(images::save)
         update {
@@ -453,6 +514,195 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             createImage -> makeImage(trimmed, names.lastOrNull())
             else -> respond()
         }
+    }
+
+    // MARK: Asides (/btw)
+
+    /** Questions asked aside, answered in a card above the composer while the chat's reply keeps going. */
+    val asides = mutableStateListOf<Aside>()
+    /** The aside being answered for a chat: one at a time, so two answers don't talk over each other. */
+    private val asideWork = mutableMapOf<String, Job>()
+    /** Questions asked aside while a reply runs, handed to that reply so it stays on its own task. */
+    private val asideQuestions = mutableMapOf<String, MutableList<String>>()
+
+    /** The asides asked in the open chat. */
+    val currentAsides: List<Aside> get() = asides.filter { it.chat == currentId }
+
+    /** The card is only dismissed: the chat it was asked in doesn't change. */
+    fun dismissAside(id: String) {
+        // Closing a card that is still being answered stops it; a finished one is only hidden.
+        asides.firstOrNull { it.id == id && it.answerChat == null }?.let { aside ->
+            asideWork.remove(aside.chat)?.cancel()
+        }
+        asides.removeAll { it.id == id }
+    }
+
+    /** Opens the chat an aside was kept in. */
+    fun openAside(id: String) {
+        val answerChat = asides.firstOrNull { it.id == id }?.answerChat ?: return
+        conversations.firstOrNull { it.id == answerChat }?.let(::select)
+        dismissAside(id)
+    }
+
+    private fun updateAside(id: String, change: (Aside) -> Aside) {
+        val index = asides.indexOfFirst { it.id == id }
+        if (index >= 0) asides[index] = change(asides[index])
+    }
+
+    /**
+     * Asks a question aside: it is answered in a chat of its own, with what was said in this one up to where the
+     * reply that is being written started, so the reply carries on undisturbed.
+     */
+    fun askAside(question: String) {
+        val chatID = currentId ?: return
+        if (asides.any { it.chat == chatID && it.answerChat == null }) return
+        // A disappearing chat leaves nothing behind, so the aside's answer isn't saved as a chat either.
+        val ephemeral = current?.isEphemeral == true
+        asides.add(Aside(question = question, chat = chatID, status = PotatoVerbs.random()))
+        val asideID = asides.last().id
+        // The reply that is being written is told about it before its next round, so it doesn't answer the
+        // aside itself or wander off.
+        if (chatID in running) asideQuestions.getOrPut(chatID) { mutableListOf() }.add(question)
+
+        val conversation = conversations.firstOrNull { it.id == chatID }
+        val model = selectedModel
+        // Looking things up is allowed if the user allows the web tools at all; nothing that changes anything is.
+        val web = permissions.filter(listOfNotNull(Tools.readPage, Tools.webSearch.takeIf { webSearchEnabled }))
+        var context: List<JsonObject> = if (conversation == null) emptyList() else {
+            val covered = minOf(conversation.summaryCount ?: 0, conversation.messages.size)
+            var earlier = conversation.messages.drop(covered).filter { !it.isError }
+            // The reply being written is the last message: only half of it exists, so it is not context for the
+            // aside, which is asked beside it.
+            if (chatID in running && earlier.lastOrNull()?.role == ChatRole.assistant) earlier = earlier.dropLast(1)
+            earlier.map(::wireMessage)
+        }
+
+        viewModelScope.launch {
+            val started = System.currentTimeMillis()
+            var answer = ""
+            var errorText: String? = null
+            var trace = Trace(model = model)
+            val messages = AsideTools.prompt(question, context).toMutableList()
+            try {
+                for (round in 0 until AsideTools.MAX_ROUNDS) {
+                    var calls: List<BlabladorApi.ToolCall> = emptyList()
+                    val effort = ReasoningEffort.level(model, settings.effort(model))
+                    val extras = effort?.let { ReasoningEffort.candidates(model, it, settings.effortWorked(model, it.name)) } ?: listOf(JsonObject(emptyMap()))
+                    val text = StringBuilder()
+                    api.streamChat(model, messages, web, extras).collect { event ->
+                        when (event) {
+                            is BlabladorApi.StreamEvent.Content -> {
+                                text.append(event.text)
+                                val answerSoFar = splitThinking(text.toString()).second
+                                updateAside(asideID) { it.copy(answer = answerSoFar, status = null) }
+                            }
+                            is BlabladorApi.StreamEvent.ToolCalls -> calls = event.calls
+                            else -> Unit
+                        }
+                    }
+                    answer = splitThinking(text.toString()).second
+                    if (calls.isEmpty() || round == AsideTools.MAX_ROUNDS - 1) break
+                    // The aside may look something up, as long as it is quick about it.
+                    messages += buildJsonObject {
+                        put("role", "assistant")
+                        put("tool_calls", buildJsonArray { calls.forEach { add(it.wire) } })
+                        put("content", if (answer.isEmpty()) JsonNull else JsonPrimitive(answer))
+                    }
+                    for (call in calls) {
+                        val arguments = runCatching { Json.parseToJsonElement(call.arguments.ifBlank { "{}" }) as JsonObject }.getOrNull() ?: JsonObject(emptyMap())
+                        val (output, state) = runAsideTool(call.name, arguments, asideID)
+                        trace = trace.copy(calls = trace.calls + TraceCall(tool = call.name, arguments = call.arguments, result = output.take(4_000), state = state))
+                        messages += buildJsonObject { put("role", "tool"); put("tool_call_id", call.id); put("content", output) }
+                    }
+                    answer = ""
+                }
+            } catch (e: CancellationException) {
+                // Stopped: keep what was written so far, without keeping a chat.
+                updateAside(asideID) { it.copy(status = "Stopped.") }
+                throw e
+            } catch (e: Exception) {
+                errorText = e.message ?: "Request failed."
+            } finally {
+                asideWork.remove(chatID)
+            }
+            val text = stripToolMarkup(answer).trim()
+            val shown = text.ifEmpty { errorText ?: "No answer." }
+            trace = trace.copy(seconds = (System.currentTimeMillis() - started) / 1000.0)
+            // The answer is kept as a chat of its own, with the chat it was asked in as context, so it can be
+            // read again and followed up. A disappearing chat leaves nothing behind, and nothing at all came
+            // back when there is no text: not worth a chat either.
+            val kept = if ((text.isNotEmpty() || errorText != null) && !ephemeral)
+                keepAside(question, shown, context, errorText != null, chatID, model, trace) else null
+            updateAside(asideID) { it.copy(answer = shown, isError = errorText != null, status = null, answerChat = kept) }
+        }
+    }
+
+    /**
+     * Saves an aside as a chat of its own: the question, the answer, and what was said in the chat it was asked in,
+     * so it reads on its own and a follow-up has the context.
+     */
+    private fun keepAside(question: String, answer: String, context: List<JsonObject>, failed: Boolean, in_chat: String, model: String, trace: Trace): String {
+        val asked = ChatMessage(role = ChatRole.user, content = question, asideOf = conversations.firstOrNull { it.id == in_chat }?.title)
+        val reply = ChatMessage(role = ChatRole.assistant, content = answer, isError = failed, trace = trace)
+        val conversation = Conversation(
+            title = title(question),
+            model = model,
+            messages = listOf(asked, reply),
+            context = context.mapNotNull(::asContext),
+        )
+        conversations.add(0, conversation)
+        persist()
+        viewModelScope.launch { runCatching { chatIndex.update(conversations.toList(), api) } }
+        return conversation.id
+    }
+
+    /** What a wire message held, as a message, for the aside's chat (pictures stay a note). */
+    private fun asContext(wire: JsonObject): ChatMessage? {
+        val role = jsonString(wire["role"])?.let { name -> ChatRole.entries.firstOrNull { it.name == name } } ?: return null
+        if (role == ChatRole.system) return null
+        val content = when (val value = wire["content"]) {
+            is JsonPrimitive -> value.content
+            is JsonArray -> value.joinToString("\n") { part ->
+                jsonString((part as? JsonObject)?.get("text"))
+                    ?: jsonString(((part as? JsonObject)?.get("image_url") as? JsonObject)?.get("url"))?.let { "[picture]" }.orEmpty()
+            }
+            else -> ""
+        }
+        return if (content.isBlank()) null else ChatMessage(role = role, content = content.trim())
+    }
+
+    /** Runs one tool call for an aside: only looking things up, nothing that changes anything. */
+    private suspend fun runAsideTool(name: String, arguments: JsonObject, aside: String): Pair<String, StepState> {
+        updateAside(aside) { it.copy(status = null) }
+        val query = jsonString(arguments["query"]).orEmpty()
+        if (name == "web_search" && query.isNotEmpty()) {
+            updateAside(aside) { it.copy(status = "Searching “$query”") }
+            return try {
+                val results = WebSearch.search(query, jsonString(arguments["category"]), jsonString(arguments["time_range"]))
+                updateAside(aside) { it.copy(status = null) }
+                WebSearch.toolOutput(query, results.mapIndexed { index, result -> (index + 1) to result }) to StepState.done
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                updateAside(aside) { it.copy(status = null) }
+                "Search failed: ${e.message}" to StepState.failed
+            }
+        }
+        val address = jsonString(arguments["url"])
+        if (name == "read_page" && !address.isNullOrBlank()) {
+            updateAside(aside) { it.copy(status = "Reading ${android.net.Uri.parse(address).host ?: address}…") }
+            return try {
+                val page = WebPage.read(address)
+                updateAside(aside) { it.copy(status = null) }
+                "${page.title}\nURL: ${page.url}\n\n${page.text.ifEmpty { "(No readable text on this page.)" }}" to StepState.done
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                updateAside(aside) { it.copy(status = null) }
+                "Could not read the page: ${e.message}" to StepState.failed
+            }
+        }
+        return "A question asked aside can't use $name. Answer with what you know." to StepState.failed
     }
 
     /**
@@ -699,7 +949,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         system += " Use schedule_task when the user wants something done later or regularly."
         system += " Google Docs, Sheets and Slides links shared by link can be read with read_page."
         skills.systemPrompt?.let { system += "\n\n" + it }
-        system += "\n\n" + SkillLibrary.SYSTEM_PROMPT + " Use search_chats when the user refers to an earlier conversation."
+        system += "\n\n" + SkillLibrary.SYSTEM_PROMPT + (if (conversation.isEphemeral) "" else " Use search_chats when the user refers to an earlier conversation.")
+        if (conversation.isEphemeral) {
+            system += "\n\nThis chat disappears: it is not saved, not searchable later and writes nothing to memory. " +
+                "You have no remember, forget or search_chats tools and no memories of the user here, so don't offer to remember anything. " +
+                "The other tools work as usual."
+        }
         Mentions.prompt(mentions, skills::skill, mcp::server)?.let { system += "\n\n" + it }
         if (voiceConversation) system += "\n\n" + de.fz_juelich.blablador.data.Talk.SYSTEM_PROMPT
         val goal = conversation.goal?.takeIf { it.status == Goal.Status.active }
@@ -725,8 +980,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             if (usePython) add(Tools.runPython)
             if (useImages) { add(Tools.generateImage); add(Tools.editImage) }
             if (useSpeech) add(Tools.generateSpeech)
-            if (memory.enabled) { add(Tools.remember); add(Tools.forget) }
-            add(Tools.searchChats); add(Tools.suggestSkill); add(PlanTools.tool); add(ScheduledTask.tool)
+            if (memory.enabled && !conversation.isEphemeral) { add(Tools.remember); add(Tools.forget) }
+            // A disappearing chat can't quote other chats, so it doesn't search them.
+            if (!conversation.isEphemeral) add(Tools.searchChats)
+            add(Tools.suggestSkill); add(PlanTools.tool); add(ScheduledTask.tool)
             if (useDevice) addAll(DeviceTools.definitions)
             if (skills.skills.isNotEmpty()) add(Tools.useSkill)
             if (goal != null) add(GoalTools.tool)
@@ -736,7 +993,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             var cancelled = false
             try {
                 // Memories go last in the system prompt; with many, picking the relevant ones may need an embedding.
-                val systemText = if (memory.enabled) baseSystem + "\n\n" + memory.systemPrompt(question, api) else baseSystem
+                val systemText = if (memory.enabled && !conversation.isEphemeral) baseSystem + "\n\n" + memory.systemPrompt(question, api) else baseSystem
                 val wire = history(systemText, conversation)
                 var messages = wire
                 compact(conversation, model, wire, reply.id)?.let { messages = history(systemText, it) }
@@ -764,7 +1021,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     messages = listOf(buildJsonObject { put("role", "system"); put("content", system) }) + messages.drop(1)
                 }
                 val readOutside = runTurn(model, messages, tools + mcpTools.map { it.definition }, reply.id, id, outsideContent, mcpTools)
-                learn(question, reply.id, model, userOnly = readOutside)
+                // A disappearing chat leaves nothing behind, so nothing is learned from it either.
+                if (!conversation.isEphemeral) learn(question, reply.id, model, userOnly = readOutside)
             } catch (e: CancellationException) {
                 cancelled = true
                 throw e
@@ -922,11 +1180,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             val hasPlan = message(replyId)?.plan?.isNotEmpty() == true
             val goalActive = tools.any { (it["function"] as? JsonObject)?.get("name")?.let(::jsonString) == "goal_status" }
             val goalOpen = goalActive && goalStatus() == Goal.Status.active
-            val maxRounds = maxOf(maxToolRounds, if (hasPlan) maxPlanRounds else 0, if (goalActive) GoalTools.MAX_ROUNDS else 0)
+            val maxRounds = maxOf(maxToolRounds, if (hasPlan) maxPlanRounds else 0, if (goalActive) goalRounds else 0)
             val isFinalRound = round >= maxRounds
             round++
             if (isFinalRound) {
                 messages += buildJsonObject { put("role", "user"); put("content", "Stop using tools now and write the final answer using the results above.") }
+            }
+            // Questions asked aside meanwhile: not for this answer, and not a reason to abandon it.
+            asideQuestions.remove(chatId)?.forEach { question ->
+                messages += buildJsonObject { put("role", "user"); put("content", AsideTools.resumeNote(question)) }
             }
             val prefix = message(replyId)?.content.orEmpty()
             val reasoningPrefix = message(replyId)?.reasoning.orEmpty()
@@ -1500,6 +1762,8 @@ internal fun chatHistory(system: String, conversation: Conversation, wireMessage
     val text = if (summary != null && covered > 0)
         "$system\n\nSummary of the earlier part of this chat (those messages are not shown):\n$summary" else system
     return listOf(buildJsonObject { put("role", "system"); put("content", text) }) +
+        // A chat asked aside (/btw) carries the chat it came from, so it can be followed up like any other.
+        conversation.context.filter { !it.isError }.map(wireMessage) +
         conversation.messages.drop(covered).filter { !it.isError }.map(wireMessage)
 }
 

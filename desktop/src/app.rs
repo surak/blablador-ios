@@ -49,6 +49,11 @@ pub struct App {
     approvals: Vec<PendingApproval>,
     /// Chats where the user chose "Allow for this chat".
     allowed_chats: HashSet<Uuid>,
+    /// Questions asked aside (/btw) and their answers, shown above the composer.
+    asides: Vec<crate::aside::Aside>,
+    /// What the reply of each chat that keeps running must be told about asides asked meanwhile; the running
+    /// turn shares it.
+    aside_questions: Arc<Mutex<HashMap<Uuid, Vec<String>>>>,
     show_settings: bool,
     show_memory: bool,
     show_knowledge: bool,
@@ -91,6 +96,8 @@ impl App {
             knowledge_progress: HashMap::new(),
             approvals: vec![],
             allowed_chats: HashSet::new(),
+            asides: vec![],
+            aside_questions: Arc::new(Mutex::new(HashMap::new())),
             show_memory: false,
             show_knowledge: false,
             mapper: Default::default(),
@@ -220,6 +227,29 @@ impl App {
                     }
                 }
                 Event::Error(error) => self.error = Some(error),
+                Event::Aside(aside) => {
+                    if let Some(existing) = self.asides.iter_mut().find(|a| a.id == aside.id) {
+                        *existing = aside;
+                    }
+                }
+                Event::AsideDone { aside, context, steps } => {
+                    let origin = self.chat(aside.chat).map(|c| c.title.clone()).unwrap_or_else(|| "a chat".into());
+                    let model = self.settings.model.clone();
+                    if let Some(existing) = self.asides.iter_mut().find(|a| a.id == aside.id) {
+                        *existing = aside.clone();
+                    }
+                    // What was asked aside is kept as a chat of its own, so it can be read again and followed
+                    // up; nothing at all came back when there is no text: not worth a chat either.
+                    if !aside.answer.trim().is_empty() || aside.is_error {
+                        let mut conversation = crate::aside::keep(&aside, &origin, &model, &context, steps);
+                        conversation.updated = chrono::Utc::now();
+                        if let Some(card) = self.asides.iter_mut().find(|a| a.id == aside.id) {
+                            card.answer_chat = Some(conversation.id);
+                        }
+                        self.chats.insert(0, conversation);
+                        self.save_chats();
+                    }
+                }
             }
         }
     }
@@ -235,6 +265,22 @@ impl App {
         if text.is_empty() && self.attachments.is_empty() {
             return;
         }
+        // /btw is answered beside the reply, not in place of it, so it may be asked while one is being
+        // written. In a chat that doesn't exist yet there is nothing to ask beside: it starts the chat.
+        if let Some(question) = crate::aside::command(&text) {
+            if question.is_empty() {
+                return;
+            }
+            if self.current.is_some_and(|id| self.chat(id).is_some()) {
+                self.input.clear();
+                self.ask_aside(question);
+                return;
+            }
+        }
+        if let Some(question) = crate::aside::command(&text) {
+            // No chat yet: the question becomes the chat's first one.
+            self.input = question;
+        }
         if self.current.is_none_or(|id| self.chat(id).is_none()) {
             self.new_chat();
         }
@@ -246,6 +292,7 @@ impl App {
             self.error = Some("Still looking at the picture; send again in a moment.".into());
             return;
         }
+        let text = self.input.trim().to_string();
         let mut question = Message::new(Role::User, text);
         question.attachments = std::mem::take(&mut self.attachments);
         self.input.clear();
@@ -255,6 +302,42 @@ impl App {
         self.start_reply(id);
     }
 
+    /// Asks a question aside: it goes into a chat of its own, with what was said in this one up to where the
+    /// reply that is being written started, so the reply carries on undisturbed.
+    fn ask_aside(&mut self, question: String) {
+        let Some(chat_id) = self.current.filter(|id| self.chat(*id).is_some()) else { return };
+        // One at a time: a second card would push the first out of sight.
+        if self.asides.iter().any(|a| a.chat == chat_id && a.answer_chat.is_none()) {
+            return;
+        }
+        let aside = crate::aside::Aside::new(question.clone(), chat_id);
+        self.asides.push(aside.clone());
+        // The reply that is being written is told about it before its next round, so it doesn't answer the
+        // aside itself or wander off.
+        if self.running.contains_key(&chat_id) {
+            self.aside_questions.lock().unwrap().entry(chat_id).or_default().push(question);
+        }
+
+        let Some(chat) = self.chat(chat_id) else { return };
+        let model = self.settings.model.clone();
+        let busy = self.running.contains_key(&chat_id);
+        let mut messages: Vec<Message> = chat.messages.iter().filter(|m| m.error.is_none() || m.role == Role::User).cloned().collect();
+        // The reply being written is the last message: only half of it exists, so it is not context for the
+        // aside, which is asked beside it.
+        if busy && messages.last().is_some_and(|m| m.role == Role::Assistant) {
+            messages.pop();
+        }
+        let context: Vec<serde_json::Value> = messages.iter().map(chat::wire).collect();
+        let turn = crate::aside::Turn {
+            api: self.api(),
+            model,
+            aside,
+            context,
+            web: self.settings.web_search,
+        };
+        self.runtime.spawn(crate::aside::run(turn, self.events.clone()));
+    }
+
     /// Adds an empty reply to the chat and starts writing it.
     fn start_reply(&mut self, id: Uuid) {
         let model = self.settings.model.clone();
@@ -262,7 +345,8 @@ impl App {
         reply.model = Some(model.clone());
         reply.status = Some(crate::chat::potato_verb());
         let Some(chat) = self.chat(id) else { return };
-        let history = chat.messages.clone();
+        // A chat asked aside (/btw) carries the chat it came from, so a follow-up has that context.
+        let history: Vec<Message> = chat.context.iter().cloned().chain(chat.messages.iter().cloned()).collect();
         let needs_title = chat.title == "New chat";
         let knowledge = self.bases.iter().filter(|b| chat.knowledge.contains(&b.id)).cloned().collect();
         let other_chats = self.chats.iter().filter(|c| c.id != id).cloned().collect();
@@ -281,6 +365,7 @@ impl App {
             memory: self.memory.clone(),
             commands_allowed: self.allowed_chats.contains(&id),
             needs_title,
+            aside_questions: self.aside_questions.clone(),
             reply: reply.clone(),
         };
         let reply_id = reply.id;
@@ -436,6 +521,9 @@ impl App {
             if let Some(id) = delete {
                 self.stop(id);
                 self.chats.retain(|c| c.id != id);
+                // Its aside cards go with it.
+                self.asides.retain(|a| a.chat != id);
+                self.aside_questions.lock().unwrap().remove(&id);
                 if self.current == Some(id) {
                     self.current = self.chats.first().map(|c| c.id);
                 }
@@ -580,8 +668,58 @@ impl App {
         actions
     }
 
+    /// The aside cards of the open chat: a /btw question and its answer, while the reply keeps being written.
+    fn asides(&mut self, ui: &mut egui::Ui) {
+        let Some(chat_id) = self.current else { return };
+        let cards: Vec<crate::aside::Aside> = self.asides.iter().filter(|a| a.chat == chat_id).cloned().collect();
+        let mut close = None;
+        let mut open = None;
+        for aside in cards {
+            ui.add_space(4.0);
+            egui::Frame::group(ui.style()).show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.strong("Aside");
+                    ui.weak(&aside.question);
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.small_button("✕").on_hover_text("Dismiss").clicked() {
+                            close = Some(aside.id);
+                        }
+                        if aside.answer_chat.is_some() && ui.small_button("Open chat").clicked() {
+                            open = Some(aside.id);
+                        }
+                    });
+                });
+                if aside.shown().is_empty() {
+                    ui.horizontal(|ui| {
+                        ui.spinner();
+                        ui.weak(aside.status.clone().unwrap_or_else(|| "Thinking…".into()));
+                    });
+                } else {
+                    ui.add(egui::Label::new(aside.shown()).wrap().selectable(true));
+                    if aside.is_error {
+                        ui.colored_label(Color32::from_rgb(220, 80, 70), "The answer failed.");
+                    }
+                    if let Some(status) = &aside.status {
+                        ui.weak(status);
+                    }
+                }
+            });
+        }
+        if let Some(id) = close {
+            // Closing a card that is still being answered stops it; a finished one is only hidden.
+            self.asides.retain(|a| a.id != id);
+        }
+        if let Some(id) = open {
+            if let Some(chat) = self.asides.iter().find(|a| a.id == id).and_then(|a| a.answer_chat) {
+                self.current = Some(chat);
+                self.asides.retain(|a| a.id != id);
+            }
+        }
+    }
+
     fn composer(&mut self, ui: &mut egui::Ui) {
         ui.add_space(6.0);
+        self.asides(ui);
         if !self.attachments.is_empty() {
             ui.horizontal_wrapped(|ui| {
                 let mut remove = None;

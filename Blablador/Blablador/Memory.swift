@@ -381,7 +381,7 @@ enum ChatSearch {
         let words = MemoryStore.words(query)
         guard !words.isEmpty else { return "No keywords to search for." }
         var hits: [(score: Int, conversation: Conversation, message: ChatMessage)] = []
-        for conversation in conversations where conversation.id != current {
+        for conversation in conversations where conversation.id != current && !conversation.isEphemeral {
             for message in conversation.messages where !message.isError && !message.content.isEmpty {
                 let score = MemoryStore.words(message.content).intersection(words).count
                     + MemoryStore.words(conversation.title).intersection(words).count

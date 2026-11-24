@@ -15,6 +15,18 @@ data class WhatsNewItem(val icon: String, val title: String, val text: String, v
 
 object WhatsNew {
     val releases: List<Pair<String, List<WhatsNewItem>>> = listOf(
+        "3.13" to listOf(
+            WhatsNewItem("answer", "Ask something aside",
+                "While a long answer is being written, type /btw and a question that has nothing to do with it. It's answered in " +
+                    "a card above the composer, the answer carries on undisturbed, and what was asked aside is kept as a chat of " +
+                    "its own."),
+            WhatsNewItem("masks", "Chats that leave no trace",
+                "The masks in the top bar start a disappearing chat: nothing is saved, nothing in it is remembered, and it can't " +
+                    "be found again in the history. Start another chat or close the app and it is gone."),
+            WhatsNewItem("flag", "Goals that don't run out of steps",
+                "A reply working on a /goal now gets many more steps before it has to answer with what it has — 1000 by " +
+                    "default, chosen in Settings.", WhatsNewItem.TryIt.Prompt("/goal ", null)),
+        ),
         "3.12" to listOf(
             WhatsNewItem("waveform", "Talk to bla in the Terminal",
                 "Type /voice in bla and talk to it: it listens with Whisper, and reads the answer back with Drama 3 while it is " +

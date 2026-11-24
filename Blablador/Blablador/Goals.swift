@@ -11,8 +11,17 @@ struct Goal: Codable, Hashable {
 }
 
 enum GoalTools {
-    /// Tool rounds for one reply that works on a goal.
-    static let maxRounds = 60
+    /// Tool rounds for one reply that works on a goal, chosen in Settings. A goal is meant to be worked through
+    /// without coming back to the user, so the limit is high: the model settles it with goal_status, it doesn't
+    /// run out of rounds.
+    static var maxRounds: Int {
+        get { max(1, UserDefaults.standard.object(forKey: "goalRounds") as? Int ?? 1000) }
+        set { UserDefaults.standard.set(max(1, newValue), forKey: "goalRounds") }
+    }
+
+    /// What Settings offers for that limit.
+    static let roundChoices = [60, 100, 250, 500, 1000, 2000]
+
     /// How often a reply that stops without settling the goal is told to keep going.
     static let maxNudges = 3
 
@@ -128,13 +137,45 @@ struct GoalBanner: View {
     }
 }
 
+/// Above the composer while a disappearing chat is open.
+struct DisappearingBanner: View {
+    let onEnd: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "theatermasks.fill")
+                .scaledFont(.body)
+                .foregroundStyle(Theme.gradient)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("This chat disappears")
+                    .scaledFont(.caption, weight: .semibold)
+                    .foregroundStyle(.secondary)
+                Text("Nothing is saved, and nothing of it is remembered or heard in other chats.")
+                    .scaledFont(.subheadline)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 4)
+            Button(action: onEnd) {
+                Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("End the disappearing chat")
+        }
+        .padding(10)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14))
+        .padding(.horizontal, 12)
+        .padding(.bottom, 4)
+    }
+}
+
 /// Commands offered while "/" is typed at the start of the draft.
 struct SlashSuggestions: View {
     let query: String
     let onPick: (String) -> Void
 
     static let commands: [(name: String, icon: String, text: String)] = [
-        ("goal", "flag", "Keep working until it's done")
+        ("goal", "flag", "Keep working until it's done"),
+        ("btw", "bubble.left.and.text.bubble.right", "Ask something aside, while the reply is written")
     ]
 
     var body: some View {

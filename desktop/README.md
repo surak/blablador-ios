@@ -26,4 +26,8 @@ Releases: `.github/workflows/desktop.yml` builds `Blablador-<version>-windows-x8
 `Blablador-<version>-linux-x86_64.tar.gz` when a release is published and adds them to `SHA256SUMS.txt`.
 Bump `version` in `Cargo.toml` with the other apps.
 
+`/btw <question>` asks something aside while a long reply is being written: it is answered in a card above the
+composer (`src/aside.rs`), reading the chat up to where that reply started, and the reply is told to carry on. The
+answer is kept as a chat of its own, with the chat it came from as context.
+
 Not yet ported: OCR of scanned PDFs, images, voice, Drama 3 speech, agent file tools, MCP, skills, scheduled tasks.

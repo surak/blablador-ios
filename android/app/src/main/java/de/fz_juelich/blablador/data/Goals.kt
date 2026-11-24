@@ -18,8 +18,11 @@ data class Goal(
 }
 
 object GoalTools {
-    /** Tool rounds for one reply that works on a goal. */
-    const val MAX_ROUNDS = 60
+    /** Tool rounds for one reply that works on a goal unless the user chose another number in Settings: a goal
+     *  is settled with goal_status, not by running out of rounds. */
+    const val DEFAULT_ROUNDS = 1000
+    /** What Settings offers for that limit. */
+    val ROUND_CHOICES = listOf(60, 100, 250, 500, 1000, 2000)
     /** How often a reply that stops without settling the goal is told to keep going. */
     const val MAX_NUDGES = 3
 

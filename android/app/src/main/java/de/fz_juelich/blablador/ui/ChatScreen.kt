@@ -44,6 +44,9 @@ import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.Chat
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.runtime.key
@@ -144,6 +147,8 @@ import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
 import de.fz_juelich.blablador.ChatViewModel
 import de.fz_juelich.blablador.data.DataFiles
+import de.fz_juelich.blablador.data.Aside
+import de.fz_juelich.blablador.data.AsideTools
 import de.fz_juelich.blablador.data.Incoming
 import de.fz_juelich.blablador.data.BlabladorApi
 import de.fz_juelich.blablador.data.Conversation
@@ -407,6 +412,7 @@ fun ChatScreen(vm: ChatViewModel) {
                 }
                 ActiveKnowledge(vm, onOpen = { open(Page.Knowledge(it)) })
                 vm.current?.goal?.let { goal -> GoalBanner(goal, vm.isStreaming, vm::continueGoal, vm::endGoal) }
+                Asides(vm)
                 QueuedMessages(vm) { item ->
                     vm.takeQueued(item.id)?.let {
                         draft = it.text
@@ -432,8 +438,8 @@ fun ChatScreen(vm: ChatViewModel) {
                     val docs = documents.toList()
                     val mentioned = mentions.toList()
                     draft = ""; attachments.clear(); documents.clear(); mentions.clear()
-                    // While a reply is written, the message waits its turn (or steers the reply).
-                    if (vm.isStreaming) vm.enqueue(text, images, docs, mentioned)
+                    // /btw goes through send even while a reply streams: the store answers it aside.
+                    if (vm.isStreaming && AsideTools.command(text) == null) vm.enqueue(text, images, docs, mentioned)
                     else vm.send(text, images, docs, mentioned, createImage = imageMode, createVideo = videoMode, speak = speechMode)
                 }
             }
@@ -675,6 +681,53 @@ private fun MessageList(conversation: Conversation, vm: ChatViewModel, speaker: 
     }
     if (!following) SmallFloatingActionButton(onClick = { following = true }, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp),
         shape = CircleShape) { Icon(Icons.Filled.ArrowDownward, "Scroll to the end") }
+    }
+}
+
+/** Questions asked aside with /btw, above the composer while the chat's reply keeps being written. */
+@Composable
+private fun Asides(vm: ChatViewModel) {
+    val asides = vm.currentAsides
+    if (asides.isEmpty()) return
+    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        asides.forEach { aside ->
+            key(aside.id) { AsideCard(aside, onOpen = { vm.openAside(aside.id) }, onClose = { vm.dismissAside(aside.id) }) }
+        }
+    }
+}
+
+@Composable
+private fun AsideCard(aside: Aside, onOpen: () -> Unit, onClose: () -> Unit) {
+    var expanded by remember { mutableStateOf(true) }
+    Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Outlined.Chat, null, Modifier.size(16.dp), tint = Brand.violet)
+                Text(aside.question, Modifier.weight(1f).clickable { expanded = !expanded },
+                    style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold,
+                    maxLines = if (expanded) Int.MAX_VALUE else 1, overflow = TextOverflow.Ellipsis)
+                if (aside.answerChat != null) {
+                    IconButton(onClick = onOpen, modifier = Modifier.size(26.dp)) {
+                        Icon(Icons.Outlined.OpenInNew, "Open the aside as a chat of its own", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                IconButton(onClick = onClose, modifier = Modifier.size(26.dp)) {
+                    Icon(Icons.Outlined.Close, "Dismiss the aside", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            if (expanded) {
+                val status = aside.status
+                if (status != null && aside.shown.isEmpty()) {
+                    Text(status, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (aside.shown.isNotEmpty()) {
+                    MarkdownText(aside.shown, Modifier.fillMaxWidth())
+                }
+                if (aside.isError) {
+                    Text("It couldn't be answered.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
     }
 }
 

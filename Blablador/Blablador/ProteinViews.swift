@@ -398,13 +398,6 @@ private struct JobView: View {
                 if !current.isTerminal {
                     Text(current.progressText).scaledFont(.callout).foregroundStyle(.secondary)
                 }
-                if let id = current.remoteID {
-                    LabeledContent("Job id") { Text(id).scaledFont(.caption, design: .monospaced).textSelection(.enabled) }
-                }
-                LabeledContent("Started", value: current.created.formatted(date: .abbreviated, time: .shortened))
-                if let finished = current.finished {
-                    LabeledContent("Finished", value: finished.formatted(date: .abbreviated, time: .shortened))
-                }
                 if let seconds = current.gpuSeconds {
                     LabeledContent("GPU time", value: "\(Int(seconds)) s")
                 }
@@ -412,6 +405,21 @@ private struct JobView: View {
 
             if !current.error.isEmpty {
                 Section("Problem") { Text(current.error).scaledFont(.callout) }
+            }
+
+            Section("Job diagnostics") {
+                if let id = current.remoteID {
+                    LabeledContent("Blablador job ID") {
+                        Text(id).scaledFont(.caption, design: .monospaced).textSelection(.enabled)
+                    }
+                }
+                LabeledContent("Created in app", value: current.created.formatted(date: .abbreviated, time: .standard))
+                if let started = current.started {
+                    LabeledContent("Worker started", value: started.formatted(date: .abbreviated, time: .standard))
+                }
+                if let finished = current.finished {
+                    LabeledContent(current.state.name, value: finished.formatted(date: .abbreviated, time: .standard))
+                }
             }
 
             if let check = current.check {
