@@ -211,6 +211,7 @@ jobs:
         run: |
           cd assets
           gh release upload "$TAG" * --clobber -R "$GITHUB_REPOSITORY"
+          mkdir -p sums
           gh release download "$TAG" -p SHA256SUMS.txt -R "$GITHUB_REPOSITORY" -D sums || true
           touch sums/SHA256SUMS.txt
           for file in Blablador-* bla-*; do
