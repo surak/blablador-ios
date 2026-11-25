@@ -52,6 +52,12 @@ import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.runtime.key
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -950,7 +956,13 @@ private fun Composer(
             IconButton(onClick = { menu = true }) { Icon(Icons.Outlined.Add, "Attach and tools") }
             TextField(
                 value = draft, onValueChange = onDraft,
-                modifier = Modifier.weight(1f).focusRequester(focus),
+                modifier = Modifier.weight(1f).focusRequester(focus)
+                    // Enter sends and Shift+Enter starts a new line, as in the other apps. A hardware keyboard
+                    // is the only place this arrives; the on-screen one has no Enter.
+                    .onPreviewKeyEvent { event ->
+                        if (event.type != KeyEventType.KeyDown || event.key != Key.Enter) return@onPreviewKeyEvent false
+                        if (event.isShiftPressed) false else { if (canSend) onSend(); true }
+                    },
                 placeholder = {
                     Text(when {
                         imageMode -> if (attachments.isEmpty()) "Describe an image" else "Describe the change"

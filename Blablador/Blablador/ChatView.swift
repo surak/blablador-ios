@@ -871,9 +871,10 @@ private struct ComposerView: View {
         readingPDFs == 0 && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty || !documents.isEmpty)
     }
 
-    /// What the send button says in its tooltip; once the draft has more than one line, the key that sends it.
+    /// What the send button says in its tooltip: Enter sends, once there is more than one line the key that
+    /// starts a new one.
     private var sendHelp: String {
-        draft.contains("\n") ? "Send (⌘↩)" : ""
+        draft.contains("\n") ? "Send (↩)" : ""
     }
 
     private var placeholder: String {
@@ -1642,24 +1643,41 @@ private struct MouseDownObserver: NSViewRepresentable {
 #endif
 
 private extension View {
-    /// Enter puts a line break in the composer (Shift+Enter too) and Cmd+Enter (Ctrl+Enter on iPad) sends it.
-    /// A multiline `TextField` on macOS would otherwise take Return as "submit": it sends the draft, inserts no
-    /// line break, and does nothing at all with Cmd+Return.
+    /// Enter sends the draft; Shift+Enter, and Cmd+Enter (Ctrl+Enter too), start a new line instead. A multiline
+    /// `TextField` on macOS would otherwise take Return as "submit" in a way we can't see, so the key is handled
+    /// here: ours sends, and a modified one puts the line break in at the caret. Only a hardware keyboard gets this
+    /// far — a phone's on-screen keyboard delivers no key events, so its Return still makes the line, and the send
+    /// button is how a message goes.
     @ViewBuilder
     func composerReturnKey(send: @escaping () -> Void, canSend: @escaping () -> Bool, draft: Binding<String>) -> some View {
         onKeyPress(keys: [.return], phases: .down) { press in
-            if press.modifiers.contains(.command) || press.modifiers.contains(.control) {
+            switch ComposerReturn.action(shift: press.modifiers.contains(.shift),
+                                         command: press.modifiers.contains(.command),
+                                         control: press.modifiers.contains(.control)) {
+            case .send:
                 if canSend() { send() }
                 return .handled
-            }
+            case .newLine:
 #if os(macOS)
-            ComposerEditing.insertLineBreak(in: draft)
-            return .handled
+                ComposerEditing.insertLineBreak(in: draft)
+                return .handled
 #else
-            // iOS already puts the line break in a field with more than one line; handling it here would drop it.
-            return .ignored
+                // iOS inserts the line break in a field with more than one line by itself; handling it here would
+                // drop it.
+                return .ignored
 #endif
+            }
         }
+    }
+}
+
+/// Which way the return key goes in the composer. A type of its own so the rule can be tested without a view.
+enum ComposerReturn {
+    enum Action { case send, newLine }
+
+    /// Enter sends. Any modifier — Shift for a line, Cmd or Ctrl for the habit — makes a new line instead.
+    static func action(shift: Bool = false, command: Bool = false, control: Bool = false) -> Action {
+        shift || command || control ? .newLine : .send
     }
 }
 
