@@ -73,6 +73,8 @@ import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.DocumentScanner
 import androidx.compose.material.icons.outlined.EditNote
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material.icons.outlined.AutoAwesome
@@ -412,6 +414,7 @@ fun ChatScreen(vm: ChatViewModel) {
                 }
                 ActiveKnowledge(vm, onOpen = { open(Page.Knowledge(it)) })
                 vm.current?.goal?.let { goal -> GoalBanner(goal, vm.isStreaming, vm::continueGoal, vm::endGoal) }
+                if (vm.isDisappearing) DisappearingBanner(onEnd = { vm.newChat() })
                 Asides(vm)
                 QueuedMessages(vm) { item ->
                     vm.takeQueued(item.id)?.let {
@@ -500,11 +503,16 @@ private fun HistoryDrawer(vm: ChatViewModel, onPick: () -> Unit) {
             Spacer(Modifier.height(8.dp))
             NavigationDrawerItem(label = { Text("New chat") }, icon = { Icon(Icons.Outlined.EditNote, null) }, selected = false,
                 onClick = { vm.newChat(); onPick() })
+            NavigationDrawerItem(label = { Text("Disappearing chat") },
+                icon = { Icon(if (vm.isDisappearing) Icons.Filled.VisibilityOff else Icons.Outlined.VisibilityOff, null) },
+                selected = vm.isDisappearing,
+                onClick = { vm.newDisappearingChat(); onPick() })
             Text("Recent", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 8.dp))
         }
+        // A disappearing chat stays out of the history while it lasts.
         val shown = vm.conversations.filter { c ->
-            query.isBlank() || c.title.contains(query, true) || c.messages.any { it.content.contains(query, true) }
+            !c.isEphemeral && (query.isBlank() || c.title.contains(query, true) || c.messages.any { it.content.contains(query, true) })
         }
         LazyColumn(contentPadding = PaddingValues(horizontal = 12.dp)) {
             items(shown, key = { it.id }) { conversation ->

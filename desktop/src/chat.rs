@@ -94,6 +94,8 @@ pub struct Turn {
     pub memory: Arc<Mutex<MemoryStore>>,
     pub commands_allowed: bool,
     pub needs_title: bool,
+    /// A disappearing chat: no title is asked for and nothing is learned from it.
+    pub ephemeral: bool,
     /// Questions asked aside (/btw) while a reply is being written, by chat: the reply is told each round, so
     /// it doesn't answer them itself or wander off.
     pub aside_questions: Arc<Mutex<HashMap<Uuid, Vec<String>>>>,
@@ -136,7 +138,7 @@ pub async fn run(mut turn: Turn, events: Events) {
 
     let question = turn.history.last().map(|m| m.content.clone()).unwrap_or_default();
     let helper = turn.api.helper_model(&turn.model);
-    if turn.needs_title && !question.trim().is_empty() {
+    if turn.needs_title && !turn.ephemeral && !question.trim().is_empty() {
         let system = "Write a title of at most six words for a chat that starts with this message. Answer with the title only, without quotes.";
         if let Ok(answer) = turn.api.complete(&helper, system, &question).await {
             let title = split_thinking(&answer).1.trim().trim_matches('"').lines().next().unwrap_or("").to_string();
@@ -146,7 +148,7 @@ pub async fn run(mut turn: Turn, events: Events) {
         }
     }
     // Facts from a reply that read outside content are learned from the user's own words only.
-    if turn.settings.learn && turn.settings.memory && reply.error.is_none() {
+    if turn.settings.learn && turn.settings.memory && !turn.ephemeral && reply.error.is_none() {
         let outside = outcome.unwrap_or(true);
         let exchange = if outside { format!("User: {question}") } else { format!("User: {question}\n\nAssistant: {}", reply.content) };
         learn(&turn.api, &helper, &exchange, &turn.memory, &events).await;

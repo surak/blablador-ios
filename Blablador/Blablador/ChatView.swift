@@ -313,20 +313,6 @@ struct ChatView: View {
 #endif
         ToolbarItemGroup(placement: .primaryAction) {
             Button {
-                store.newDisappearingChat()
-                draft = ""
-                attachments = []
-                documents = []
-                mentions = []
-                inputFocused = true
-            } label: {
-                Label("Disappearing chat", systemImage: store.isDisappearing ? "theatermasks.fill" : "theatermasks")
-                    .labelStyle(.iconOnly)
-                    .foregroundStyle(store.isDisappearing ? AnyShapeStyle(Theme.gradient) : AnyShapeStyle(.primary))
-            }
-            .accessibilityLabel(store.isDisappearing ? "This chat disappears" : "Start a disappearing chat")
-            .help("A chat that leaves no trace: nothing is saved, nothing is remembered")
-            Button {
                 store.newChat()
                 draft = ""
                 attachments = []
@@ -647,15 +633,19 @@ private struct ModelMenu: View {
                         .foregroundStyle(.primary)
                 }
                 HStack(spacing: 2) {
-                    Text(modelLabel)
-                        .lineLimit(1)
+                    // "deepseek-v4.1-flash-at-hzdr · Medium" is wider than a phone's title: rather than end
+                    // in "…", show the effort only when it fits.
+                    ViewThatFits(in: .horizontal) {
+                        Text(modelLabel).fixedSize()
+                        Text(store.selectedModelName).fixedSize()
+                    }
+                    .lineLimit(1)
                     Image(systemName: "chevron.down")
                         .imageScale(.small)
                 }
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
             }
-            .frame(maxWidth: 220)
 #endif
         }
 #if os(macOS)

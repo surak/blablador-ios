@@ -12,13 +12,18 @@ struct WhatsNewItem: Identifiable, Hashable {
 
 enum WhatsNew {
     static let releases: [(version: String, items: [WhatsNewItem])] = [
+        ("3.13.1", [
+            WhatsNewItem(icon: "eye.slash", title: "A disappearing chat where a chat is started",
+                         text: "It is under New chat in the chat list, as it is on Android and the Mac app, rather than in the "
+                         + "top bar, where its button left less room for the model name."),
+        ]),
         ("3.13", [
             WhatsNewItem(icon: "bubble.left.and.text.bubble.right", title: "Ask something aside",
                          text: "While a long answer is being written, type /btw and a question that has nothing to do with it. "
                          + "It's answered in a card above the composer, the answer carries on undisturbed, and what was asked "
                          + "aside is kept as a chat of its own."),
-            WhatsNewItem(icon: "theatermasks", title: "Chats that leave no trace",
-                         text: "The masks in the top bar start a disappearing chat: nothing is saved, nothing in it is "
+            WhatsNewItem(icon: "eye.slash", title: "Chats that leave no trace",
+                         text: "Under New chat in the chat list, a disappearing chat starts: nothing is saved, nothing in it is "
                          + "remembered, and it can't be found again in the history. Start another chat or close the app and "
                          + "it is gone."),
             WhatsNewItem(icon: "flag", title: "Goals that don't run out of steps",

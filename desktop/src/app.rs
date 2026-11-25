@@ -141,6 +141,8 @@ impl App {
     }
 
     fn new_chat(&mut self) {
+        // Leaving a disappearing chat throws it away: it was never saved in the first place.
+        self.delete_ephemeral();
         // An empty chat is reused rather than piling up.
         if let Some(empty) = self.chats.iter().find(|c| c.messages.is_empty()) {
             self.current = Some(empty.id);
@@ -149,6 +151,40 @@ impl App {
         let chat = Conversation::new();
         self.current = Some(chat.id);
         self.chats.insert(0, chat);
+    }
+
+    /// Starts a chat that leaves no trace: nothing is saved, not listed, not searched and nothing learned
+    /// from it. It goes when the user starts another chat or closes the app.
+    fn new_disappearing_chat(&mut self) {
+        self.delete_ephemeral();
+        let mut chat = Conversation::new();
+        chat.ephemeral = true;
+        chat.title = "Disappearing chat".into();
+        self.current = Some(chat.id);
+        self.chats.insert(0, chat);
+    }
+
+    /// Removes the disappearing chats, stopping what they were doing.
+    fn delete_ephemeral(&mut self) {
+        let going: Vec<Uuid> = self.chats.iter().filter(|c| c.ephemeral).map(|c| c.id).collect();
+        if going.is_empty() {
+            return;
+        }
+        for id in &going {
+            self.stop(*id);
+            self.asides.retain(|a| a.chat != *id);
+            self.aside_questions.lock().unwrap().remove(id);
+        }
+        self.chats.retain(|c| !c.ephemeral);
+        if self.current.is_some_and(|id| going.contains(&id)) {
+            self.current = self.chats.first().map(|c| c.id);
+        }
+        self.save_chats();
+    }
+
+    /// The open chat is a disappearing one.
+    fn is_disappearing(&self) -> bool {
+        self.current.and_then(|id| self.chat(id)).is_some_and(|c| c.ephemeral)
     }
 
     /// Writes what a feature did into the chat history, so a protein job or a mapped room is in the history
@@ -348,8 +384,10 @@ impl App {
         // A chat asked aside (/btw) carries the chat it came from, so a follow-up has that context.
         let history: Vec<Message> = chat.context.iter().cloned().chain(chat.messages.iter().cloned()).collect();
         let needs_title = chat.title == "New chat";
+        let ephemeral = chat.ephemeral;
         let knowledge = self.bases.iter().filter(|b| chat.knowledge.contains(&b.id)).cloned().collect();
-        let other_chats = self.chats.iter().filter(|c| c.id != id).cloned().collect();
+        // A disappearing chat can't quote other chats, and is never quoted by them.
+        let other_chats = if ephemeral { vec![] } else { self.chats.iter().filter(|c| c.id != id && !c.ephemeral).cloned().collect() };
         let effort = effort::level(&model, &self.settings.efforts);
         let candidates = effort.map(|level| effort::candidates(&model, level, &self.settings.effort_worked)).unwrap_or_default();
         let turn = Turn {
@@ -365,6 +403,7 @@ impl App {
             memory: self.memory.clone(),
             commands_allowed: self.allowed_chats.contains(&id),
             needs_title,
+            ephemeral,
             aside_questions: self.aside_questions.clone(),
             reply: reply.clone(),
         };
@@ -496,16 +535,22 @@ impl App {
         if ui.add_sized([ui.available_width(), 28.0], egui::Button::new("New chat")).clicked() {
             self.new_chat();
         }
+        // Beside New chat, where a chat is started. Its title is the line's label while it lasts.
+        if ui.add_sized([ui.available_width(), 24.0], egui::Button::new("👁 Disappearing chat")).clicked() {
+            self.new_disappearing_chat();
+        }
         ui.add_space(6.0);
         let bottom = 5.0 * 26.0 + 12.0;
         egui::ScrollArea::vertical().max_height(ui.available_height() - bottom).auto_shrink([false, false]).show(ui, |ui| {
             let mut delete = None;
-            for chat in &self.chats {
+            let mut pick = None;
+            // A disappearing chat stays out of the list while it lasts.
+            for chat in self.chats.iter().filter(|c| !c.ephemeral) {
                 let busy = self.running.contains_key(&chat.id);
                 let title = if busy { format!("● {}", chat.title) } else { chat.title.clone() };
                 let response = ui.add_sized([ui.available_width(), 22.0], egui::SelectableLabel::new(self.current == Some(chat.id), title));
                 if response.clicked() {
-                    self.current = Some(chat.id);
+                    pick = Some(chat.id);
                 }
                 response.context_menu(|ui| {
                     if ui.button("Rename…").clicked() {
@@ -517,6 +562,11 @@ impl App {
                         ui.close_menu();
                     }
                 });
+            }
+            // Picking a chat from the list leaves the disappearing one behind for good.
+            if let Some(id) = pick {
+                self.delete_ephemeral();
+                self.current = Some(id);
             }
             if let Some(id) = delete {
                 self.stop(id);
@@ -711,6 +761,7 @@ impl App {
         }
         if let Some(id) = open {
             if let Some(chat) = self.asides.iter().find(|a| a.id == id).and_then(|a| a.answer_chat) {
+                self.delete_ephemeral();
                 self.current = Some(chat);
                 self.asides.retain(|a| a.id != id);
             }
@@ -720,6 +771,27 @@ impl App {
     fn composer(&mut self, ui: &mut egui::Ui) {
         ui.add_space(6.0);
         self.asides(ui);
+        if self.is_disappearing() {
+            let mut end = false;
+            egui::Frame::new().fill(ui.visuals().faint_bg_color).corner_radius(8.0).inner_margin(8.0).show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label("👁");
+                    ui.vertical(|ui| {
+                        ui.strong("This chat disappears");
+                        ui.weak("Nothing is saved, and nothing of it is remembered or heard in other chats.");
+                    });
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button("✕").on_hover_text("End the disappearing chat").clicked() {
+                            end = true;
+                        }
+                    });
+                });
+            });
+            ui.add_space(4.0);
+            if end {
+                self.new_chat();
+            }
+        }
         if !self.attachments.is_empty() {
             ui.horizontal_wrapped(|ui| {
                 let mut remove = None;

@@ -143,7 +143,7 @@ struct DisappearingBanner: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "theatermasks.fill")
+            Image(systemName: "eye.slash.fill")
                 .scaledFont(.body)
                 .foregroundStyle(Theme.gradient)
             VStack(alignment: .leading, spacing: 2) {

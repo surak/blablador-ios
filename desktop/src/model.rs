@@ -109,12 +109,15 @@ pub struct Conversation {
     pub context: Vec<Message>,
     pub created: DateTime<Utc>,
     pub updated: DateTime<Utc>,
+    /// A disappearing chat: never written to chats.json, not in the list, not searched, nothing learned from it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub ephemeral: bool,
 }
 
 impl Conversation {
     pub fn new() -> Conversation {
         let now = Utc::now();
-        Conversation { id: Uuid::new_v4(), title: "New chat".into(), messages: vec![], knowledge: vec![], context: vec![], created: now, updated: now }
+        Conversation { id: Uuid::new_v4(), title: "New chat".into(), messages: vec![], knowledge: vec![], context: vec![], created: now, updated: now, ephemeral: false }
     }
 }
 
@@ -125,7 +128,12 @@ pub fn load_chats() -> Vec<Conversation> {
 }
 
 pub fn save_chats(chats: &[Conversation]) {
-    storage::write_json(&storage::path("chats.json"), &chats);
+    storage::write_json(&storage::path("chats.json"), &saved(chats));
+}
+
+/// The chats that go into the file: everything but the disappearing ones, which are never written down.
+pub fn saved(chats: &[Conversation]) -> Vec<Conversation> {
+    chats.iter().filter(|c| !c.ephemeral).cloned().collect()
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -286,4 +294,26 @@ impl MemoryStore {
 /// Lowercased words of four letters or more, for keyword matching.
 pub fn words(text: &str) -> HashSet<String> {
     text.split(|c: char| !c.is_alphanumeric()).filter(|w| w.chars().count() >= 4).map(|w| w.to_lowercase()).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_disappearing_chat_is_never_written_down() {
+        let mut kept = Conversation::new();
+        kept.title = "Kept".into();
+        let mut gone = Conversation::new();
+        gone.title = "Gone".into();
+        gone.ephemeral = true;
+        let saved = saved(&[gone, kept]);
+        assert_eq!(saved.len(), 1);
+        assert_eq!(saved[0].title, "Kept");
+        // Nothing of the flag reaches the file: a chat read back is an ordinary one.
+        let json = serde_json::to_string(&saved).unwrap();
+        assert!(!json.contains("ephemeral"));
+        let back: Vec<Conversation> = serde_json::from_str(&json).unwrap();
+        assert!(!back[0].ephemeral);
+    }
 }

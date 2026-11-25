@@ -45,6 +45,7 @@ import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.TaskAlt
 import androidx.compose.material.icons.outlined.Timelapse
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -281,6 +282,25 @@ fun GoalBanner(goal: de.fz_juelich.blablador.data.Goal, running: Boolean, onCont
         androidx.compose.material3.IconButton(onClick = onEnd, modifier = Modifier.size(28.dp)) {
             Icon(Icons.Outlined.Close, if (goal.status == de.fz_juelich.blablador.data.Goal.Status.done) "Dismiss goal" else "End goal",
                 tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** Above the composer while a disappearing chat is open. */
+@Composable
+fun DisappearingBanner(onEnd: () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp).clip(RoundedCornerShape(14.dp))
+        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)).padding(10.dp),
+        verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Icon(Icons.Outlined.VisibilityOff, null, tint = Brand.violet)
+        Column(Modifier.weight(1f)) {
+            Text("This chat disappears", style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Nothing is saved, and nothing of it is remembered or heard in other chats.",
+                style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+        androidx.compose.material3.IconButton(onClick = onEnd, modifier = Modifier.size(28.dp)) {
+            Icon(Icons.Outlined.Close, "End the disappearing chat", tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
