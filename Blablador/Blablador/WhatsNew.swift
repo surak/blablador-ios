@@ -12,6 +12,11 @@ struct WhatsNewItem: Identifiable, Hashable {
 
 enum WhatsNew {
     static let releases: [(version: String, items: [WhatsNewItem])] = [
+        ("3.13.2", [
+            WhatsNewItem(icon: "person", title: "Your name stays in the greeting",
+                         text: "A greeting name that could not be looked up — started offline, or Codebase away — is kept "
+                         + "rather than wiped, and looked up again when the app comes back to the front."),
+        ]),
         ("3.13.1", [
             WhatsNewItem(icon: "eye.slash", title: "A disappearing chat where a chat is started",
                          text: "It is under New chat in the chat list, as it is on Android and the Mac app, rather than in the "

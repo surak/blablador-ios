@@ -141,6 +141,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -213,6 +214,16 @@ fun ChatScreen(vm: ChatViewModel) {
     }
 
     val speaker = rememberSpeaker()
+
+    // A greeting name the first lookup could not fetch (started offline) is tried again when the app comes back.
+    val lifecycle = LocalLifecycleOwner.current
+    DisposableEffect(lifecycle) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) vm.refreshName()
+        }
+        lifecycle.lifecycle.addObserver(observer)
+        onDispose { lifecycle.lifecycle.removeObserver(observer) }
+    }
 
     // Shares, files opened with Blablador, blablador:// links and shortcuts: one new chat each, never sent by
     // itself (except blablador://ask, which is a question to send).

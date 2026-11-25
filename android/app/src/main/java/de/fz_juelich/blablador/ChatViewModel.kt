@@ -271,6 +271,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun updateSystemPrompt(text: String) { systemPrompt = text; settings.systemPrompt = text }
     fun chooseOcrEngine(engine: String) { ocrEngine = engine; settings.ocrEngine = engine }
 
+    /** The greeting name is looked up again when the app comes back, in case the first try had no network. */
+    fun refreshName() {
+        if (userName.isNotEmpty() || apiKey.isEmpty()) return
+        viewModelScope.launch {
+            runCatching { api.userName() }.onSuccess { found ->
+                val name = found.trim()
+                if (name.isNotEmpty()) { userName = name; settings.userName = name }
+            }
+        }
+    }
+
     private fun refresh() {
         viewModelScope.launch {
             if (apiKey.isEmpty()) {
@@ -280,10 +291,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             runCatching { api.models() }
                 .onSuccess { models = it; modelsError = null }
                 .onFailure { modelsError = it.message }
-            // The name comes from Helmholtz Codebase; only Blablador keys belong there.
+            // The name comes from Helmholtz Codebase; only Blablador keys belong there. A lookup that fails
+            // (offline, Codebase away, a key not accepted yet) keeps the last name found instead of blanking it.
             if (endpoint == BlabladorApi.DEFAULT_ENDPOINT) runCatching { api.userName() }.onSuccess {
-                userName = it.trim()
-                settings.userName = userName
+                val found = it.trim()
+                if (found.isNotEmpty()) {
+                    userName = found
+                    settings.userName = found
+                }
             }
         }
     }

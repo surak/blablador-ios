@@ -86,11 +86,17 @@ private struct TextSizeCommands: Commands {
 private struct ChatWindow: View {
     @StateObject private var store = ChatStore()
     @AppStorage(TextSize.key) private var textSizeStep = 0
+    @Environment(\.scenePhase) private var phase
 
     var body: some View {
         ChatView()
             .environmentObject(store)
             .focusedSceneObject(store)
+            // A greeting name the first lookup could not fetch (started offline, Codebase away, a key that
+            // was not accepted yet) is tried again whenever the app comes back to the front.
+            .onChange(of: phase) { _, phase in
+                if phase == .active, store.userName.isEmpty { Task { await store.loadUserName() } }
+            }
             // Scheduled tasks run in the first window's chat list (shared by all windows).
             .onAppear { if TaskScheduler.shared.store == nil { TaskScheduler.shared.start(with: store) } }
             // Molecular jobs run for hours: pick up anything still unfinished, and keep its chat up to date.

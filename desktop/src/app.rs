@@ -535,8 +535,12 @@ impl App {
         if ui.add_sized([ui.available_width(), 28.0], egui::Button::new("New chat")).clicked() {
             self.new_chat();
         }
-        // Beside New chat, where a chat is started. Its title is the line's label while it lasts.
-        if ui.add_sized([ui.available_width(), 24.0], egui::Button::new("👁 Disappearing chat")).clicked() {
+        // Beside New chat, where a chat is started. Its title is the line's label while it lasts, and the row
+        // stays lit while that chat is open, since it is not in the list below to show it.
+        if ui
+            .add_sized([ui.available_width(), 24.0], egui::Button::new("👁 Disappearing chat").selected(self.is_disappearing()))
+            .clicked()
+        {
             self.new_disappearing_chat();
         }
         ui.add_space(6.0);

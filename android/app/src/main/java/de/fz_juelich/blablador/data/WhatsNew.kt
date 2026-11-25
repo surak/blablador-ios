@@ -15,6 +15,16 @@ data class WhatsNewItem(val icon: String, val title: String, val text: String, v
 
 object WhatsNew {
     val releases: List<Pair<String, List<WhatsNewItem>>> = listOf(
+        "3.13.2" to listOf(
+            WhatsNewItem("person", "Your name stays in the greeting",
+                "A greeting name that could not be looked up — started offline, or Codebase away — is kept rather than " +
+                    "wiped, and looked up again when the app comes back."),
+        ),
+        "3.13.1" to listOf(
+            WhatsNewItem("visibility_off", "A disappearing chat where a chat is started",
+                "It is in the drawer beside New chat, rather than the masks in the top bar, where its button left less room for " +
+                    "the model name."),
+        ),
         "3.13" to listOf(
             WhatsNewItem("answer", "Ask something aside",
                 "While a long answer is being written, type /btw and a question that has nothing to do with it. It's answered in " +

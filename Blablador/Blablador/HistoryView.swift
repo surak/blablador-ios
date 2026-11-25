@@ -56,6 +56,7 @@ struct HistoryView: View {
             .buttonStyle(.plain)
 
             // Beside New chat, where a chat is started — not in the top bar, where it crowded the model menu.
+            // It stays lit while such a chat is open, since it is not in the list below to show it.
             Button {
                 store.newDisappearingChat()
                 onClose()
@@ -64,7 +65,8 @@ struct HistoryView: View {
                     .scaledFont(.body)
                     .padding(.vertical, 10)
                     .padding(.horizontal, 14)
-                    .background(Theme.surface, in: Capsule())
+                    .background(store.isDisappearing ? AnyShapeStyle(Theme.gradient.opacity(0.25)) : AnyShapeStyle(Theme.surface),
+                                in: Capsule())
             }
             .buttonStyle(.plain)
             .help("A chat that leaves no trace: nothing is saved, nothing is remembered")

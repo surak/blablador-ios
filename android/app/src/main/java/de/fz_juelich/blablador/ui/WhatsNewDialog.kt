@@ -19,6 +19,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.outlined.AlternateEmail
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.outlined.Biotech
 import androidx.compose.material.icons.outlined.VerifiedUser
 import androidx.compose.material.icons.outlined.Terminal
@@ -97,6 +99,8 @@ fun WhatsNewDialog(version: String, items: List<WhatsNewItem>, onTry: (WhatsNewI
                                         "check" -> Icons.Outlined.VerifiedUser
                                         "answer" -> Icons.Outlined.QuestionAnswer
                                         "masks" -> Icons.Outlined.TheaterComedy
+                                        "visibility_off" -> Icons.Outlined.VisibilityOff
+                                        "person" -> Icons.Outlined.Person
                                         else -> Icons.Outlined.AlternateEmail
                                     }, null, Modifier.size(26.dp), tint = Brand.violet)
                                 }

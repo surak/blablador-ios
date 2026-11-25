@@ -113,6 +113,8 @@ final class ChatStore: ObservableObject {
         didSet {
             KeychainHelper.save(apiKey, for: "apiKey")
             NotificationCenter.default.post(name: Self.apiKeyChanged, object: nil)
+            // The name belonged to the key that was there, so a new one is looked up. (Not at launch: `init`
+            // sets the key without this running, and the name in the preferences is the one it found.)
             userName = ""
             Task {
                 await loadModels()
@@ -270,12 +272,21 @@ final class ChatStore: ObservableObject {
         }
     }
 
-    /// Greeting name of the key's owner; left empty when the lookup fails.
+    /// Greeting name of the key's owner; left as it is when the lookup fails.
+    ///
+    /// The lookup needs Codebase to answer — offline, a 401 because the key was revoked, or a Codebase outage all
+    /// leave no name. Writing that empty answer over a name found earlier would take the name out of the greeting
+    /// for good, so a failed lookup keeps what is there and simply tries again the next time the app comes back.
+    /// A key or endpoint the name no longer belongs to clears it first (see `SettingsView.save` and `apiKey`).
     func loadUserName() async {
         // The name comes from Helmholtz Codebase; only Blablador keys belong there.
-        guard !apiKey.isEmpty, BlabladorAPI.endpoint == BlabladorAPI.defaultEndpoint,
-              let name = try? await api.userName() else { return }
-        userName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !apiKey.isEmpty, BlabladorAPI.endpoint == BlabladorAPI.defaultEndpoint else {
+            if !userName.isEmpty, BlabladorAPI.endpoint != BlabladorAPI.defaultEndpoint { userName = "" }
+            return
+        }
+        guard let name = try? await api.userName() else { return }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty { userName = trimmed }
     }
 
     // MARK: - Conversations
