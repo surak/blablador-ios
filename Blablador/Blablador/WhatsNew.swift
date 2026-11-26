@@ -12,6 +12,12 @@ struct WhatsNewItem: Identifiable, Hashable {
 
 enum WhatsNew {
     static let releases: [(version: String, items: [WhatsNewItem])] = [
+        ("3.13.3", [
+            WhatsNewItem(icon: "return", title: "Enter sends again",
+                         text: "The return key sends your message, as it does on the Mac app and in bla; Shift+Enter "
+                         + "starts a new line instead of sending. On a phone's on-screen keyboard Return still makes "
+                         + "the line, since it sends the app no key events — there the send button is the way."),
+        ]),
         ("3.13.2", [
             WhatsNewItem(icon: "person", title: "Your name stays in the greeting",
                          text: "A greeting name that could not be looked up — started offline, or Codebase away — is kept "

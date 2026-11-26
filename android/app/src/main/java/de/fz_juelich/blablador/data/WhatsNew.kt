@@ -15,6 +15,11 @@ data class WhatsNewItem(val icon: String, val title: String, val text: String, v
 
 object WhatsNew {
     val releases: List<Pair<String, List<WhatsNewItem>>> = listOf(
+        "3.13.3" to listOf(
+            WhatsNewItem("keyboard_return", "Enter sends again",
+                "The return key sends your message, as it does on the Mac app and in bla; Shift+Enter starts a new " +
+                    "line instead. The on-screen keyboard has no Enter, so there the send button is the way."),
+        ),
         "3.13.2" to listOf(
             WhatsNewItem("person", "Your name stays in the greeting",
                 "A greeting name that could not be looked up — started offline, or Codebase away — is kept rather than " +
