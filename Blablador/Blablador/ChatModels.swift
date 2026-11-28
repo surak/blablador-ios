@@ -135,7 +135,7 @@ struct RemoteModel: Identifiable, Codable, Hashable {
         // The molecular models are asynchronous job APIs, not completions; they are named outright because
         // other alias-* models (alias-fast and friends) are ordinary chat models.
         if Molecular.Kind.aliases.contains(lowered) { return false }
-        let excluded = ["embedding", "rerank", "whisper", "flux", "image", "video", "voice", "davinci", "anonymizer"]
+        let excluded = ["embedding", "rerank", "whisper", "flux", "image", "video", "voice", "davinci", "anonymizer", "clef"]
         return !excluded.contains { lowered.contains($0) }
     }
 

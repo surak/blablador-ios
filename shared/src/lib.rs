@@ -28,6 +28,8 @@ pub const EMBEDDING_MODEL: &str = "alias-qwen3-4b-embeddings";
 pub const RERANK_MODEL: &str = "alias-qwen3-4b-reranker";
 /// LightOnOCR, for pictures of text.
 pub const OCR_MODEL: &str = "alias-ocr";
+/// Clef: a situation and typed questions in (`POST /v1/systemone`), probabilities out. Not a conversation.
+pub const DECISION_MODEL: &str = "alias-clef";
 /// VGGT-Ω: photos of a place in, a map and a point cloud out.
 pub const VISUAL_GEOMETRY_MODEL: &str = "alias-visual-geometry";
 
@@ -53,6 +55,8 @@ pub enum Kind {
     Rerank,
     Ocr,
     VisualGeometry,
+    /// Clef, the decision model: answers typed questions about a situation.
+    Decision,
     /// Folding, designing and sampling proteins. A job API, not a conversation.
     Molecular,
     /// Serves some other purpose; whatever it is, it isn't a conversation.
@@ -72,6 +76,7 @@ impl Kind {
             Kind::Rerank => "reranking",
             Kind::Ocr => "OCR",
             Kind::VisualGeometry => "3D from photos",
+            Kind::Decision => "decisions",
             Kind::Molecular => "molecular (a job, not a chat)",
             Kind::Other => "not for chatting",
         }
@@ -84,6 +89,9 @@ pub fn kind(id: &str) -> Kind {
     let lower = id.to_ascii_lowercase();
     if MOLECULAR_MODELS.contains(&lower.as_str()) {
         return Kind::Molecular;
+    }
+    if lower == DECISION_MODEL || lower.contains("clef") {
+        return Kind::Decision;
     }
     if lower == VISUAL_GEOMETRY_MODEL {
         return Kind::VisualGeometry;
@@ -166,6 +174,8 @@ mod tests {
 
     #[test]
     fn tools_are_sorted_by_what_they_do() {
+        assert_eq!(kind("alias-clef"), Kind::Decision);
+        assert!(!is_chat_capable("alias-clef"));
         assert_eq!(kind("alias-flux2"), Kind::Image);
         assert_eq!(kind("alias-video"), Kind::Video);
         assert_eq!(kind("alias-voice-drama3"), Kind::Speech);
