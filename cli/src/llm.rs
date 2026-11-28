@@ -78,6 +78,11 @@ pub trait Provider: Send + Sync {
 
     fn models(&self) -> Result<Vec<String>, String>;
 
+    /// What the provider's model list says about this model's window, if anything.
+    fn context_length(&self, _model: &str) -> Option<u64> {
+        None
+    }
+
     /// One question, one answer, no tools: for summaries and other small jobs.
     fn complete(&self, model: &str, system: &str, user: &str) -> Result<String, String> {
         let messages = [Message::user(user)];

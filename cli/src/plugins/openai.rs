@@ -243,6 +243,14 @@ impl Provider for OpenAi {
         ids.sort();
         Ok(ids)
     }
+
+    fn context_length(&self, model: &str) -> Option<u64> {
+        let key = self.live_key().ok()?;
+        let response = self.agent.get(&format!("{}/models", self.endpoint)).set("Authorization", &format!("Bearer {key}")).call().ok()?;
+        let v: Value = response.into_json().ok()?;
+        let entry = v["data"].as_array()?.iter().find(|m| m["id"].as_str() == Some(model))?;
+        crate::context::from_entry(entry)
+    }
 }
 
 pub struct OpenAiPlugin {

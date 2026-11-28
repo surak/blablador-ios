@@ -3,6 +3,11 @@
 
 mod agent;
 mod config;
+mod context;
+mod decide;
+
+/// The reasoning efforts bla offers, as in the apps.
+const EFFORTS: [&str; 5] = ["off", "low", "medium", "high", "max"];
 mod llm;
 mod onboard;
 mod plugin;
@@ -511,8 +516,9 @@ const CHAT_HELP: &str = "/help         this list
 /sessions     recent sessions
 /resume ID    continue a session
 /login        give or change the API key
-/model [ID]   show or change the model
+/model [ID [EFFORT]]  list the provider's models, or switch (shows its context size)
 /models       list the models
+/decide [SITUATION]  ask the decision model (alias-clef) a few questions, step by step
 /effort LEVEL thinking effort: off, low, medium, high, max
 /voice [LANG] talk instead of typing (/voice off ends it)
 /steer TEXT   tell the model something while it answers, without stopping it
@@ -559,11 +565,40 @@ fn run_chat(agent: &mut Agent, settings: &Settings, busy: &AtomicBool, thinking:
     commands.sort();
     screen.set_commands(commands);
 
+    // `/decide`'s assistant, while it is asking: every line goes to it, empty ones too.
+    let mut wizard: Option<decide::Wizard> = None;
     loop {
         busy.store(false, Ordering::Relaxed);
         let Some(line) = screen.read_line() else {
             break;
         };
+        if let Some(w) = wizard.as_mut() {
+            match w.feed(&line) {
+                decide::Next::Ask(q) => screen.say(&q),
+                decide::Next::Cancelled => {
+                    wizard = None;
+                    screen.notice("Decision cancelled.");
+                }
+                decide::Next::Send { state, questions } => {
+                    wizard = None;
+                    busy.store(true, Ordering::Relaxed);
+                    screen.notice("Asking Clef…");
+                    match decide::ask(&settings.endpoint, &secret::api_key().unwrap_or_default(), &state, &questions) {
+                        Ok(answers) => {
+                            let text = decide::summary(&questions, &answers);
+                            screen.say(&text);
+                            // In the session, so it is in the history, /resume brings it back and the model can use it.
+                            agent.session.push(llm::Message::user(format!(
+                                "I asked the decision model {} about this situation:\n{state}\n\nIts answers:\n{text}",
+                                decide::MODEL
+                            )));
+                        }
+                        Err(e) => screen.error(&e),
+                    }
+                }
+            }
+            continue;
+        }
         let input = line.trim();
         if input.is_empty() {
             continue;
@@ -603,6 +638,11 @@ fn run_chat(agent: &mut Agent, settings: &Settings, busy: &AtomicBool, thinking:
                     screen.notice("New session.");
                 }
                 "sessions" => screen.say(&sessions_text()),
+                "decide" => {
+                    let (w, first) = decide::Wizard::start(args);
+                    wizard = Some(w);
+                    screen.say(&first);
+                }
                 // The way out of the circle the error message used to send people round: `bla login` cannot be
                 // typed in here, but this can.
                 "login" => {
@@ -624,22 +664,11 @@ fn run_chat(agent: &mut Agent, settings: &Settings, busy: &AtomicBool, thinking:
                     }
                     Err(e) => screen.error(&e),
                 },
-                "model" if args.is_empty() => screen.say(&agent.model),
                 // Embedders, image models and the molecular job APIs are all in /v1/models; none of them answers a question.
-                "model" if !blablador_models::is_chat_capable(args) => screen.error(&format!(
-                    "{args} is for {}, not for chatting.",
-                    blablador_models::kind(args).name()
-                )),
-                "model" => {
-                    agent.model = args.to_string();
-                    let _ = Settings::save_user("model", serde_json::Value::from(args));
-                    screen.set_info(&agent.model, agent.effort.as_deref(), &cwd);
-                    screen.notice(&format!("Model: {args} (saved as the default)"));
-                }
-                "models" => match agent.provider.models() {
-                    Ok(list) => screen.say(
-                        &list
-                            .iter()
+                "model" | "models" if args.is_empty() => match agent.provider.models() {
+                    Ok(list) => screen.say(&format!(
+                        "{}\n\n/model ID [off|low|medium|high|max] switches; the effort is optional.",
+                        list.iter()
                             .map(|m| {
                                 let mark = if *m == agent.model { "* " } else { "  " };
                                 match blablador_models::kind(m) {
@@ -648,12 +677,37 @@ fn run_chat(agent: &mut Agent, settings: &Settings, busy: &AtomicBool, thinking:
                                 }
                             })
                             .collect::<Vec<_>>()
-                            .join("\n"),
-                    ),
+                            .join("\n")
+                    )),
                     Err(e) => screen.error(&e),
                 },
-                "effort" if ["off", "low", "medium", "high", "max"].contains(&args) => {
+                "model" if !blablador_models::is_chat_capable(args.split_whitespace().next().unwrap_or("")) => screen.error(&format!(
+                    "{args} is for {}, not for chatting.",
+                    blablador_models::kind(args.split_whitespace().next().unwrap_or("")).name()
+                )),
+                "model" if args.split_whitespace().nth(1).is_some_and(|e| !EFFORTS.contains(&e)) => {
+                    screen.error(&format!("Effort is one of {}.", EFFORTS.join(", ")))
+                }
+                "model" => {
+                    let mut words = args.split_whitespace();
+                    let args = words.next().unwrap_or_default();
+                    if let Some(e) = words.next() {
+                        agent.effort = Some(e.into());
+                        let _ = Settings::save_user("effort", serde_json::Value::from(e));
+                    }
+                    agent.model = args.to_string();
+                    let _ = Settings::save_user("model", serde_json::Value::from(args));
+                    screen.set_info(&agent.model, agent.effort.as_deref(), &cwd);
+                    let window = context::resolve(args, agent.provider.context_length(args));
+                    screen.notice(&format!("Model: {args}, context {} tokens effort {} (saved as the default; /effort {} changes it)",
+                        context::human(window),
+                        agent.effort.as_deref().unwrap_or("default"),
+                        EFFORTS.join("|")
+                    ));
+                }
+                "effort" if EFFORTS.contains(&args) => {
                     agent.effort = Some(args.into());
+                    let _ = Settings::save_user("effort", serde_json::Value::from(args));
                     screen.set_info(&agent.model, agent.effort.as_deref(), &cwd);
                     screen.notice(&format!("Effort: {args}"));
                 }

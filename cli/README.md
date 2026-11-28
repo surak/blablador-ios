@@ -74,7 +74,7 @@ paste it at the hidden prompt.
 
 | | |
 |---|---|
-| `-m, --model ID` | model (default `deepseek-v4.1-flash-at-hzdr`; `/model ID` in a chat saves a new default) |
+| `-m, --model ID` | model (default `deepseek-v4.1-flash-at-hzdr`; `/model` in a chat lists the provider's models; `/model ID [effort]` switches, saves a new default and says its context size, worked out as Hermes does: `src/context.rs`) |
 | `-e, --effort LEVEL` | thinking: off, low, medium, high, max |
 | `-s, --system TEXT` | extra instructions |
 | `-t, --thinking` | show the thinking in one-shot mode (a chat always shows it, dimmed) |
@@ -103,7 +103,7 @@ context is; `out`: everything written this session), what that would cost at Cla
 (`≈$0.42 at Claude Fable 5`, $10/$50 per million tokens — Blablador itself is free, the number is a reference),
 and the folder.
 
-In a chat: `/help` lists the commands (`/new`, `/resume`, `/login` (a new key without leaving the chat; used at once), `/model`, `/effort`, `/mode`, `/compact`, `/undo`,
+In a chat: `/help` lists the commands (`/new`, `/resume`, `/login` (a new key without leaving the chat; used at once), `/model`, `/effort`, `/decide` (asks the decision model alias-clef a few questions, one simple step at a time: the situation, each question and whether it is yes/no, a choice or a score; Enter on an empty line sends), `/mode`, `/compact`, `/undo`,
 `/skills`, `/memory`, `/voice`, `/tools`, `/plugins`, and one per skill); `/yolo` stops asking for the rest of the
 session and `/safe` starts again; `!command` runs a shell command and
 shows the model its output; `@path` attaches a file; Esc or Ctrl-C stops the answer; Ctrl-C twice or Ctrl-D
