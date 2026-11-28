@@ -736,16 +736,11 @@ private struct WelcomeView: View {
 
     @EnvironmentObject private var store: ChatStore
 
-    /// "Good morning, Name" based on the device's local time.
+    /// One of the greetings for this time of day, picked once when the screen appears, with the name after it.
+    @State private var salutation = Greetings.now()
+
     private var greeting: String {
-        let hour = Calendar.current.component(.hour, from: Date())
-        let salutation = switch hour {
-        case 5..<12: "Good morning"
-        case 12..<18: "Good afternoon"
-        // Late at night too: "Good night" is a goodbye, and the evening hasn't ended for whoever is still up.
-        default: "Good evening"
-        }
-        return store.userName.isEmpty ? salutation : "\(salutation), \(store.userName)"
+        store.userName.isEmpty ? salutation : "\(salutation), \(store.userName)"
     }
 
     var body: some View {
@@ -1752,4 +1747,26 @@ private struct QueuedMessageRow: View {
 private struct FieldHeight: PreferenceKey {
     static let defaultValue: CGFloat = 40
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
+/// Cheerful, short and a little potato: a greeting for each part of the day. No commas inside, since the name follows
+/// one. Kept the same as `Greetings` on Android (`ui/ChatScreen.kt`).
+enum Greetings {
+    static let morning = ["Good morning", "Rise and shine", "Rise and spud", "Top of the morning", "Hash brown hour", "Fresh from the field", "Up and sprouting", "Sunshine spud morning", "Breakfast potatoes ready", "Bright and early tater"]
+    static let afternoon = ["Good afternoon", "Happy afternoon", "Peak potato hours", "Chips and cheers", "Lunch-powered and ready", "Golden afternoon", "Spud-tacular afternoon", "Afternoon mash-up", "Sunny side of the spud", "Midday fries and smiles"]
+    static let evening = ["Good evening", "Lovely evening", "Roast potato o'clock", "Fry friends assemble", "Mashed and mellow", "Golden-fried evening", "Jacket potato weather", "Cozy gratin hour", "Evening spud check", "Dinner's in the oven"]
+    static let night = ["Still up", "Night owl spud", "Midnight snack time", "Moonlit mash", "Late-night tater", "Stars and starches", "Couch potato hours", "Midnight fries", "Sleepy spud shift", "Warm chips for night owls"]
+
+    static func list(hour: Int) -> [String] {
+        switch hour {
+        case 5..<12: morning
+        case 12..<18: afternoon
+        case 18..<22: evening
+        default: night
+        }
+    }
+
+    static func now() -> String {
+        list(hour: Calendar.current.component(.hour, from: Date())).randomElement() ?? "Good day"
+    }
 }

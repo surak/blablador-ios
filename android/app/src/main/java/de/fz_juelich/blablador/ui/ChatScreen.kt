@@ -612,8 +612,8 @@ private fun pickSuggestions(count: Int): List<Suggestion> {
 
 @Composable
 private fun Welcome(userName: String, onPick: (Suggestion) -> Unit) {
-    val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-    val salutation = when (hour) { in 5..11 -> "Good morning"; in 12..17 -> "Good afternoon"; else -> "Good evening" }  // late at night too: "Good night" is a goodbye
+    // Picked once when the screen appears, so it doesn't change under the user's eyes.
+    val salutation = remember { Greetings.now() }
     // Six examples, featured ones always; "More ideas" shows them all.
     val picked = remember { pickSuggestions(6) }
     var showAll by remember { mutableStateOf(false) }
@@ -1231,4 +1231,22 @@ private fun UpdateBanner() {
             Icon(Icons.Default.Close, "Hide until the next version")
         }
     }
+}
+
+/** Cheerful, short and a little potato: a greeting for each part of the day. No commas inside, since the name follows
+ *  one. Kept the same as `Greetings` in the Swift app (`ChatView.swift`). */
+object Greetings {
+    val morning = listOf("Good morning", "Rise and shine", "Rise and spud", "Top of the morning", "Hash brown hour", "Fresh from the field", "Up and sprouting", "Sunshine spud morning", "Breakfast potatoes ready", "Bright and early tater")
+    val afternoon = listOf("Good afternoon", "Happy afternoon", "Peak potato hours", "Chips and cheers", "Lunch-powered and ready", "Golden afternoon", "Spud-tacular afternoon", "Afternoon mash-up", "Sunny side of the spud", "Midday fries and smiles")
+    val evening = listOf("Good evening", "Lovely evening", "Roast potato o'clock", "Fry friends assemble", "Mashed and mellow", "Golden-fried evening", "Jacket potato weather", "Cozy gratin hour", "Evening spud check", "Dinner's in the oven")
+    val night = listOf("Still up", "Night owl spud", "Midnight snack time", "Moonlit mash", "Late-night tater", "Stars and starches", "Couch potato hours", "Midnight fries", "Sleepy spud shift", "Warm chips for night owls")
+
+    fun list(hour: Int): List<String> = when (hour) {
+        in 5..11 -> morning
+        in 12..17 -> afternoon
+        in 18..21 -> evening
+        else -> night
+    }
+
+    fun now(): String = list(Calendar.getInstance().get(Calendar.HOUR_OF_DAY)).random()
 }
