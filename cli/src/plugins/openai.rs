@@ -244,6 +244,25 @@ impl Provider for OpenAi {
         Ok(ids)
     }
 
+    fn models_with_context(&self) -> Result<Vec<(String, Option<u64>)>, String> {
+        let key = self.live_key()?;
+        let response = self
+            .agent
+            .get(&format!("{}/models", self.endpoint))
+            .set("Authorization", &format!("Bearer {key}"))
+            .call()
+            .map_err(|e| e.to_string())?;
+        let v: Value = response.into_json().map_err(|e| e.to_string())?;
+        let mut list: Vec<(String, Option<u64>)> = v["data"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|m| m["id"].as_str().map(|id| (id.to_string(), crate::context::from_entry(m))))
+            .collect();
+        list.sort();
+        Ok(list)
+    }
+
     fn context_length(&self, model: &str) -> Option<u64> {
         let key = self.live_key().ok()?;
         let response = self.agent.get(&format!("{}/models", self.endpoint)).set("Authorization", &format!("Bearer {key}")).call().ok()?;

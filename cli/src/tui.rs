@@ -200,6 +200,9 @@ struct Hits {
     input: Rect,
     buttons: Vec<(Rect, Approval)>,
     suggestions: Vec<(Rect, usize)>,
+    /// The open picker's box, and each of its rows with the index of the choice it shows.
+    picker: Option<Rect>,
+    picks: Vec<(Rect, usize)>,
     /// For each transcript row on screen: which item and which absolute row.
     rows: Vec<(usize, usize)>,
     total: usize,
@@ -218,6 +221,43 @@ struct Info {
     cwd: String,
     input_tokens: u64,
     output_tokens: u64,
+}
+
+/// A list to choose from with the arrows, the wheel or a click (`/model`). Choosing one sends `/{command} {value}`
+/// as if it had been typed; typing narrows the list.
+pub struct Picker {
+    pub title: String,
+    pub command: String,
+    /// The value sent, what is shown, what is shown dimmed beside it, and whether it is the current one.
+    pub choices: Vec<(String, String, String, bool)>,
+    filter: String,
+    selected: usize,
+    top: usize,
+}
+
+impl Picker {
+    pub fn new(title: &str, command: &str, choices: Vec<(String, String, String, bool)>) -> Picker {
+        let selected = choices.iter().position(|c| c.3).unwrap_or(0);
+        Picker { title: title.into(), command: command.into(), choices, filter: String::new(), selected, top: 0 }
+    }
+
+    /// The indices of the choices that match what was typed.
+    fn shown(&self) -> Vec<usize> {
+        let f = self.filter.to_lowercase();
+        self.choices.iter().enumerate().filter(|(_, c)| c.1.to_lowercase().contains(&f)).map(|(i, _)| i).collect()
+    }
+
+    fn step(&mut self, by: isize) {
+        let n = self.shown().len();
+        if n > 0 {
+            self.selected = (self.selected as isize + by).clamp(0, n as isize - 1) as usize;
+        }
+    }
+
+    /// The command for the choice at this position of the shown list.
+    fn choose(&self, at: usize) -> Option<String> {
+        self.shown().get(at).map(|&i| format!("/{} {}", self.command, self.choices[i].0))
+    }
 }
 
 struct State {
@@ -241,6 +281,9 @@ struct State {
     selected_button: usize,
     commands: Vec<(String, String)>,
     suggestion: usize,
+    picker: Option<Picker>,
+    /// An empty Enter is an answer too (`/decide` ends its questions with one).
+    accept_empty: bool,
     /// The suggestions were closed with Esc for this input.
     hide_suggestions: bool,
     selection: Option<(Point, Point)>,
@@ -283,6 +326,8 @@ impl State {
             selected_button: 0,
             commands: Vec::new(),
             suggestion: 0,
+            picker: None,
+            accept_empty: false,
             hide_suggestions: false,
             selection: None,
             dragging: None,
@@ -390,6 +435,8 @@ impl Screen {
             selected_button: 0,
             commands: Vec::new(),
             suggestion: 0,
+            picker: None,
+            accept_empty: false,
             hide_suggestions: false,
             selection: None,
             dragging: None,
@@ -430,6 +477,16 @@ impl Screen {
 
     pub fn set_commands(&self, commands: Vec<(String, String)>) {
         self.with(|s| s.commands = commands);
+    }
+
+    /// Whether Enter on an empty input is sent as an empty line, for a question that takes one as its answer.
+    pub fn accept_empty(&self, yes: bool) {
+        self.with(|s| s.accept_empty = yes);
+    }
+
+    /// Opens a list to choose from over the conversation.
+    pub fn pick(&self, picker: Picker) {
+        self.with(|s| s.picker = Some(picker));
     }
 
     /// Plain output, such as a command's.
@@ -1365,6 +1422,53 @@ fn draw(frame: &mut Frame, s: &mut State, tick: usize) {
             hits.suggestions.push((row, n));
         }
     }
+    // The picker, a box over the conversation.
+    if let Some(p) = s.picker.as_mut() {
+        let shown = p.shown();
+        p.selected = p.selected.min(shown.len().saturating_sub(1));
+        let t = hits.transcript;
+        let rows = (shown.len().max(1) as u16).min(t.height.saturating_sub(2).max(1)).min(16);
+        let width = t.width.saturating_sub(2).min(100);
+        let rect = Rect { x: t.x + (t.width - width) / 2, y: (t.y + t.height).saturating_sub(rows + 2), width, height: rows + 2 };
+        let visible = rows as usize;
+        if p.selected < p.top {
+            p.top = p.selected;
+        } else if p.selected >= p.top + visible {
+            p.top = p.selected + 1 - visible;
+        }
+        p.top = p.top.min(shown.len().saturating_sub(visible));
+        let title = if p.filter.is_empty() { format!(" {} ", p.title) } else { format!(" {}: {} ", p.title, p.filter) };
+        let footer = format!(" {}/{} · ↑↓ Enter · type to filter · Esc ", (p.selected + 1).min(shown.len()), shown.len());
+        frame.render_widget(Clear, rect);
+        frame.render_widget(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
+                .border_style(Style::default().fg(ACCENT))
+                .title(Span::styled(title, Style::default().add_modifier(Modifier::BOLD)))
+                .title_bottom(Line::from(Span::styled(footer, dim)).right_aligned()),
+            rect,
+        );
+        let label_w = shown.iter().map(|&i| p.choices[i].1.width()).max().unwrap_or(0) + 2;
+        for (n, &i) in shown.iter().enumerate().skip(p.top).take(visible) {
+            let row = Rect { x: rect.x + 1, y: rect.y + 1 + (n - p.top) as u16, width: rect.width - 2, height: 1 };
+            let (_, label, detail, current) = &p.choices[i];
+            let selected = n == p.selected;
+            let style = if selected { Style::default().fg(Color::Black).bg(ACCENT) } else { Style::default() };
+            let mark = if *current { "* " } else { "  " };
+            let line = Line::from(vec![
+                Span::styled(format!("{mark}{label:<label_w$}"), style.add_modifier(Modifier::BOLD)),
+                Span::styled(format!("{detail} "), if selected { style } else { dim }),
+            ]);
+            frame.render_widget(Paragraph::new(line).style(style), row);
+            hits.picks.push((row, n));
+        }
+        if shown.is_empty() {
+            let row = Rect { x: rect.x + 1, y: rect.y + 1, width: rect.width - 2, height: 1 };
+            frame.render_widget(Paragraph::new(Span::styled("  nothing matches", dim)), row);
+        }
+        hits.picker = Some(rect);
+    }
     s.hits = hits;
 }
 
@@ -1560,6 +1664,37 @@ fn key(s: &mut State, k: KeyEvent, lines: &Sender<Option<String>>, cancel: &Atom
         }
         return;
     }
+    if let Some(p) = s.picker.as_mut() {
+        let page = s.hits.picker.map(|r| r.height.saturating_sub(2) as isize).unwrap_or(10).max(1);
+        match k.code {
+            KeyCode::Esc => s.picker = None,
+            KeyCode::Char('c') if ctrl => s.picker = None,
+            KeyCode::Up => p.step(-1),
+            KeyCode::Down | KeyCode::Tab => p.step(1),
+            KeyCode::BackTab => p.step(-1),
+            KeyCode::PageUp => p.step(-page),
+            KeyCode::PageDown => p.step(page),
+            KeyCode::Home => p.selected = 0,
+            KeyCode::End => p.step(isize::MAX / 2),
+            KeyCode::Backspace => {
+                p.filter.pop();
+                p.selected = 0;
+            }
+            KeyCode::Char(c) if !ctrl => {
+                p.filter.push(c);
+                p.selected = 0;
+            }
+            KeyCode::Enter => {
+                if let Some(line) = p.choose(p.selected) {
+                    s.picker = None;
+                    s.top = None;
+                    let _ = lines.send(Some(line));
+                }
+            }
+            _ => {}
+        }
+        return;
+    }
     let suggestions = s.suggestions();
     match k.code {
         KeyCode::Char('c') if ctrl => {
@@ -1636,7 +1771,7 @@ fn key(s: &mut State, k: KeyEvent, lines: &Sender<Option<String>>, cancel: &Atom
         }
         KeyCode::Enter => {
             let text = s.input_text();
-            if text.trim().is_empty() {
+            if text.trim().is_empty() && (s.busy || !s.accept_empty) {
                 return;
             }
             s.set_input("");
@@ -1860,8 +1995,26 @@ fn bar_to(s: &mut State, y: u16) {
     }
 }
 
-fn mouse(s: &mut State, m: MouseEvent) {
+fn mouse(s: &mut State, m: MouseEvent, lines: &Sender<Option<String>>) {
     let (x, y) = (m.column, m.row);
+    if let (Some(p), Some(rect)) = (s.picker.as_mut(), s.hits.picker) {
+        match m.kind {
+            MouseEventKind::ScrollUp => p.step(-1),
+            MouseEventKind::ScrollDown => p.step(1),
+            MouseEventKind::Down(MouseButton::Left) if !inside(rect, x, y) => s.picker = None,
+            MouseEventKind::Down(MouseButton::Left) => {
+                if let Some(&(_, n)) = s.hits.picks.iter().find(|(r, _)| inside(*r, x, y)) {
+                    if let Some(line) = p.choose(n) {
+                        s.picker = None;
+                        s.top = None;
+                        let _ = lines.send(Some(line));
+                    }
+                }
+            }
+            _ => {}
+        }
+        return;
+    }
     match m.kind {
         MouseEventKind::ScrollUp => scroll(s, -3),
         MouseEventKind::ScrollDown => scroll(s, 3),
@@ -1991,7 +2144,7 @@ fn run(state: Arc<Mutex<State>>, lines: Sender<Option<String>>, cancel: Arc<Atom
         loop {
             match event::read() {
                 Ok(Event::Key(k)) if k.kind != KeyEventKind::Release => key(&mut s, k, &lines, &cancel),
-                Ok(Event::Mouse(m)) => mouse(&mut s, m),
+                Ok(Event::Mouse(m)) => mouse(&mut s, m, &lines),
                 Ok(Event::Paste(text)) => {
                     if s.question.is_none() {
                         insert(&mut s, &text);
@@ -2152,5 +2305,19 @@ mod tests {
             assert_ne!(v, seen, "the same verb twice in a row");
             seen = v;
         }
+    }
+
+    #[test]
+    fn picker_scrolls_filters_and_chooses() {
+        let choices = (0..30).map(|n| (format!("m{n}"), format!("model-{n}"), "128k tokens".into(), n == 5)).collect();
+        let mut p = Picker::new("Model", "model", choices);
+        assert_eq!(p.selected, 5, "starts on the current model");
+        p.step(100);
+        assert_eq!(p.selected, 29);
+        p.step(-100);
+        assert_eq!(p.choose(p.selected).as_deref(), Some("/model m0"));
+        p.filter = "-2".into();
+        assert_eq!(p.shown().len(), 11);
+        assert_eq!(p.choose(0).as_deref(), Some("/model m2"));
     }
 }

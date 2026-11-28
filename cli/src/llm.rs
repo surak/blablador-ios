@@ -83,6 +83,11 @@ pub trait Provider: Send + Sync {
         None
     }
 
+    /// The models with the window each one reports, from the same list: the sizes come for free.
+    fn models_with_context(&self) -> Result<Vec<(String, Option<u64>)>, String> {
+        Ok(self.models()?.into_iter().map(|m| (m, None)).collect())
+    }
+
     /// One question, one answer, no tools: for summaries and other small jobs.
     fn complete(&self, model: &str, system: &str, user: &str) -> Result<String, String> {
         let messages = [Message::user(user)];
