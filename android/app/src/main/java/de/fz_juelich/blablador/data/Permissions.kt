@@ -21,7 +21,7 @@ class ToolPermissions(context: Context?, private val mcp: () -> List<McpServer> 
             Kind("memory", "Change memory", "Remember and forget facts", Rule.allow),
             Kind("chats", "Search earlier chats", "Look up what was said before", Rule.allow),
             Kind("calendar", "Read calendar", "Events on this device", Rule.allow),
-            Kind("calendarWrite", "Add events", "Create new calendar events", Rule.ask),
+            Kind("calendarWrite", "Change calendars", "Create, change, move and delete events", Rule.ask),
             Kind("contacts", "Look up contacts", "Names, phone numbers, emails", Rule.allow),
             Kind("location", "Current location", "Where this device is, roughly", Rule.ask),
             Kind("schedule", "Schedule tasks", "Create tasks that run at set times", Rule.ask),
@@ -33,8 +33,8 @@ class ToolPermissions(context: Context?, private val mcp: () -> List<McpServer> 
             "run_python" -> "python"
             "remember", "forget" -> "memory"
             "search_chats" -> "chats"
-            "calendar_events", "list_reminders" -> "calendar"
-            "create_event", "create_reminder" -> "calendarWrite"
+            "calendar_list", "calendar_events", "find_free_time", "list_reminders" -> "calendar"
+            "create_event", "update_event", "delete_event", "create_reminder" -> "calendarWrite"
             "find_contacts" -> "contacts"
             "current_location" -> "location"
             "schedule_task" -> "schedule"

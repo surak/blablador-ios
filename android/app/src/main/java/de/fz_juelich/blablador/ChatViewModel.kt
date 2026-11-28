@@ -184,7 +184,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private fun chatContaining(messageId: String) = conversations.firstOrNull { c -> c.messages.any { it.id == messageId } }
 
     fun canRerun(tool: String) = tool !in setOf("update_plan", "remember", "forget", "use_skill", "suggest_skill", "generate_image", "edit_image",
-        "generate_speech", "create_event", "create_reminder", "schedule_task", "write_file", "edit_file")
+        "generate_speech", "create_event", "update_event", "delete_event", "create_reminder", "schedule_task", "write_file", "edit_file")
     /** Above this many characters (about 30,000 tokens) older messages are replaced by a summary. */
     private val compactionThreshold = 120_000
     /** Messages always sent in full. */
@@ -1354,7 +1354,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         ToolPermissions.kind(name)?.let { kind ->
             var title = "Let Blablador use $name?"
             var detail = arguments?.let { prettyJson.encodeToString(JsonObject.serializer(), it) }.orEmpty()
-            DeviceTools.approval(name, arguments)?.let { (t, d) -> title = t; detail = d }
+            DeviceTools.approval(name, arguments, app)?.let { (t, d) -> title = t; detail = d }
             if (name == "schedule_task") ScheduledTask.fromArguments(arguments)?.let { title = "Schedule “${it.title}”?"; detail = it.scheduleText + "\n\n" + it.prompt }
             if (permissions.rule(kind) != ToolPermissions.Rule.allow) updateMessage(replyId) { it.copy(status = "Waiting for approval…") }
             if (!authorize(kind, chatId, title, detail)) {
@@ -1429,9 +1429,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 "Scheduled “${task.title}”: ${task.scheduleText}.$next The user can change it in Settings → Scheduled tasks." to StepState.done
             }
             name in DeviceTools.names -> {
-                if (!name.startsWith("create_")) outsideContent[0] = true
+                if (name !in DeviceTools.writes) outsideContent[0] = true
                 updateMessage(replyId) {
-                    it.copy(status = when (name) { "current_location" -> "Finding your location…"; "find_contacts" -> "Looking up contacts…"; else -> "Checking your calendar…" })
+                    it.copy(status = when (name) { "current_location" -> "Finding your location…"; "find_contacts" -> "Looking up contacts…"; in DeviceTools.writes -> "Updating your calendar…"; else -> "Checking your calendar…" })
                 }
                 if (!DeviceTools.granted(app, name) && !requestPermissions(DeviceTools.permissions(name))) {
                     "No access. The user can allow it in the system settings for Blablador." to StepState.denied

@@ -32,33 +32,74 @@ import kotlin.coroutines.resume
  * counts as outside content (invitations and contact notes are written by other people).
  */
 object DeviceTools {
-    val names = setOf("calendar_events", "create_event", "find_contacts", "current_location")
+    val names = setOf("calendar_list", "calendar_events", "create_event", "update_event", "delete_event", "find_free_time",
+        "find_contacts", "current_location")
+
+    /** The tools that change something; the rest only read (and what they read counts as outside content). */
+    val writes = setOf("create_event", "update_event", "delete_event")
+
+    private fun type(t: String, description: String? = null) = buildJsonObject {
+        put("type", t); if (description != null) put("description", description)
+    }
+
+    private fun arrayProp(itemType: String, description: String) = buildJsonObject {
+        put("type", "array"); put("items", buildJsonObject { put("type", itemType) }); put("description", description)
+    }
+
+    private fun eventFields(extra: kotlinx.serialization.json.JsonObjectBuilder.() -> Unit = {}) = buildJsonObject {
+        put("title", type("string"))
+        put("start", Tools.stringProperty("ISO 8601 date-time, or a date for an all-day event."))
+        put("end", Tools.stringProperty("ISO 8601; defaults to one hour after start (all day: the same day)."))
+        put("location", type("string"))
+        put("notes", type("string"))
+        put("url", type("string"))
+        put("calendar", Tools.stringProperty("Calendar name or id from calendar_list; the default calendar when left out."))
+        put("alerts", arrayProp("integer", "Alerts, in minutes before the start, e.g. [10, 60]."))
+        put("repeat", Tools.stringProperty("Repetition.", listOf("none", "daily", "weekdays", "weekly", "biweekly", "monthly", "yearly")))
+        put("repeat_until", Tools.stringProperty("ISO 8601 date the repetition ends."))
+        put("repeat_count", type("integer", "How many times it happens in all."))
+        extra()
+    }
 
     val definitions: List<JsonObject> = listOf(
-        Tools.function("calendar_events", "List events in the user's calendars between two dates.", buildJsonObject {
+        Tools.function("calendar_list", "The user's calendars from every account on the device (Google, Microsoft/Exchange, CalDAV…), with id, account and whether events can be added.", buildJsonObject {}, emptyList()),
+        Tools.function("calendar_events", "List events in the user's calendars between two dates, with the id update_event and delete_event need.", buildJsonObject {
             put("from", Tools.stringProperty("Start, ISO 8601 date or date-time, e.g. 2026-11-02 or 2026-11-02T09:00."))
             put("to", Tools.stringProperty("End, ISO 8601; defaults to one day after from."))
-            put("query", Tools.stringProperty("Only events whose title, place or notes contain this text."))
+            put("query", Tools.stringProperty("Only events whose title, place, notes or attendees contain this text."))
+            put("calendars", arrayProp("string", "Only these calendars (names or ids)."))
         }, listOf("from")),
-        Tools.function("create_event", "Add an event to the user's default calendar. The user is asked first.", buildJsonObject {
-            put("title", buildJsonObject { put("type", "string") })
-            put("start", Tools.stringProperty("ISO 8601 date-time, or a date for an all-day event."))
-            put("end", Tools.stringProperty("ISO 8601; defaults to one hour after start."))
-            put("location", buildJsonObject { put("type", "string") })
-            put("notes", buildJsonObject { put("type", "string") })
-        }, listOf("title", "start")),
+        Tools.function("create_event", "Add an event to one of the user's calendars. Inviting people isn't possible from here; mention them in the notes.", eventFields(), listOf("title", "start")),
+        Tools.function("update_event", "Change or move an event: give its id (and for a repeating event its occurrence) and only the fields that change.", eventFields {
+            put("id", Tools.stringProperty("The event's id from calendar_events."))
+            put("occurrence", Tools.stringProperty("For a repeating event, the start of the occurrence meant (as calendar_events shows it)."))
+            put("span", Tools.stringProperty("A repeating event: only this occurrence (default) or this and all future ones.", listOf("this", "future")))
+        }, listOf("id")),
+        Tools.function("delete_event", "Delete an event (for a repeating one, this occurrence or this and the future ones).", buildJsonObject {
+            put("id", type("string")); put("occurrence", type("string"))
+            put("span", Tools.stringProperty("this or future", listOf("this", "future")))
+        }, listOf("id")),
+        Tools.function("find_free_time", "Free slots in the user's calendars, for scheduling.", buildJsonObject {
+            put("from", Tools.stringProperty("ISO 8601 date or date-time."))
+            put("to", Tools.stringProperty("ISO 8601; defaults to 7 days after from."))
+            put("minutes", type("integer", "Length needed, default 30."))
+            put("day_start", Tools.stringProperty("Working hours start, HH:mm, default 09:00."))
+            put("day_end", Tools.stringProperty("Working hours end, HH:mm, default 17:00."))
+            put("weekends", type("boolean", "Include Saturdays and Sundays, default false."))
+            put("calendars", arrayProp("string", "Only these calendars."))
+        }, listOf("from")),
         Tools.function("find_contacts", "Look up people in the user's contacts by name, company or email.", buildJsonObject {
             put("query", buildJsonObject { put("type", "string") })
         }, listOf("query")),
         Tools.function("current_location", "The device's current place (town, address) and coordinates.", buildJsonObject {}, emptyList()),
     )
 
-    const val SYSTEM_PROMPT = "You can use the user's calendar (calendar_events, create_event), contacts (find_contacts) and location (current_location). Use local times; creating events shows the user a confirmation first."
+    const val SYSTEM_PROMPT = "You can use the user's calendars from every account on the device (calendar_list, calendar_events, create_event, update_event to change or move, delete_event, find_free_time), contacts (find_contacts) and location (current_location). Use local times. Changes may need the user's confirmation; before changing or deleting, find the event with calendar_events and use its id."
 
     /** Android permissions a tool needs. */
     fun permissions(name: String): List<String> = when (name) {
-        "calendar_events" -> listOf(Manifest.permission.READ_CALENDAR)
-        "create_event" -> listOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR)
+        "calendar_list", "calendar_events", "find_free_time" -> listOf(Manifest.permission.READ_CALENDAR)
+        "create_event", "update_event", "delete_event" -> listOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR)
         "find_contacts" -> listOf(Manifest.permission.READ_CONTACTS)
         "current_location" -> listOf(Manifest.permission.ACCESS_COARSE_LOCATION)
         else -> emptyList()
@@ -69,13 +110,22 @@ object DeviceTools {
     }
 
     /** Title and detail for the approval card of a tool that changes or shares something. */
-    fun approval(name: String, arguments: JsonObject?): Pair<String, String>? {
+    fun approval(name: String, arguments: JsonObject?, context: Context? = null): Pair<String, String>? {
         val title = jsonString(arguments?.get("title")).orEmpty()
         return when (name) {
             "create_event" -> "Add “$title” to your calendar?" to listOfNotNull(
                 listOfNotNull(jsonString(arguments?.get("start")), jsonString(arguments?.get("end"))).joinToString(" – "),
                 jsonString(arguments?.get("location")), jsonString(arguments?.get("notes")),
             ).filter { it.isNotEmpty() }.joinToString("\n")
+            "update_event", "delete_event" -> {
+                val existing = context?.takeIf { granted(it, "calendar_events") }?.let { describeExisting(it, arguments) }
+                val event = existing?.first?.let { "“$it”" } ?: "this event"
+                val future = if (jsonString(arguments?.get("span")) == "future") " and the repeats after it" else ""
+                if (name == "delete_event") "Delete $event$future from your calendar?" to existing?.second.orEmpty()
+                else "Change $event$future?" to (listOfNotNull(existing?.second?.let { "Now: $it" }) +
+                    listOf("title", "start", "end", "location", "notes", "url", "calendar", "alerts", "repeat", "repeat_until", "repeat_count")
+                        .mapNotNull { key -> arguments?.get(key)?.let { "${key.replace('_', ' ')}: ${jsonString(it) ?: it.toString()}" } }).joinToString("\n")
+            }
             "current_location" -> "Share your current location with the assistant?" to "Your town and approximate coordinates are sent to the model."
             else -> null
         }
@@ -84,88 +134,21 @@ object DeviceTools {
     suspend fun run(context: Context, name: String, arguments: JsonObject?): String = withContext(Dispatchers.IO) {
         if (!granted(context, name)) throw IllegalStateException("No access. The user can allow it in the system settings for Blablador.")
         when (name) {
-            "calendar_events" -> events(context, arguments)
-            "create_event" -> createEvent(context, arguments)
+            "calendar_list" -> Calendars.list(context)
+            "calendar_events" -> Calendars.events(context, arguments)
+            "create_event" -> Calendars.create(context, arguments)
+            "update_event" -> Calendars.update(context, arguments)
+            "delete_event" -> Calendars.delete(context, arguments)
+            "find_free_time" -> Calendars.freeTime(context, arguments)
             "find_contacts" -> contacts(context, jsonString(arguments?.get("query")).orEmpty())
             "current_location" -> location(context)
             else -> "Unknown tool $name."
         }
     }
 
-    private fun describe(time: Long, allDay: Boolean = false): String =
-        if (allDay) DateFormat.getDateInstance(DateFormat.FULL).format(Date(time))
-        else DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(time))
-
-    private fun badDate(text: String?) = IllegalArgumentException("Couldn't read the date \"${text.orEmpty()}\"; use ISO 8601 like 2026-11-02T09:00.")
-
-    private fun events(context: Context, arguments: JsonObject?): String {
-        val fromText = jsonString(arguments?.get("from"))
-        val from = ScheduledTask.parseDate(fromText) ?: throw badDate(fromText)
-        val start = if (from.second) Calendar.getInstance().apply { timeInMillis = from.first; set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0) }.timeInMillis else from.first
-        val day = 24 * 3600_000L
-        var end = ScheduledTask.parseDate(jsonString(arguments?.get("to")))?.let { if (it.second) it.first + day else it.first } ?: (start + day)
-        if (end <= start) end = start + day
-        end = minOf(end, start + 366 * day)
-        val query = jsonString(arguments?.get("query"))?.lowercase().orEmpty()
-        val uri = CalendarContract.Instances.CONTENT_URI.buildUpon().also {
-            android.content.ContentUris.appendId(it, start); android.content.ContentUris.appendId(it, end)
-        }.build()
-        val columns = arrayOf(CalendarContract.Instances.TITLE, CalendarContract.Instances.BEGIN, CalendarContract.Instances.END,
-            CalendarContract.Instances.ALL_DAY, CalendarContract.Instances.EVENT_LOCATION, CalendarContract.Instances.DESCRIPTION,
-            CalendarContract.Instances.CALENDAR_DISPLAY_NAME)
-        val lines = mutableListOf<String>()
-        context.contentResolver.query(uri, columns, null, null, CalendarContract.Instances.BEGIN + " ASC")?.use { cursor ->
-            while (cursor.moveToNext() && lines.size < 100) {
-                val title = cursor.getString(0) ?: "(no title)"
-                val location = cursor.getString(4).orEmpty()
-                val notes = cursor.getString(5).orEmpty()
-                if (query.isNotEmpty() && listOf(title, location, notes).none { it.lowercase().contains(query) }) continue
-                val allDay = cursor.getInt(3) == 1
-                // All-day events are stored in UTC.
-                val begin = if (allDay) cursor.getLong(1) - TimeZone.getDefault().getOffset(cursor.getLong(1)) else cursor.getLong(1)
-                var line = "- $title: " + if (allDay) describe(begin, true) + " (all day)"
-                else "${describe(begin)} – ${DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(cursor.getLong(2)))}"
-                if (location.isNotEmpty()) line += ", at $location"
-                line += " [${cursor.getString(6).orEmpty()}]"
-                if (notes.isNotEmpty()) line += "\n  Notes: ${notes.take(300)}"
-                lines += line
-            }
-        }
-        return if (lines.isEmpty()) "No events between ${describe(start)} and ${describe(end)}." else lines.joinToString("\n")
-    }
-
-    private fun createEvent(context: Context, arguments: JsonObject?): String {
-        val startText = jsonString(arguments?.get("start"))
-        val start = ScheduledTask.parseDate(startText) ?: throw badDate(startText)
-        val calendar = context.contentResolver.query(CalendarContract.Calendars.CONTENT_URI,
-            arrayOf(CalendarContract.Calendars._ID, CalendarContract.Calendars.CALENDAR_DISPLAY_NAME),
-            "${CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL} >= ${CalendarContract.Calendars.CAL_ACCESS_CONTRIBUTOR}", null,
-            "${CalendarContract.Calendars.IS_PRIMARY} DESC")?.use { if (it.moveToFirst()) it.getLong(0) to it.getString(1).orEmpty() else null }
-            ?: throw IllegalStateException("There is no calendar to add events to.")
-        val title = jsonString(arguments?.get("title")) ?: "Event"
-        val values = ContentValues().apply {
-            put(CalendarContract.Events.CALENDAR_ID, calendar.first)
-            put(CalendarContract.Events.TITLE, title)
-            jsonString(arguments?.get("location"))?.let { put(CalendarContract.Events.EVENT_LOCATION, it) }
-            jsonString(arguments?.get("notes"))?.let { put(CalendarContract.Events.DESCRIPTION, it) }
-            if (start.second) {
-                val utc = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
-                    val local = Calendar.getInstance().apply { timeInMillis = start.first }
-                    clear(); set(local.get(Calendar.YEAR), local.get(Calendar.MONTH), local.get(Calendar.DAY_OF_MONTH))
-                }.timeInMillis
-                put(CalendarContract.Events.ALL_DAY, 1)
-                put(CalendarContract.Events.DTSTART, utc)
-                put(CalendarContract.Events.DTEND, utc + 24 * 3600_000L)
-                put(CalendarContract.Events.EVENT_TIMEZONE, "UTC")
-            } else {
-                put(CalendarContract.Events.DTSTART, start.first)
-                put(CalendarContract.Events.DTEND, ScheduledTask.parseDate(jsonString(arguments?.get("end")))?.first ?: (start.first + 3600_000L))
-                put(CalendarContract.Events.EVENT_TIMEZONE, TimeZone.getDefault().id)
-            }
-        }
-        context.contentResolver.insert(CalendarContract.Events.CONTENT_URI, values) ?: throw IllegalStateException("The event couldn't be saved.")
-        return "Added “$title” on ${describe(start.first, start.second)} to ${calendar.second}."
-    }
+    private fun describeExisting(context: Context, arguments: JsonObject?): Pair<String, String>? = try {
+        Calendars.find(context, jsonString(arguments?.get("id")), jsonString(arguments?.get("occurrence")))?.let { it.title to Calendars.describe(it.begin, it.allDay) }
+    } catch (e: Exception) { null }
 
     private fun contacts(context: Context, query: String): String {
         val resolver = context.contentResolver

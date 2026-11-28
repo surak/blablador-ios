@@ -33,7 +33,7 @@ final class ToolPermissions: ObservableObject {
         Kind(id: "memory", name: "Change memory", icon: "brain", detail: "Remember and forget facts", defaultRule: .allow),
         Kind(id: "chats", name: "Search earlier chats", icon: "text.magnifyingglass", detail: "Look up what was said before", defaultRule: .allow),
         Kind(id: "calendar", name: "Read calendar and reminders", icon: "calendar", detail: "Events and reminders on this device", defaultRule: .allow),
-        Kind(id: "calendarWrite", name: "Add events and reminders", icon: "calendar.badge.plus", detail: "Create new events and reminders", defaultRule: .ask),
+        Kind(id: "calendarWrite", name: "Change calendars and reminders", icon: "calendar.badge.plus", detail: "Create, change, move and delete events; add reminders", defaultRule: .ask),
         Kind(id: "contacts", name: "Look up contacts", icon: "person.crop.circle", detail: "Names, phone numbers, emails", defaultRule: .allow),
         Kind(id: "location", name: "Current location", icon: "location", detail: "Where this device is, roughly", defaultRule: .ask),
         Kind(id: "schedule", name: "Schedule tasks", icon: ToolIcon.schedule, detail: "Create tasks that run at set times", defaultRule: .ask),
@@ -86,8 +86,8 @@ final class ToolPermissions: ObservableObject {
         case "run_python": "python"
         case "remember", "forget": "memory"
         case "search_chats": "chats"
-        case "calendar_events", "list_reminders": "calendar"
-        case "create_event", "create_reminder": "calendarWrite"
+        case "calendar_list", "calendar_events", "find_free_time", "list_reminders": "calendar"
+        case "create_event", "update_event", "delete_event", "create_reminder": "calendarWrite"
         case "find_contacts": "contacts"
         case "current_location": "location"
         case "schedule_task": "schedule"

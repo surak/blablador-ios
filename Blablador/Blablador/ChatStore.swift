@@ -1724,7 +1724,7 @@ final class ChatStore: ObservableObject {
     /// Tools whose call can be repeated from the trace without changing anything.
     static func canRerun(_ tool: String) -> Bool {
         !["update_plan", "remember", "forget", "use_skill", "suggest_skill", "generate_image", "edit_image", "generate_speech",
-          "create_event", "create_reminder", "schedule_task", "write_file", "edit_file"].contains(tool)
+          "create_event", "update_event", "delete_event", "create_reminder", "schedule_task", "write_file", "edit_file"].contains(tool)
     }
 
     /// Runs one recorded tool call again and shows the new result in the trace (the reply itself stays).
@@ -1859,8 +1859,8 @@ final class ChatStore: ObservableObject {
             return ("Google Drive tools work on the Mac only.", .failed)
 #endif
         } else if DeviceTools.names.contains(name) {
-            if !name.hasPrefix("create_") { outsideContent = true }
-            updateMessage(replyID) { $0.status = name == "current_location" ? "Finding your location…" : name == "find_contacts" ? "Looking up contacts…" : "Checking your calendar…" }
+            if !DeviceTools.writes.contains(name) { outsideContent = true }
+            updateMessage(replyID) { $0.status = name == "current_location" ? "Finding your location…" : name == "find_contacts" ? "Looking up contacts…" : DeviceTools.writes.contains(name) ? "Updating your calendar…" : "Checking your calendar…" }
             do {
                 return (try await DeviceTools.run(name, arguments), .done)
             } catch {
