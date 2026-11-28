@@ -742,8 +742,8 @@ private struct WelcomeView: View {
         let salutation = switch hour {
         case 5..<12: "Good morning"
         case 12..<18: "Good afternoon"
-        case 18..<22: "Good evening"
-        default: "Hello"
+        // Late at night too: "Good night" is a goodbye, and the evening hasn't ended for whoever is still up.
+        default: "Good evening"
         }
         return store.userName.isEmpty ? salutation : "\(salutation), \(store.userName)"
     }

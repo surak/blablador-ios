@@ -613,7 +613,7 @@ private fun pickSuggestions(count: Int): List<Suggestion> {
 @Composable
 private fun Welcome(userName: String, onPick: (Suggestion) -> Unit) {
     val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-    val salutation = when (hour) { in 5..11 -> "Good morning"; in 12..17 -> "Good afternoon"; in 18..21 -> "Good evening"; else -> "Hello" }
+    val salutation = when (hour) { in 5..11 -> "Good morning"; in 12..17 -> "Good afternoon"; else -> "Good evening" }  // late at night too: "Good night" is a goodbye
     // Six examples, featured ones always; "More ideas" shows them all.
     val picked = remember { pickSuggestions(6) }
     var showAll by remember { mutableStateOf(false) }
