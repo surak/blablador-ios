@@ -137,7 +137,7 @@ class AgentFeatureTest {
     @Test
     fun whatsNewShowsOnceAfterAnUpdate() {
         val newest = de.fz_juelich.blablador.data.WhatsNew.releases.first().first
-        assertEquals("3.13.3", newest)
+        assertEquals("3.14.0", newest)
         assertNull(de.fz_juelich.blablador.data.WhatsNew.unseen(null, hasChats = false))
         assertEquals(newest, de.fz_juelich.blablador.data.WhatsNew.unseen(null, hasChats = true)?.first)
         assertEquals(newest, de.fz_juelich.blablador.data.WhatsNew.unseen("3.2", hasChats = true)?.first)

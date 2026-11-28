@@ -12,6 +12,13 @@ struct WhatsNewItem: Identifiable, Hashable {
 
 enum WhatsNew {
     static let releases: [(version: String, items: [WhatsNewItem])] = [
+        ("3.14.0", [
+            WhatsNewItem(icon: "calendar", title: "All your calendars, changed too",
+                         text: "Blablador uses the calendars of every account on your device — Google, Microsoft, iCloud, "
+                         + "CalDAV — with no sign-in of its own. It can now change, move and delete events (one occurrence "
+                         + "or the repeats after it), pick the calendar, set alerts and repeats, and find free time. "
+                         + "Changes ask first unless you allow them in Permissions."),
+        ]),
         ("3.13.3", [
             WhatsNewItem(icon: "return", title: "Enter sends again",
                          text: "The return key sends your message, as it does on the Mac app and in bla; Shift+Enter "

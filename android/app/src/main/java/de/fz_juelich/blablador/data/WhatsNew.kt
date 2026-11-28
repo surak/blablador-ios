@@ -15,6 +15,13 @@ data class WhatsNewItem(val icon: String, val title: String, val text: String, v
 
 object WhatsNew {
     val releases: List<Pair<String, List<WhatsNewItem>>> = listOf(
+        "3.14.0" to listOf(
+            WhatsNewItem("calendar", "All your calendars, changed too",
+                "Blablador uses the calendars of every account on your phone — Google, Microsoft, CalDAV — with no " +
+                    "sign-in of its own. It can now change, move and delete events (one occurrence or the repeats after " +
+                    "it), pick the calendar, set alerts and repeats, and find free time. Changes ask first unless you " +
+                    "allow them in Permissions."),
+        ),
         "3.13.3" to listOf(
             WhatsNewItem("keyboard_return", "Enter sends again",
                 "The return key sends your message, as it does on the Mac app and in bla; Shift+Enter starts a new " +
