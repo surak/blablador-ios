@@ -12,6 +12,13 @@ struct WhatsNewItem: Identifiable, Hashable {
 
 enum WhatsNew {
     static let releases: [(version: String, items: [WhatsNewItem])] = [
+        ("3.15.0", [
+            WhatsNewItem(icon: "terminal", title: "A swarm on the command line",
+                         text: "In bla, /swarm TASK puts a team on it: named workers split the work and a verifier checks "
+                         + "it, all talking on one shared board, each on the model its job needs. Run bla swarm in another "
+                         + "terminal to watch them side by side. /model now lists every model with its context size to "
+                         + "pick with the keyboard or mouse, and Clef opens the decision assistant."),
+        ]),
         ("3.14.0", [
             WhatsNewItem(icon: "calendar", title: "All your calendars, changed too",
                          text: "Blablador uses the calendars of every account on your device — Google, Microsoft, iCloud, "

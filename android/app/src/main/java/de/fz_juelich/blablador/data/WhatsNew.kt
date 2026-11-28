@@ -15,6 +15,13 @@ data class WhatsNewItem(val icon: String, val title: String, val text: String, v
 
 object WhatsNew {
     val releases: List<Pair<String, List<WhatsNewItem>>> = listOf(
+        "3.15.0" to listOf(
+            WhatsNewItem("terminal", "A swarm on the command line",
+                "In bla, /swarm TASK puts a team on it: named workers split the work and a verifier checks it, all " +
+                    "talking on one shared board, each on the model its job needs. Run bla swarm in another terminal to " +
+                    "watch them side by side. /model now lists every model with its context size to pick with the " +
+                    "keyboard or mouse, and Clef opens the decision assistant."),
+        ),
         "3.14.0" to listOf(
             WhatsNewItem("calendar", "All your calendars, changed too",
                 "Blablador uses the calendars of every account on your phone — Google, Microsoft, CalDAV — with no " +

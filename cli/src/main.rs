@@ -16,6 +16,7 @@ mod price;
 mod secret;
 mod session;
 mod telegram;
+mod swarm_view;
 mod tui;
 mod ui;
 mod update;
@@ -35,7 +36,7 @@ use ui::Ui;
 use util::Style;
 
 const USAGE: &str = "Usage: bla [options] [question…]
-       bla login | logout | sessions | plugins | trust | update
+       bla login | logout | sessions | plugins | trust | update | swarm [ID]
        bla serve --telegram [--telegram-allow ID]…
 
 Asks Blablador and lets it work in the current folder: read, edit and write files and run commands,
@@ -166,6 +167,14 @@ fn main() {
         return;
     }
 
+    // The members of the newest swarm (or the one named) side by side, in a terminal of its own.
+    if argv.first().is_some_and(|a| a == "swarm") && argv.len() <= 2 {
+        if let Err(e) = swarm_view::run(argv.get(1).map(String::as_str)) {
+            fail(&e);
+        }
+        return;
+    }
+
     if argv.len() == 1 {
         match argv[0].as_str() {
             "login" => {
@@ -199,6 +208,15 @@ fn main() {
         }
         Err(text) => fail(&text),
     };
+    // Clef answers typed questions, not messages: `-m alias-clef` opens the /decide assistant in a chat on the usual
+    // model. Any other model that can't chat is refused here rather than with the endpoint's 404.
+    let mut args = args;
+    let decide_first = args.model.as_deref().is_some_and(|m| blablador_models::kind(m) == blablador_models::Kind::Decision);
+    if decide_first {
+        args.model = None;
+    } else if let Some(m) = args.model.as_deref().filter(|m| !blablador_models::is_chat_capable(m)) {
+        fail(&format!("{m} is for {}, not for chatting.", blablador_models::kind(m).name()));
+    }
     // A resumed session runs in its own folder, with that folder's settings, trust and plugins.
     let resumed = if let Some(id) = &args.resume {
         Some(Session::open(id).unwrap_or_else(|e| fail(&e)))
@@ -219,7 +237,11 @@ fn main() {
         }
         _ => cwd,
     };
-    let settings = Settings::load(&cwd).unwrap_or_else(|e| fail(&e));
+    let mut settings = Settings::load(&cwd).unwrap_or_else(|e| fail(&e));
+    // A default saved before bla knew better (alias-clef, an embedder) would make every question a 404.
+    if !blablador_models::is_chat_capable(&settings.model) {
+        settings.model = blablador_models::DEFAULT_MODEL.to_string();
+    }
     // No key yet and someone at the keyboard (bla.exe double-clicked, or a first `bla`): ask for it here instead of
     // stopping with "run bla login", which a window that closes at once never even shows.
     if secret::api_key().is_none() && std::io::stdin().is_terminal() && !args.list_models {
@@ -235,7 +257,7 @@ fn main() {
     };
     let mut disabled = args.disabled.clone();
     if args.no_tools {
-        disabled.extend(["core-tools", "skills", "memory", "checkpoints", "blablador", "mcp", "web", "agents", "processes"].map(String::from));
+        disabled.extend(["core-tools", "skills", "memory", "checkpoints", "blablador", "mcp", "web", "agents", "swarm", "processes"].map(String::from));
     }
     let (plugins, warnings) =
         plugins::load(plugins::Options { settings: &settings, cwd: &cwd, api_key: secret::api_key().unwrap_or_default(),
@@ -270,6 +292,9 @@ fn main() {
         }
     }
     let chat = question.trim().is_empty();
+    if decide_first && !chat {
+        fail(&format!("{} is a decision model: run bla and type /decide, or bla -m {} to start there.", decide::MODEL, decide::MODEL));
+    }
     if chat && !stdin_tty {
         fail(USAGE);
     }
@@ -313,10 +338,14 @@ fn main() {
         if !args.quiet {
             update::auto(&style);
         }
-        run_chat(&mut agent, &settings, &busy, args.thinking);
+        run_chat(&mut agent, &settings, &busy, args.thinking, decide_first);
     } else {
         let mut ui: Box<dyn Ui> = if args.json { Box::new(ui::Json) } else { Box::new(ui::Terminal::new(false, args.thinking)) };
         busy.store(true, Ordering::Relaxed);
+        // So a script (a swarm worker) can carry the same conversation on with -r.
+        if args.json {
+            println!("{}", serde_json::json!({"type": "session", "id": agent.session.id}));
+        }
         let result = agent.turn(&question, ui.as_mut());
         agent.finish();
         if let Err(e) = result {
@@ -528,7 +557,7 @@ const CHAT_HELP: &str = "/help         this list
 !command      run a shell command and show the model its output
 @path         attach a file to your message";
 
-fn run_chat(agent: &mut Agent, settings: &Settings, busy: &AtomicBool, thinking: bool) {
+fn run_chat(agent: &mut Agent, settings: &Settings, busy: &AtomicBool, thinking: bool, decide_first: bool) {
     let _ = thinking;
     let mut screen = match tui::Screen::open(agent.cancel.clone(), util::bla_home().join("history")) {
         Ok(s) => s,
@@ -567,8 +596,14 @@ fn run_chat(agent: &mut Agent, settings: &Settings, busy: &AtomicBool, thinking:
 
     // `/decide`'s assistant, while it is asking: every line goes to it, empty ones too.
     let mut wizard: Option<decide::Wizard> = None;
+    if decide_first {
+        let (w, first) = decide::Wizard::start("");
+        wizard = Some(w);
+        screen.say(&format!("{} is a decision model, not a chat model; the chat is on {}.\n\n{first}", decide::MODEL, agent.model));
+    }
     loop {
         busy.store(false, Ordering::Relaxed);
+        screen.accept_empty(wizard.is_some());
         let Some(line) = screen.read_line() else {
             break;
         };
@@ -665,22 +700,36 @@ fn run_chat(agent: &mut Agent, settings: &Settings, busy: &AtomicBool, thinking:
                     Err(e) => screen.error(&e),
                 },
                 // Embedders, image models and the molecular job APIs are all in /v1/models; none of them answers a question.
-                "model" | "models" if args.is_empty() => match agent.provider.models() {
-                    Ok(list) => screen.say(&format!(
-                        "{}\n\n/model ID [off|low|medium|high|max] switches; the effort is optional.",
-                        list.iter()
-                            .map(|m| {
-                                let mark = if *m == agent.model { "* " } else { "  " };
-                                match blablador_models::kind(m) {
-                                    blablador_models::Kind::Chat => format!("{mark}{m}"),
-                                    other => format!("{mark}{m}  ({})", other.name()),
-                                }
+                "model" | "models" if args.is_empty() => match agent.provider.models_with_context() {
+                    Ok(list) => {
+                        // Only models that chat can be chosen; the context size each one reports comes with the list.
+                        let choices: Vec<_> = list
+                            .into_iter()
+                            .filter(|(m, _)| blablador_models::is_chat_capable(m) || blablador_models::kind(m) == blablador_models::Kind::Decision)
+                            .map(|(m, window)| {
+                                let size = if blablador_models::kind(&m) == blablador_models::Kind::Decision {
+                                    "decision model: opens /decide".to_string()
+                                } else {
+                                    window.map(|w| format!("{} tokens", context::human(w))).unwrap_or_default()
+                                };
+                                let current = m == agent.model;
+                                (m.clone(), m, size, current)
                             })
-                            .collect::<Vec<_>>()
-                            .join("\n")
-                    )),
+                            .collect();
+                        if choices.is_empty() {
+                            screen.error("The endpoint lists no chat models.");
+                        } else {
+                            screen.pick(tui::Picker::new("Model", "model", choices));
+                        }
+                    }
                     Err(e) => screen.error(&e),
                 },
+                // Clef answers typed questions about a situation, not messages: choosing it starts /decide.
+                "model" if blablador_models::kind(args.split_whitespace().next().unwrap_or("")) == blablador_models::Kind::Decision => {
+                    let (w, first) = decide::Wizard::start("");
+                    wizard = Some(w);
+                    screen.say(&format!("{} is a decision model, not a chat model; the chat stays on {}.\n\n{first}", decide::MODEL, agent.model));
+                }
                 "model" if !blablador_models::is_chat_capable(args.split_whitespace().next().unwrap_or("")) => screen.error(&format!(
                     "{args} is for {}, not for chatting.",
                     blablador_models::kind(args.split_whitespace().next().unwrap_or("")).name()

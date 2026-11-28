@@ -17,6 +17,7 @@ pub mod permissions;
 pub mod plan;
 pub mod processes;
 pub mod skills;
+pub mod swarm;
 pub mod web;
 
 use crate::config::Settings;
@@ -36,6 +37,7 @@ pub const BUILT_IN: &[(&str, &str)] = &[
     ("blablador", "Blablador's other models as tools: vision, OCR, image generation, transcription"),
     ("web", "web_search on Blablador's SearXNG and read_page for public pages and PDFs"),
     ("agents", "Subagents: the task tool runs a fresh bla on a self-contained job, read-only ones in parallel"),
+    ("swarm", "/swarm TASK: named workers and a verifier split a task and talk on one shared board; /swarm board"),
     ("processes", "Background shell jobs (dev servers, watchers, long builds): bash_background, bash_output, bash_kill; /jobs"),
     ("hermes", "Hermes' scheduled jobs: cron_list, cron_edit, cron_state, cron_runs; /cron"),
     ("mcp", "MCP servers from ~/.bla/mcp.json and a trusted project's .mcp.json, as tools"),
@@ -106,6 +108,9 @@ pub fn load(o: Options) -> (Vec<Arc<dyn Plugin>>, Vec<String>) {
     }
     if on("agents") {
         plugins.push(Arc::new(agents::Agents::new(&o.model)));
+    }
+    if on("swarm") {
+        plugins.push(Arc::new(swarm::Swarm::new(&o.model)));
     }
     if on("mcp") {
         let mcp = mcp::Mcp::new(&crate::config::project_root(o.cwd), s.project_trusted);
